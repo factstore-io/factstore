@@ -1,0 +1,36 @@
+📌 Why We Use Event IDs (UUID) Instead of Versionstamps for Identifying Events
+
+🔑 1. Stable Identity
+- UUIDs are generated outside the transaction and are stable across retries.
+- Versionstamps are only assigned at commit time and can change if a transaction retries after commit_unknown_result.
+- Without UUIDs, the same logical event might appear with multiple versionstamps, making it hard to tell if two entries are the same event.
+
+🔑 2. Idempotence & Deduplication
+- With UUIDs, every event has a permanent identity.
+- If a transaction is retried, the same UUID is reused, so duplicate writes just overwrite the same keys → safe.
+- With versionstamps only, retries produce new keys → same event could be stored multiple times.
+
+🔑 3. Global Uniqueness
+-UUIDs are globally unique regardless of subject, partition, or cluster topology.
+- This makes them perfect for referencing events across subjects, indexes, or external systems.
+- Versionstamps are only unique in the context of ordering.
+
+🔑 4. Flexibility for Indexes
+- UUIDs are the canonical pointer for event data (/event-data/{eventId}), event type, and other metadata.
+- Indexes (by subject, global order, type, payload fields, etc.) only store pointers back to the UUID.
+- This keeps your data model additive: new indexes can be added later without rewriting events.
+
+🔑 5. Versionstamps Still Matter
+- Versionstamps are still critical, but for ordering, not identity.
+    - /global/{versionstamp}/{eventId} → global event log.
+    - /subject/{subjectId}/{versionstamp}/{eventId} → per-subject stream.
+- They answer “when did this event happen, relative to others?”
+- UUIDs answer “which unique event is this?”
+
+✅ In short:
+
+Event ID (UUID) = Who the event is (identity, idempotence, uniqueness).
+Versionstamp = When the event happened (ordering, concurrency control).
+
+Both are necessary, but they serve different purposes.
+UUIDs make the store safe and idempotent, versionstamps make it ordered and consistent.
