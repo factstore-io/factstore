@@ -21,8 +21,10 @@ const val SUBJECT_ID = "subject"
 const val SUBJECT_INDEX = "subjectIdx"
 const val EVENT_TYPE = "event-type"
 const val CREATED_AT = "created-at"
+
 const val GLOBAL_EVENT_POSITION = "global"
 const val CREATED_AT_INDEX = "created-at-index"
+const val EVENT_TYPE_INDEX = "event-type-index"
 
 /**
  *
@@ -42,7 +44,7 @@ const val CREATED_AT_INDEX = "created-at-index"
  * INDEXES (PLAN)
  * /global/{versionstamp}/{index}/{eventId} = ∅
  * /subject/{subjectId}/{versionstamp}/{index}/{eventId} = ∅
- * /by-type/{type}/{versionstamp}/{index}/{eventId} = ∅
+ * /type/{type}/{versionstamp}/{index}/{eventId} = ∅
  * /created-at-index/{createdAt}/{vs}/{index}/{eventId} = ∅
  *
  */
@@ -63,6 +65,7 @@ class ClassicEventStore(
     // INDEXES
     private val subjectIndexSubspace = root.subspace(Tuple.from(SUBJECT_INDEX))
     private val createdAtIndexSubspace = root.subspace(Tuple.from(CREATED_AT_INDEX))
+    private val eventTypeIndexSubspace = root.subspace(Tuple.from(EVENT_TYPE_INDEX))
     private val globalEventPositionSubspace = root.subspace(Tuple.from(GLOBAL_EVENT_POSITION))
 
 
@@ -128,6 +131,11 @@ class ClassicEventStore(
                     Tuple.from(event.createdAt.toEpochMilli(), Versionstamp.incomplete(), index, eventId)
                 )
                 tr.mutate(MutationType.SET_VERSIONSTAMPED_KEY, createdAtIndexKey, ByteArray(0))
+
+                val eventTypeIndexKex = eventTypeIndexSubspace.packWithVersionstamp(
+                    Tuple.from(event.type, Versionstamp.incomplete(), index, eventId)
+                )
+                tr.mutate(MutationType.SET_VERSIONSTAMPED_KEY, eventTypeIndexKex, ByteArray(0))
             }
         }
     }
