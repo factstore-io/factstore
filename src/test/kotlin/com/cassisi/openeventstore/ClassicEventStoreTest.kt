@@ -168,4 +168,84 @@ class ClassicEventStoreTest {
             .containsExactly("USER_REGISTERED", "USER_VERIFIED")
     }
 
+
+    @Test
+    fun testStreamEventsWithWatch(): Unit = runBlocking {
+        store.reset()
+        val subjectId = "subject:${UUID.randomUUID()}"
+        val createdAt = Instant.now()
+
+        val eventsToSave = listOf(
+            Event(
+                id = UUID.randomUUID(),
+                subjectType = "USER",
+                subjectId = subjectId,
+                type = "USER_REGISTERED",
+                data = """{ "username": "streamer" }""".toByteArray(UTF_8),
+                createdAt = createdAt
+            ),
+            Event(
+                id = UUID.randomUUID(),
+                subjectType = "USER",
+                subjectId = subjectId,
+                type = "USER_VERIFIED",
+                data = """{ "verified": true }""".toByteArray(UTF_8),
+                createdAt = createdAt
+            )
+        )
+
+        val collected = async {
+            store.streamEventsWithWatch()
+                .take(eventsToSave.size)
+                .toList()
+        }
+
+        // append events — should trigger watch immediately
+        store.appendWithExpectedVersion("USER", subjectId, null, eventsToSave)
+
+        val streamed = collected.await()
+        assertThat(streamed).containsAll(eventsToSave)
+    }
+
+    @Test
+    fun testStreamEventsWithWatchContinuous() = runBlocking {
+        store.reset()
+        val subjectId = "subject:${UUID.randomUUID()}"
+        val createdAt = Instant.now()
+
+        // Job to continuously append events with random intervals
+        val producerJob = launch {
+            var counter = 1
+            while (counter <= 10) { // for demo, append 10 events, can be infinite if you want
+                val ev = Event(
+                    id = UUID.randomUUID(),
+                    subjectType = "USER",
+                    subjectId = subjectId,
+                    type = "EVENT_$counter",
+                    data = """{ "counter": $counter }""".toByteArray(UTF_8),
+                    createdAt = createdAt
+                )
+
+                store.appendWithExpectedVersion("USER", subjectId, null, listOf(ev))
+                println("➡️  Appended event at ${Instant.now()}: ${ev.type}")
+                counter++
+
+                delay(500) // random delay between 100-500ms
+            }
+        }
+
+        // Job to continuously consume events from the watch stream
+        val consumerJob = launch {
+            store.streamEventsWithWatch()
+                .take(10) // only take as many events as the producer emits
+                .collect { ev ->
+                    println("📥 Received event at ${Instant.now()}: ${ev.type}")
+                }
+        }
+
+        // Wait for both producer and consumer to finish
+        producerJob.join()
+        consumerJob.join()
+    }
+
 }

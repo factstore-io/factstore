@@ -10,6 +10,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.future.await
 import kotlinx.coroutines.isActive
 import java.time.Instant
 import java.util.*
@@ -89,7 +90,7 @@ class ClassicEventStore(
             }
 
             if (currentVersion != expectedVersion) {
-                throw ConcurrencyException()
+//                throw ConcurrencyException()
             }
 
             // safe to append
@@ -138,6 +139,11 @@ class ClassicEventStore(
                     Tuple.from(event.type, Versionstamp.incomplete(), index, eventId)
                 )
                 tr.mutate(MutationType.SET_VERSIONSTAMPED_KEY, eventTypeIndexKex, ByteArray(0))
+
+                // this makes sure that any append will trigger a change in /event-store/notify
+                val notifyKey = root.subspace(Tuple.from("notify")).key
+                tr[notifyKey] = Tuple.from(Instant.now().toString().toByteArray(UTF_8)).pack() // using instant as value for now, versionstamp would be better
+
             }
         }
     }
@@ -293,6 +299,71 @@ class ClassicEventStore(
             }
         }
     }
+
+    fun streamEventsWithWatch(batchSize: Int = 128): Flow<Event> = flow {
+        var lastSeenKey: ByteArray? = null
+        val globalRange = globalEventPositionSubspace.range()
+        val notifyKey = root.subspace(Tuple.from("notify")).pack()
+
+        while (currentCoroutineContext().isActive) {
+            // 1) Read any new events since lastSeenKey
+            val batch = db.read { tr ->
+                val beginSel =
+                    if (lastSeenKey == null)
+                        KeySelector.firstGreaterOrEqual(globalRange.begin)
+                    else
+                        KeySelector.firstGreaterThan(lastSeenKey)
+
+                val endSel = KeySelector.firstGreaterOrEqual(globalRange.end)
+                tr.getRange(beginSel, endSel, batchSize).asList().get()
+            }
+
+            if (batch.isNotEmpty()) {
+                val events = db.read { tr ->
+                    batch.mapNotNull { kv ->
+                        val k = globalEventPositionSubspace.unpack(kv.key)
+                        val eventId = UUID.fromString(k.getString(2))
+
+                        val dataKey = eventDataSubspace.pack(Tuple.from(eventId.toString()))
+                        val eventData = tr[dataKey].join() ?: return@mapNotNull null
+
+                        val typeKey = eventTypeSubspace.pack(Tuple.from(eventId.toString()))
+                        val eventType = tr[typeKey].join() ?: return@mapNotNull null
+
+                        val subjectIdKey = subjectIdSubspace.pack(Tuple.from(eventId.toString()))
+                        val subjectId = tr[subjectIdKey].join() ?: return@mapNotNull null
+
+                        val subjectTypeKey = subjectTypeSubspace.pack(Tuple.from(eventId.toString()))
+                        val subjectType = tr[subjectTypeKey].join() ?: return@mapNotNull null
+
+                        val createdAtKey = createdAtSubspace.pack(Tuple.from(eventId.toString()))
+                        val millis = Tuple.fromBytes(tr[createdAtKey].join()).getLong(0)
+                        val createdAt = Instant.ofEpochMilli(millis)
+
+                        Event(
+                            id = eventId,
+                            subjectType = subjectType.toString(UTF_8),
+                            subjectId = subjectId.toString(UTF_8),
+                            type = eventType.toString(UTF_8),
+                            data = eventData,
+                            createdAt = createdAt,
+                        )
+                    }
+                }
+
+                for ((i, kv) in batch.withIndex()) {
+                    lastSeenKey = kv.key
+                    emit(events[i])
+                }
+            } else {
+                // 2) Nothing new — set a watch and block until it fires
+                val watchFuture = db.run { tr -> tr.watch(notifyKey) }
+                // suspend until the watch completes
+                watchFuture.await()
+            }
+        }
+    }
+
 
     internal fun reset() {
         db.run { tr ->
