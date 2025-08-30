@@ -90,7 +90,7 @@ class ClassicEventStore(
             }
 
             if (currentVersion != expectedVersion) {
-//                throw ConcurrencyException()
+                throw ConcurrencyException()
             }
 
             // safe to append
