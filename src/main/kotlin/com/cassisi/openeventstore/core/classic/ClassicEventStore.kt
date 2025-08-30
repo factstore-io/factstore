@@ -14,13 +14,13 @@ const val EVENT_ID = "event-id"
 const val EVENT_DATA = "event-data"
 const val SUBJECT_TYPE = "subject-type"
 const val SUBJECT_ID = "subject"
-const val SUBJECT_INDEX = "subjectIdx"
 const val EVENT_TYPE = "event-type"
 const val CREATED_AT = "created-at"
 
 const val GLOBAL_EVENT_POSITION = "global"
 const val CREATED_AT_INDEX = "created-at-index"
 const val EVENT_TYPE_INDEX = "event-type-index"
+const val SUBJECT_INDEX = "subjectIdx"
 
 /**
  *
