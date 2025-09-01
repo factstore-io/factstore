@@ -9,6 +9,7 @@ import com.apple.foundationdb.tuple.Versionstamp
 import kotlinx.coroutines.future.await
 import java.time.Instant
 import java.util.*
+import java.util.concurrent.CompletableFuture
 import kotlin.text.Charsets.UTF_8
 
 const val FACT_STORE = "fact-store"
@@ -176,17 +177,21 @@ class FactStore(
             val begin = createdAtIndexSubspace.pack(startTuple)
             val endKey = createdAtIndexSubspace.pack(endTuple)
 
-            tr.getRange(begin, endKey)
-                .asList()
-                .thenApply { kvs ->
-                    kvs.mapNotNull { kv ->
-                        val tuple = createdAtIndexSubspace.unpack(kv.key)
-                        val factId = tuple.getUUID(tuple.size() - 1)
-                        val factIdTuple = Tuple.from(factId)
+            tr.getRange(begin, endKey).asList().thenCompose { kvs ->
+                val factFutures: List<CompletableFuture<Fact?>> = kvs.map { kv ->
+                    val tuple = createdAtIndexSubspace.unpack(kv.key)
+                    val factId = tuple.getUUID(tuple.size() - 1)
+                    val factIdTuple = Tuple.from(factId)
 
-                        val typeBytes = tr[factTypeSubspace.pack(factIdTuple)].join() ?: return@mapNotNull null
-                        val payloadBytes = tr[factPayloadSubspace.pack(factIdTuple)].join() ?: return@mapNotNull null
-                        val createdAtBytes = tr[createdAtSubspace.pack(factIdTuple)].join() ?: return@mapNotNull null
+                    val typeFut = tr[factTypeSubspace.pack(factIdTuple)]
+                    val payloadFut = tr[factPayloadSubspace.pack(factIdTuple)]
+                    val createdAtFut = tr[createdAtSubspace.pack(factIdTuple)]
+
+                    // run all three futures in parallel
+                    CompletableFuture.allOf(typeFut, payloadFut, createdAtFut).thenApply {
+                        val typeBytes = typeFut.getNow(null) ?: return@thenApply null
+                        val payloadBytes = payloadFut.getNow(null) ?: return@thenApply null
+                        val createdAtBytes = createdAtFut.getNow(null) ?: return@thenApply null
 
                         val createdAtTuple = Tuple.fromBytes(createdAtBytes)
                         val createdAtInstant = Instant.ofEpochSecond(
@@ -202,8 +207,15 @@ class FactStore(
                         )
                     }
                 }
+
+                // wait for all facts to complete
+                CompletableFuture.allOf(*factFutures.toTypedArray()).thenApply {
+                    factFutures.mapNotNull { it.getNow(null) }
+                }
+            }
         }.await()
     }
+
 
 
     internal fun reset() {
