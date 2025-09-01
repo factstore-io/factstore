@@ -8,7 +8,7 @@ import com.apple.foundationdb.tuple.Tuple
 import com.apple.foundationdb.tuple.Versionstamp
 import kotlinx.coroutines.future.await
 import java.time.Instant
-import java.util.UUID
+import java.util.*
 import kotlin.text.Charsets.UTF_8
 
 const val FACT_STORE = "fact-store"
@@ -167,6 +167,44 @@ class FactStore(
             tr[factIdKey]
         }.await() != null
     }
+
+    suspend fun findInTimeRange(start: Instant, end: Instant = Instant.now()): List<Fact> {
+        val startTuple = Tuple.from(start.epochSecond, start.nano)
+        val endTuple = Tuple.from(end.epochSecond, end.nano)
+
+        return db.readAsync { tr ->
+            val begin = createdAtIndexSubspace.pack(startTuple)
+            val endKey = createdAtIndexSubspace.pack(endTuple)
+
+            tr.getRange(begin, endKey)
+                .asList()
+                .thenApply { kvs ->
+                    kvs.mapNotNull { kv ->
+                        val tuple = createdAtIndexSubspace.unpack(kv.key)
+                        val factId = tuple.getUUID(tuple.size() - 1)
+                        val factIdTuple = Tuple.from(factId)
+
+                        val typeBytes = tr[factTypeSubspace.pack(factIdTuple)].join() ?: return@mapNotNull null
+                        val payloadBytes = tr[factPayloadSubspace.pack(factIdTuple)].join() ?: return@mapNotNull null
+                        val createdAtBytes = tr[createdAtSubspace.pack(factIdTuple)].join() ?: return@mapNotNull null
+
+                        val createdAtTuple = Tuple.fromBytes(createdAtBytes)
+                        val createdAtInstant = Instant.ofEpochSecond(
+                            createdAtTuple.getLong(0),
+                            createdAtTuple.getLong(1)
+                        )
+
+                        Fact(
+                            id = factId,
+                            type = typeBytes.toString(UTF_8),
+                            payload = payloadBytes.toString(UTF_8),
+                            createdAt = createdAtInstant
+                        )
+                    }
+                }
+        }.await()
+    }
+
 
     internal fun reset() {
         db.run { tr ->

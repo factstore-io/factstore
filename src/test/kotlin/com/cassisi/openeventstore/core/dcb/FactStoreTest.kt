@@ -55,4 +55,43 @@ class FactStoreTest {
         val nonExistingFactId = UUID.randomUUID()
         assertThat(store.existsById(nonExistingFactId)).isFalse()
     }
+
+    @Test
+    fun testFindInTimeRange(): Unit = runBlocking {
+        val now = Instant.now()
+
+        val fact1 = Fact(
+            id = UUID.randomUUID(),
+            type = "USER_CREATED",
+            payload = """{ "username": "Alice" }""",
+            createdAt = now.minusSeconds(60) // 1 minute ago
+        )
+
+        val fact2 = Fact(
+            id = UUID.randomUUID(),
+            type = "USER_UPDATED",
+            payload = """{ "username": "Alice", "status": "active" }""",
+            createdAt = now
+        )
+
+        val fact3 = Fact(
+            id = UUID.randomUUID(),
+            type = "USER_DELETED",
+            payload = """{ "username": "Bob" }""",
+            createdAt = now.plusSeconds(60) // 1 minute in the future
+        )
+
+        // Append all three
+        store.append(listOf(fact1, fact2, fact3))
+
+        // Query range covering fact1 + fact2, but excluding fact3
+        val results = store.findInTimeRange(
+            start = now.minusSeconds(120),
+            end = now.plusSeconds(10)
+        )
+
+        assertThat(results).containsExactlyInAnyOrder(fact1, fact2)
+        assertThat(results).doesNotContain(fact3)
+    }
+
 }
