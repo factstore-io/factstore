@@ -1,6 +1,10 @@
 package com.cassisi.openeventstore.core.dcb
 
 import com.apple.foundationdb.FDB
+import com.cassisi.openeventstore.core.dcb.fdb.FdbFactAppender
+import com.cassisi.openeventstore.core.dcb.fdb.FdbFactFinder
+import com.cassisi.openeventstore.core.dcb.fdb.FdbFactStore
+import com.cassisi.openeventstore.core.dcb.fdb.FdbFactStoreResetHelper
 import kotlinx.coroutines.runBlocking
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeAll
@@ -14,17 +18,23 @@ import java.util.*
 class FactStoreTest {
 
     private lateinit var store: FactStore
+    private lateinit var resetHelper: FdbFactStoreResetHelper
 
     @BeforeAll
     fun setupFDB() {
         FDB.selectAPIVersion(730)
         val db = FDB.instance().open("/etc/foundationdb/fdb.cluster")
-        store = FactStore(db)
+        val fdbFactStore = FdbFactStore(db)
+        store = FactStore(
+            factAppender = FdbFactAppender(fdbFactStore),
+            factFinder = FdbFactFinder(fdbFactStore)
+        )
+        resetHelper = FdbFactStoreResetHelper(fdbFactStore)
     }
 
     @BeforeEach
     fun clearEventStore() {
-        store.reset()
+        resetHelper.reset()
     }
 
     @Test

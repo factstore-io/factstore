@@ -3,6 +3,9 @@ package com.cassisi.openeventstore
 import com.apple.foundationdb.Database
 import com.apple.foundationdb.FDB
 import com.cassisi.openeventstore.core.dcb.FactStore
+import com.cassisi.openeventstore.core.dcb.fdb.FdbFactAppender
+import com.cassisi.openeventstore.core.dcb.fdb.FdbFactFinder
+import com.cassisi.openeventstore.core.dcb.fdb.FdbFactStore
 import jakarta.enterprise.context.ApplicationScoped
 import jakarta.enterprise.inject.Produces
 
@@ -21,6 +24,11 @@ class FdbConfig {
 
     @Produces
     @ApplicationScoped
-    fun factStore(db: Database) = FactStore(db)
+    fun factStore(db: Database): FactStore {
+        val fdbFactStore = FdbFactStore(db)
+        val factAppender = FdbFactAppender(fdbFactStore)
+        val factFinder = FdbFactFinder(fdbFactStore)
+        return FactStore(factAppender, factFinder)
+    }
 
 }
