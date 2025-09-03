@@ -11,10 +11,10 @@ export let options = {
 
 export default function () {
     const res = http.post('http://localhost:8080/test');
-    
     check(res, {
         'status is 204': (r) => r.status === 204,
     });
+    // sleep(2)
 
     // sleep(10); // optional: simulate pacing
 }
