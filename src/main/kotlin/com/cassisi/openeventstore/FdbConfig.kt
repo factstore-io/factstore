@@ -3,6 +3,7 @@ package com.cassisi.openeventstore
 import com.apple.foundationdb.Database
 import com.apple.foundationdb.FDB
 import com.cassisi.openeventstore.core.dcb.FactStore
+import com.cassisi.openeventstore.core.dcb.fdb.ConditionalFdbFactAppender
 import com.cassisi.openeventstore.core.dcb.fdb.FdbFactAppender
 import com.cassisi.openeventstore.core.dcb.fdb.FdbFactFinder
 import com.cassisi.openeventstore.core.dcb.fdb.FdbFactStore
@@ -28,7 +29,8 @@ class FdbConfig {
         val fdbFactStore = FdbFactStore(db)
         val factAppender = FdbFactAppender(fdbFactStore)
         val factFinder = FdbFactFinder(fdbFactStore)
-        return FactStore(factAppender, factFinder)
+        val conditionalAppender = ConditionalFdbFactAppender(fdbFactStore)
+        return FactStore(factAppender, factFinder, conditionalAppender)
     }
 
 }

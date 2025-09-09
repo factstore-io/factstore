@@ -1,12 +1,10 @@
 package com.cassisi.openeventstore.core.dcb
 
 import com.apple.foundationdb.FDB
-import com.cassisi.openeventstore.core.dcb.fdb.FdbFactAppender
-import com.cassisi.openeventstore.core.dcb.fdb.FdbFactFinder
-import com.cassisi.openeventstore.core.dcb.fdb.FdbFactStore
-import com.cassisi.openeventstore.core.dcb.fdb.FdbFactStoreResetHelper
+import com.cassisi.openeventstore.core.dcb.fdb.*
 import kotlinx.coroutines.runBlocking
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -27,7 +25,8 @@ class FactStoreTest {
         val fdbFactStore = FdbFactStore(db)
         store = FactStore(
             factAppender = FdbFactAppender(fdbFactStore),
-            factFinder = FdbFactFinder(fdbFactStore)
+            factFinder = FdbFactFinder(fdbFactStore),
+            conditionalSubjectFactAppender = ConditionalFdbFactAppender(fdbFactStore)
         )
         resetHelper = FdbFactStoreResetHelper(fdbFactStore)
     }
@@ -110,6 +109,45 @@ class FactStoreTest {
 
         assertThat(results).containsExactlyInAnyOrder(fact1, fact2)
         assertThat(results).doesNotContain(fact3)
+    }
+
+    @Test
+    fun testConditionalAppendWithSubject(): Unit = runBlocking {
+        // append first event without an append condition
+        val fact1Id = UUID.randomUUID()
+        val fact1 = Fact(
+            id = fact1Id,
+            subjectType = "USER",
+            subjectId = "ALICE",
+            type = "USER_CREATED",
+            payload = """{ "username": "Alice" }""",
+            createdAt = Instant.now()
+        )
+
+        // append fact1
+        val firstPreCondition = SubjectAppendCondition(null)
+        store.append(fact1, firstPreCondition)
+
+
+        // append fact2
+        val fact2Id = UUID.randomUUID()
+        val fact2 = Fact(
+            id = fact2Id,
+            subjectType = "USER",
+            subjectId = "ALICE",
+            type = "USER_LOCKED",
+            payload = """{ "username": "Alice" }""",
+            createdAt = Instant.now()
+        )
+
+        val secondPreCondition = SubjectAppendCondition(fact1Id)
+        store.append(fact2, secondPreCondition)
+
+        // appending a third fact with the same fact ID in the append condition should fail
+        val fact3 = fact2.copy(id = UUID.randomUUID())
+        assertThatThrownBy {
+            runBlocking { store.append(fact3, SubjectAppendCondition(fact1Id)) }
+        }.isNotNull()
     }
 
 }
