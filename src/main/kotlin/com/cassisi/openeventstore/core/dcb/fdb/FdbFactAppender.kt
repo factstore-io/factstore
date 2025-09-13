@@ -78,7 +78,7 @@ class FdbFactAppender(
         )
         mutate(SET_VERSIONSTAMPED_KEY, createdAtIndexKey, EMPTY_BYTE_ARRAY)
 
-        val subjectIndex = store.subjectTypeIndexSubspace.packWithVersionstamp(
+        val subjectIndex = store.subjectIndexSubspace.packWithVersionstamp(
             Tuple.from(fact.subjectType, fact.subjectId, Versionstamp.incomplete(), index, factId)
         )
         mutate(SET_VERSIONSTAMPED_KEY, subjectIndex, EMPTY_BYTE_ARRAY)

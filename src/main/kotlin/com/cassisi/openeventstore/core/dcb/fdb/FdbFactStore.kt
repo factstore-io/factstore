@@ -58,6 +58,6 @@ class FdbFactStore(
     internal val globalFactPositionSubspace = root.subspace(Tuple.from(GLOBAL_FACT_POSITION_INDEX))
     internal val eventTypeIndexSubspace = root.subspace(Tuple.from(EVENT_TYPE_INDEX))
     internal val createdAtIndexSubspace = root.subspace(Tuple.from(CREATED_AT_INDEX))
-    internal val subjectTypeIndexSubspace = root.subspace(Tuple.from(SUBJECT_INDEX))
+    internal val subjectIndexSubspace = root.subspace(Tuple.from(SUBJECT_INDEX))
 
 }

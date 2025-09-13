@@ -22,6 +22,7 @@ class FdbFactFinder(fdbFactStore: FdbFactStore) : FactFinder {
     private val subjectIdSubspace = fdbFactStore.subjectIdSubspace
 
     private val createdAtIndexSubspace = fdbFactStore.createdAtIndexSubspace
+    private val subjectIndexSubspace = fdbFactStore.subjectIndexSubspace
 
     override suspend fun findById(factId: UUID): Fact? {
         return db.readAsync { tr ->
@@ -103,6 +104,23 @@ class FdbFactFinder(fdbFactStore: FdbFactStore) : FactFinder {
                 }
 
                 // wait for all facts to complete
+                CompletableFuture.allOf(*factFutures.toTypedArray()).thenApply {
+                    factFutures.mapNotNull { it.getNow(null) }
+                }
+            }
+        }.await()
+    }
+
+    override suspend fun findBySubject(subjectType: String, subjectId: String): List<Fact> {
+        return db.readAsync { tr ->
+            val subjectRange = subjectIndexSubspace.range(Tuple.from(subjectType, subjectId))
+            tr.getRange(subjectRange).asList().thenCompose { kvs ->
+                val factFutures: List<CompletableFuture<Fact?>> = kvs.map { kv ->
+                    val tuple = subjectIndexSubspace.unpack(kv.key)
+                    val factId = tuple.getUUID(tuple.size() - 1)
+                    tr.loadFact(factId)
+                }
+
                 CompletableFuture.allOf(*factFutures.toTypedArray()).thenApply {
                     factFutures.mapNotNull { it.getNow(null) }
                 }

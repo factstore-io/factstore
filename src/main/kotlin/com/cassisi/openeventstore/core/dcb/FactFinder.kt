@@ -11,4 +11,6 @@ interface FactFinder {
 
     suspend fun findInTimeRange(start: Instant, end: Instant = Instant.now()): List<Fact>
 
+    suspend fun findBySubject(subjectType: String, subjectId: String): List<Fact>
+
 }

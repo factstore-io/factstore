@@ -197,4 +197,52 @@ class FactStoreTest {
 
     }
 
+    @Test
+    fun testSubjectQueries(): Unit = runBlocking {
+
+        val fact1Id = UUID.randomUUID()
+        val fact2Id = UUID.randomUUID()
+        val fact3Id = UUID.randomUUID()
+
+        val fact1 = Fact(
+            id = fact1Id,
+            subjectType = "USER",
+            subjectId = "ALICE",
+            type = "USER_CREATED",
+            payload = """{ "username": "Alice" }""",
+            createdAt = Instant.now()
+        )
+
+        val fact2 = Fact(
+            id = fact2Id,
+            subjectType = "USER",
+            subjectId = "BOB",
+            type = "USER_CREATED",
+            payload = """{ "username": "BOB" }""",
+            createdAt = Instant.now()
+        )
+
+        val fact3 = Fact(
+            id = fact3Id,
+            subjectType = "USER",
+            subjectId = "ALICE",
+            type = "USER_LOCKED",
+            payload = """{ "username": "Alice" }""",
+            createdAt = Instant.now()
+        )
+
+        val factsToAppend = listOf(fact1, fact2, fact3)
+
+        store.append(factsToAppend)
+
+        assertThat(store.findBySubject("USER", "ALICE"))
+            .containsExactly(fact1, fact3)
+
+        assertThat(store.findBySubject("USER", "BOB"))
+            .containsExactly(fact2)
+
+        assertThat(store.findBySubject("USER", "PETER")).isEmpty()
+        assertThat(store.findBySubject("UNKNOWN", "UNKNOWN")).isEmpty()
+    }
+
 }
