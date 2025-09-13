@@ -20,6 +20,7 @@ class FdbFactFinder(fdbFactStore: FdbFactStore) : FactFinder {
     private val factPayloadSubspace = fdbFactStore.factPayloadSubspace
     private val subjectTypeSubspace = fdbFactStore.subjectTypeSubspace
     private val subjectIdSubspace = fdbFactStore.subjectIdSubspace
+    private val metadataSubspace = fdbFactStore.metadataSubspace
 
     private val createdAtIndexSubspace = fdbFactStore.createdAtIndexSubspace
     private val subjectIndexSubspace = fdbFactStore.subjectIndexSubspace
@@ -44,19 +45,22 @@ class FdbFactFinder(fdbFactStore: FdbFactStore) : FactFinder {
         val payloadKey = factPayloadSubspace.pack(factIdTuple)
         val subjectTypeKey = subjectTypeSubspace.pack(factIdTuple)
         val subjectIdKey = subjectIdSubspace.pack(factIdTuple)
+        val metadataKey = metadataSubspace.range(factIdTuple)
 
         val typeFuture = this[typeKey]
         val createdAtFuture = this[createdAtKey]
         val payloadFuture = this[payloadKey]
         val subjectTypeFuture = this[subjectTypeKey]
         val subjectIdFuture = this[subjectIdKey]
+        val metadataFuture = this.getRange(metadataKey).asList()
 
         return CompletableFuture.allOf(
             typeFuture,
             createdAtFuture,
             payloadFuture,
             subjectTypeFuture,
-            subjectIdFuture
+            subjectIdFuture,
+            metadataFuture
         ).thenApply {
             val typeBytes = typeFuture.getNow(null) ?: return@thenApply null
             val createdAtBytes = createdAtFuture.getNow(null) ?: return@thenApply null
@@ -68,6 +72,12 @@ class FdbFactFinder(fdbFactStore: FdbFactStore) : FactFinder {
                 createdAtTuple.getLong(0),
                 createdAtTuple.getLong(1)
             )
+            val metadata: Map<String, String> = metadataFuture.getNow(emptyList()).associate { kv ->
+                val tuple = Tuple.fromBytes(kv.key)
+                val key = tuple.getString(3)
+                val value = kv.value.toString(UTF_8)
+                key to value
+            }
 
             Fact(
                 id = factId,
@@ -75,7 +85,8 @@ class FdbFactFinder(fdbFactStore: FdbFactStore) : FactFinder {
                 payload = payloadBytes.toString(UTF_8),
                 createdAt = createdAtInstant,
                 subjectType = subjectTypeBytes.toString(UTF_8),
-                subjectId = subjectIdBytes.toString(UTF_8)
+                subjectId = subjectIdBytes.toString(UTF_8),
+                metadata = metadata
             )
         }
     }

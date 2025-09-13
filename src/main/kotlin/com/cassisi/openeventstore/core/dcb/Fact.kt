@@ -10,4 +10,5 @@ data class Fact(
     val subjectType: String,
     val subjectId: String,
     val createdAt: Instant,
+    val metadata: Map<String, String> = emptyMap()
 )

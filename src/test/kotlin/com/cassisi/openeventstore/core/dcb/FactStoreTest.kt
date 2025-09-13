@@ -245,4 +245,37 @@ class FactStoreTest {
         assertThat(store.findBySubject("UNKNOWN", "UNKNOWN")).isEmpty()
     }
 
+    @Test
+    fun testWithMetadata(): Unit = runBlocking {
+
+        val fact1Id = UUID.randomUUID()
+        val fact2Id = UUID.randomUUID()
+
+        val fact1 = Fact(
+            id = fact1Id,
+            subjectType = "USER",
+            subjectId = "ALICE",
+            type = "USER_CREATED",
+            payload = """{ "username": "Alice" }""",
+            createdAt = Instant.now(),
+            metadata = mapOf("test" to "123", "loc" to "world")
+        )
+
+        val fact2 = Fact(
+            id = fact2Id,
+            subjectType = "USER",
+            subjectId = "BOB",
+            type = "USER_CREATED",
+            payload = """{ "username": "BOB" }""",
+            createdAt = Instant.now()
+        )
+
+        val factsToAppend = listOf(fact1, fact2)
+
+        store.append(factsToAppend)
+
+        assertThat(store.findById(fact1Id)).isEqualTo(fact1)
+        assertThat(store.findById(fact2Id)).isEqualTo(fact2)
+    }
+
 }
