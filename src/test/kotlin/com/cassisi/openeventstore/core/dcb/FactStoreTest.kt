@@ -398,4 +398,35 @@ class FactStoreTest {
         assertThat(noFacts).isEmpty()
     }
 
+    @Test
+    fun testPayload(): Unit = runBlocking {
+
+        val fact = Fact(
+            id = UUID.randomUUID(),
+            subject = Subject(
+                type = "USER",
+                id = "ALICE",
+            ),
+            type = "USER_CREATED",
+            payload = """{ "username": "Alice", "status": "active" }""",
+            data = listOf(
+                PayloadEntry(
+                    path = listOf(PathElement.Key("id")),
+                    value = "ALICE"
+                ),
+                PayloadEntry(
+                    path = listOf(PathElement.Key("status")),
+                    value = "active"
+                )
+            ),
+            createdAt = Instant.now()
+        )
+
+        store.append(fact)
+
+        val loadedFact = store.findById(fact.id)
+        assertThat(loadedFact).isEqualTo(fact)
+
+    }
+
 }

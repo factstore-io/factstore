@@ -2,12 +2,7 @@ package com.cassisi.openeventstore.core.dcb.fdb
 
 import com.apple.foundationdb.ReadTransaction
 import com.apple.foundationdb.tuple.Tuple
-import com.cassisi.openeventstore.core.dcb.Fact
-import com.cassisi.openeventstore.core.dcb.FactFinder
-import com.cassisi.openeventstore.core.dcb.PayloadAttributeCondition
-import com.cassisi.openeventstore.core.dcb.PayloadQuery
-import com.cassisi.openeventstore.core.dcb.PayloadQueryItem
-import com.cassisi.openeventstore.core.dcb.Subject
+import com.cassisi.openeventstore.core.dcb.*
 import kotlinx.coroutines.future.await
 import java.time.Instant
 import java.util.*
@@ -58,6 +53,7 @@ class FdbFactFinder(fdbFactStore: FdbFactStore) : FactFinder {
         val subjectTypeFuture = this[subjectTypeKey]
         val subjectIdFuture = this[subjectIdKey]
         val metadataFuture = this.getRange(metadataKey).asList()
+        val payloadDataFuture = this.getRange(factPayloadSubspace.range()).asList()
 
         return CompletableFuture.allOf(
             typeFuture,
@@ -65,7 +61,8 @@ class FdbFactFinder(fdbFactStore: FdbFactStore) : FactFinder {
             payloadFuture,
             subjectTypeFuture,
             subjectIdFuture,
-            metadataFuture
+            metadataFuture,
+            payloadDataFuture
         ).thenApply {
             val typeBytes = typeFuture.getNow(null) ?: return@thenApply null
             val createdAtBytes = createdAtFuture.getNow(null) ?: return@thenApply null
@@ -84,6 +81,13 @@ class FdbFactFinder(fdbFactStore: FdbFactStore) : FactFinder {
                 key to value
             }
 
+            val payload: List<PayloadEntry> = payloadDataFuture.getNow(emptyList()).mapNotNull { kv ->
+                val tuple = Tuple.fromBytes(kv.key)
+                if (tuple.drop(3).isEmpty()) return@mapNotNull null // currently needed as full payload is written at root level
+                val value = Tuple.fromBytes(kv.value).getString(0) // currently hardcoded to string
+                PayloadEntry(listOf(PathElement.Key(tuple.getString(tuple.size()-1))), value)  // currently hardcoded, will not work for nested fields
+            }
+
             Fact(
                 id = factId,
                 type = typeBytes.toString(UTF_8),
@@ -93,6 +97,7 @@ class FdbFactFinder(fdbFactStore: FdbFactStore) : FactFinder {
                     type = subjectTypeBytes.toString(UTF_8),
                     id = subjectIdBytes.toString(UTF_8)
                 ),
+                data = payload,
                 metadata = metadata
             )
         }

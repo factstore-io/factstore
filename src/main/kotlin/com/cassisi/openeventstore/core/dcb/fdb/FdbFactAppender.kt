@@ -6,6 +6,7 @@ import com.apple.foundationdb.tuple.Tuple
 import com.apple.foundationdb.tuple.Versionstamp
 import com.cassisi.openeventstore.core.dcb.Fact
 import com.cassisi.openeventstore.core.dcb.FactAppender
+import com.cassisi.openeventstore.core.dcb.PathElement
 import kotlinx.coroutines.future.await
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -63,6 +64,13 @@ class FdbFactAppender(
         this[store.subjectTypeSubspace.pack(factIdTuple)] = fact.subject.type.toByteArray(UTF_8)
         this[store.subjectIdSubspace.pack(factIdTuple)] = fact.subject.id.toByteArray(UTF_8)
         this[store.createdAtSubspace.pack(factIdTuple)] = Tuple.from(fact.createdAt.epochSecond, fact.createdAt.nano).pack()
+
+        // store payload/data
+        val subspace = store.factPayloadSubspace.subspace(factIdTuple)
+        fact.data?.forEach { entry ->
+            val entryTuple = entry.path.toTuple()
+            this[subspace.pack(entryTuple)] = Tuple.from(entry.value).pack()
+        }
 
         fact.metadata.forEach { (key, value) ->
             this[store.metadataSubspace.pack(factIdTuple.add(key))] = value.toByteArray(UTF_8)
@@ -137,6 +145,17 @@ class FdbFactAppender(
         }
 
         return result
+    }
+
+    private fun List<PathElement>.toTuple(): Tuple {
+        var tuple = Tuple()
+        forEach { pathElement ->
+            when (pathElement) {
+                is PathElement.Key -> tuple = tuple.add(pathElement.name)
+                is PathElement.Index -> tuple = tuple.add(pathElement.pos)
+            }
+        }
+        return tuple
     }
 
 }
