@@ -16,7 +16,7 @@ class FactStoreController(
             Fact(
                 id = UUID.randomUUID(),
                 type = "TEST_TYPE",
-                payload = """ { "test": 123 } """,
+                payload = """ { "test": 123 } """.toByteArray(),
                 createdAt = Instant.now(),
                 subject = Subject(
                     type = "TEST",

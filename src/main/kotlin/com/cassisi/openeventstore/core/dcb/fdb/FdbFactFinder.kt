@@ -30,7 +30,6 @@ class FdbFactFinder(fdbFactStore: FdbFactStore) : FactFinder {
 
     private val createdAtIndexSubspace = fdbFactStore.createdAtIndexSubspace
     private val subjectIndexSubspace = fdbFactStore.subjectIndexSubspace
-    private val payloadAttrIndexSubspace = fdbFactStore.payloadAttrIndexSubspace
     private val tagsIndexSubspace = fdbFactStore.tagsIndexSubspace
 
     override suspend fun findById(factId: UUID): Fact? {
@@ -107,7 +106,7 @@ class FdbFactFinder(fdbFactStore: FdbFactStore) : FactFinder {
             val fact = Fact(
                 id = factId,
                 type = typeBytes.toString(UTF_8),
-                payload = payloadBytes.toString(UTF_8),
+                payload = payloadBytes,
                 createdAt = createdAtInstant,
                 subject = Subject(
                     type = subjectTypeBytes.toString(UTF_8),
@@ -172,29 +171,6 @@ class FdbFactFinder(fdbFactStore: FdbFactStore) : FactFinder {
         }.await()
     }
 
-    override suspend fun findByPayloadAttribute(query: PayloadQuery): List<Fact> {
-        return db.readAsync { tr ->
-            val itemFutures = query.items.map { item ->
-                tr.queryPayloadItem(item)
-            }
-
-            CompletableFuture.allOf(*itemFutures.toTypedArray()).thenCompose {
-                val allFactIds = itemFutures
-                    .flatMap { it.getNow(emptySet()) }
-                    .toSet() // OR semantics
-
-                val loadFutures = allFactIds.map { tr.loadFact(it) }
-
-                CompletableFuture.allOf(*loadFutures.toTypedArray()).thenApply {
-                    loadFutures
-                        .mapNotNull { it.getNow(null) }
-                        .sortedBy { it.positionTuple }
-                        .map { it.fact }
-                }
-            }
-        }.await()
-    }
-
     override suspend fun findByTags(tags: List<Pair<String, String>>): List<Fact> {
         if (tags.isEmpty()) return emptyList()
         return db.readAsync { tr ->
@@ -227,27 +203,6 @@ class FdbFactFinder(fdbFactStore: FdbFactStore) : FactFinder {
         }.await()
     }
 
-    private fun ReadTransaction.queryPayloadItem(item: PayloadQueryItem): CompletableFuture<Set<UUID>> {
-        val conditionFutures = item.conditions.map { cond ->
-            queryPayloadCondition(cond)
-        }
-
-        return CompletableFuture.allOf(*conditionFutures.toTypedArray()).thenApply {
-            conditionFutures
-                .map { it.getNow(emptySet()) }
-                .reduce { acc, s -> acc.intersect(s) } // AND semantics
-        }
-    }
-
-    private fun ReadTransaction.queryPayloadCondition(cond: PayloadAttributeCondition): CompletableFuture<Set<UUID>> {
-        val range = payloadAttrIndexSubspace.range(Tuple.from(cond.eventType, cond.path, cond.value))
-        return this.getRange(range).asList().thenApply { kvs ->
-            kvs.mapTo(mutableSetOf()) {
-                val tuple = payloadAttrIndexSubspace.unpack(it.key)
-                tuple.getUUID(tuple.size() - 1)
-            }
-        }
-    }
 }
 
 data class InternalFact(

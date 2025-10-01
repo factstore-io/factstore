@@ -39,7 +39,7 @@ class FactStoreTest {
     @Test
     fun testSimpleAppend(): Unit = runBlocking {
         val id = UUID.randomUUID()
-        val payload = """ { "username": "Peter" } """
+        val payload = """ { "username": "Peter" } """.toByteArray()
         val createdAt = Instant.now()
 
         val fact = Fact(
@@ -80,7 +80,7 @@ class FactStoreTest {
                 id = "ALICE",
             ),
             type = "USER_CREATED",
-            payload = """{ "username": "Alice" }""",
+            payload = """{ "username": "Alice" }""".toByteArray(),
             createdAt = now.minusSeconds(60) // 1 minute ago
         )
 
@@ -91,7 +91,7 @@ class FactStoreTest {
                 id = "ALICE",
             ),
             type = "USER_UPDATED",
-            payload = """{ "username": "Alice", "status": "active" }""",
+            payload = """{ "username": "Alice", "status": "active" }""".toByteArray(),
             createdAt = now
         )
 
@@ -102,7 +102,7 @@ class FactStoreTest {
                 id = "BOB",
             ),
             type = "USER_DELETED",
-            payload = """{ "username": "Bob" }""",
+            payload = """{ "username": "Bob" }""".toByteArray(),
             createdAt = now.plusSeconds(60) // 1 minute in the future
         )
 
@@ -130,7 +130,7 @@ class FactStoreTest {
                 id = "ALICE",
             ),
             type = "USER_CREATED",
-            payload = """{ "username": "Alice" }""",
+            payload = """{ "username": "Alice" }""".toByteArray(),
             createdAt = Instant.now()
         )
 
@@ -148,7 +148,7 @@ class FactStoreTest {
                 id = "ALICE",
             ),
             type = "USER_LOCKED",
-            payload = """{ "username": "Alice" }""",
+            payload = """{ "username": "Alice" }""".toByteArray(),
             createdAt = Instant.now()
         )
 
@@ -176,7 +176,7 @@ class FactStoreTest {
                 id = "ALICE",
             ),
             type = "USER_CREATED",
-            payload = """{ "username": "Alice" }""",
+            payload = """{ "username": "Alice" }""".toByteArray(),
             createdAt = Instant.now()
         )
 
@@ -187,7 +187,7 @@ class FactStoreTest {
                 id = "BOB",
             ),
             type = "USER_CREATED",
-            payload = """{ "username": "BOB" }""",
+            payload = """{ "username": "BOB" }""".toByteArray(),
             createdAt = Instant.now()
         )
 
@@ -198,7 +198,7 @@ class FactStoreTest {
                 id = "ALICE",
             ),
             type = "USER_LOCKED",
-            payload = """{ "username": "Alice" }""",
+            payload = """{ "username": "Alice" }""".toByteArray(),
             createdAt = Instant.now()
         )
 
@@ -229,7 +229,7 @@ class FactStoreTest {
                 id = "ALICE",
             ),
             type = "USER_CREATED",
-            payload = """{ "username": "Alice" }""",
+            payload = """{ "username": "Alice" }""".toByteArray(),
             createdAt = Instant.now()
         )
 
@@ -240,7 +240,7 @@ class FactStoreTest {
                 id = "BOB",
             ),
             type = "USER_CREATED",
-            payload = """{ "username": "BOB" }""",
+            payload = """{ "username": "BOB" }""".toByteArray(),
             createdAt = Instant.now()
         )
 
@@ -251,7 +251,7 @@ class FactStoreTest {
                 id = "ALICE",
             ),
             type = "USER_LOCKED",
-            payload = """{ "username": "Alice" }""",
+            payload = """{ "username": "Alice" }""".toByteArray(),
             createdAt = Instant.now()
         )
 
@@ -282,7 +282,7 @@ class FactStoreTest {
                 id = "ALICE",
             ),
             type = "USER_CREATED",
-            payload = """{ "username": "Alice" }""",
+            payload = """{ "username": "Alice" }""".toByteArray(),
             createdAt = Instant.now(),
             metadata = mapOf("test" to "123", "loc" to "world")
         )
@@ -294,7 +294,7 @@ class FactStoreTest {
                 id = "BOB",
             ),
             type = "USER_CREATED",
-            payload = """{ "username": "BOB" }""",
+            payload = """{ "username": "BOB" }""".toByteArray(),
             createdAt = Instant.now()
         )
 
@@ -307,98 +307,6 @@ class FactStoreTest {
     }
 
     @Test
-    fun testFindByPayloadAttribute(): Unit = runBlocking {
-        val fact1 = Fact(
-            id = UUID.randomUUID(),
-            subject = Subject(
-                type = "USER",
-                id = "ALICE",
-            ),
-            type = "USER_CREATED",
-            payload = """{ "username": "Alice", "status": "active" }""",
-            createdAt = Instant.now()
-        )
-
-        val fact2 = Fact(
-            id = UUID.randomUUID(),
-            subject = Subject(
-                type = "USER",
-                id = "BOB",
-            ),
-            type = "USER_CREATED",
-            payload = """{ "username": "Bob", "status": "inactive" }""",
-            createdAt = Instant.now()
-        )
-
-        val fact3 = Fact(
-            id = UUID.randomUUID(),
-            subject = Subject(
-                type = "USER",
-                id = "CHARLIE",
-            ),
-            type = "USER_CREATED",
-            payload = """{ "username": "Charlie", "status": "active" }""",
-            createdAt = Instant.now()
-        )
-
-        store.append(listOf(fact1, fact2, fact3))
-
-        // --- Query 1: Find all USER_CREATED with status=active ---
-        val activeQuery = PayloadQuery(
-            items = listOf(
-                PayloadQueryItem(
-                    conditions = listOf(
-                        PayloadAttributeCondition(
-                            eventType = "USER_CREATED",
-                            path = "status",
-                            value = "active"
-                        )
-                    )
-                )
-            )
-        )
-
-        val activeFacts = store.findByPayloadAttribute(activeQuery)
-        assertThat(activeFacts).containsExactlyInAnyOrder(fact1, fact3)
-
-        // --- Query 2: Find all USER_CREATED with username=Bob ---
-        val bobQuery = PayloadQuery(
-            items = listOf(
-                PayloadQueryItem(
-                    conditions = listOf(
-                        PayloadAttributeCondition(
-                            eventType = "USER_CREATED",
-                            path = "username",
-                            value = "Bob"
-                        )
-                    )
-                )
-            )
-        )
-
-        val bobFacts = store.findByPayloadAttribute(bobQuery)
-        assertThat(bobFacts).containsExactly(fact2)
-
-        // --- Query 3: No matches ---
-        val noResultsQuery = PayloadQuery(
-            items = listOf(
-                PayloadQueryItem(
-                    conditions = listOf(
-                        PayloadAttributeCondition(
-                            eventType = "USER_CREATED",
-                            path = "username",
-                            value = "NonExistent"
-                        )
-                    )
-                )
-            )
-        )
-
-        val noFacts = store.findByPayloadAttribute(noResultsQuery)
-        assertThat(noFacts).isEmpty()
-    }
-
-    @Test
     fun appendEventsWithTagsAndFindThem(): Unit = runBlocking {
         val fact1 = Fact(
             id = UUID.randomUUID(),
@@ -407,7 +315,7 @@ class FactStoreTest {
                 id = "ALICE",
             ),
             type = "USER_CREATED",
-            payload = """{ "username": "Alice" }""",
+            payload = """{ "username": "Alice" }""".toByteArray(),
             createdAt = Instant.now(),
             metadata = emptyMap(),
             tags = mapOf("role" to "admin", "region" to "eu")
@@ -420,7 +328,7 @@ class FactStoreTest {
                 id = "BOB",
             ),
             type = "USER_CREATED",
-            payload = """{ "username": "Bob" }""",
+            payload = """{ "username": "Bob" }""".toByteArray(),
             createdAt = Instant.now(),
             metadata = emptyMap(),
             tags = mapOf("role" to "user", "region" to "us")
@@ -433,7 +341,7 @@ class FactStoreTest {
                 id = "CHARLIE",
             ),
             type = "USER_CREATED",
-            payload = """{ "username": "Charlie" }""",
+            payload = """{ "username": "Charlie" }""".toByteArray(),
             createdAt = Instant.now(),
             metadata = emptyMap(),
             tags = mapOf("role" to "admin", "region" to "us")

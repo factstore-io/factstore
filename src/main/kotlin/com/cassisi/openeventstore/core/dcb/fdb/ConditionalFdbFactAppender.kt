@@ -85,7 +85,7 @@ class ConditionalFdbFactAppender(
 
         this[store.factIdSubspace.pack(factIdTuple)] = EMPTY_BYTE_ARRAY
         this[store.factTypeSubspace.pack(factIdTuple)] = fact.type.toByteArray(UTF_8)
-        this[store.factPayloadSubspace.pack(factIdTuple)] = fact.payload.toByteArray(UTF_8)
+        this[store.factPayloadSubspace.pack(factIdTuple)] = fact.payload
         this[store.subjectTypeSubspace.pack(factIdTuple)] = fact.subject.type.toByteArray(UTF_8)
         this[store.subjectIdSubspace.pack(factIdTuple)] = fact.subject.id.toByteArray(UTF_8)
         this[store.createdAtSubspace.pack(factIdTuple)] = Tuple.from(fact.createdAt.epochSecond, fact.createdAt.nano).pack()

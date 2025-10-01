@@ -13,8 +13,6 @@ interface FactFinder {
 
     suspend fun findBySubject(subjectType: String, subjectId: String): List<Fact>
 
-    suspend fun findByPayloadAttribute(query: PayloadQuery): List<Fact>
-
     suspend fun findByTags(tags: List<Pair<String, String>>): List<Fact>
 
 }
