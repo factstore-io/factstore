@@ -1,7 +1,7 @@
 plugins {
-    kotlin("jvm") version "2.2.0"
-    kotlin("plugin.allopen") version "2.2.0"
-    kotlin("plugin.serialization") version "2.2.10"
+    kotlin("jvm") version "2.2.20"
+    kotlin("plugin.allopen") version "2.2.20"
+    kotlin("plugin.serialization") version "2.2.20"
     id("io.quarkus")
 }
 
@@ -16,6 +16,7 @@ val quarkusPlatformVersion: String by project
 
 val foundationDbVersion="7.3.67"
 val kotlinSerializationJsonVersion="1.9.0"
+val avro4kVersion = "2.6.0"
 val assertJVersion = "3.27.4"
 val coroutinesVersion = "1.10.2"
 
@@ -29,6 +30,7 @@ dependencies {
     implementation("org.foundationdb:fdb-java:${foundationDbVersion}")
 
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:$kotlinSerializationJsonVersion")
+    implementation("com.github.avro-kotlin.avro4k:avro4k-core:${avro4kVersion}")
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutinesVersion")
     implementation("io.vertx:vertx-lang-kotlin-coroutines")
