@@ -7,6 +7,7 @@ import com.cassisi.openeventstore.core.dcb.fdb.ConditionalFdbFactAppender
 import com.cassisi.openeventstore.core.dcb.fdb.FdbFactAppender
 import com.cassisi.openeventstore.core.dcb.fdb.FdbFactFinder
 import com.cassisi.openeventstore.core.dcb.fdb.FdbFactStore
+import com.cassisi.openeventstore.core.dcb.fdb.FdbFactStreamer
 import jakarta.enterprise.context.ApplicationScoped
 import jakarta.enterprise.inject.Produces
 
@@ -29,8 +30,9 @@ class FdbConfig {
         val fdbFactStore = FdbFactStore(db)
         val factAppender = FdbFactAppender(fdbFactStore)
         val factFinder = FdbFactFinder(fdbFactStore)
+        val factStreamer= FdbFactStreamer(fdbFactStore)
         val conditionalAppender = ConditionalFdbFactAppender(fdbFactStore)
-        return FactStore(factAppender, factFinder, conditionalAppender)
+        return FactStore(factAppender, factFinder, factStreamer, conditionalAppender)
     }
 
 }

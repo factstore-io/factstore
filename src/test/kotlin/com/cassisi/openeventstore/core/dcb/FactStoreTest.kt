@@ -4,6 +4,10 @@ import com.apple.foundationdb.FDB
 import com.cassisi.openeventstore.core.dcb.fdb.*
 import com.github.avrokotlin.avro4k.Avro
 import com.github.avrokotlin.avro4k.schema
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.timeout
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.decodeFromByteArray
@@ -16,6 +20,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import java.time.Instant
 import java.util.*
+import kotlin.time.Duration.Companion.seconds
 
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 class FactStoreTest {
@@ -31,6 +36,7 @@ class FactStoreTest {
         store = FactStore(
             factAppender = FdbFactAppender(fdbFactStore),
             factFinder = FdbFactFinder(fdbFactStore),
+            factStreamer = FdbFactStreamer(fdbFactStore),
             conditionalSubjectFactAppender = ConditionalFdbFactAppender(fdbFactStore)
         )
         resetHelper = FdbFactStoreResetHelper(fdbFactStore)
@@ -386,7 +392,7 @@ class FactStoreTest {
         val deserializedObject = Avro.decodeFromByteArray<SomethingHappened>(serializedObject)
 
         assertThat(deserializedObject).isEqualTo(objectToSerialize)
-        
+
         val schema = Avro.schema<SomethingHappened>()
         println(schema)
     }
@@ -402,12 +408,14 @@ class FactStoreTest {
 
         val userId = UUID.randomUUID()
 
-        avroStore.append(UserOnboarded(
-            userId = userId,
-            username = "domenic",
-            onboardedAt = Instant.now()
-        ))
-        
+        avroStore.append(
+            UserOnboarded(
+                userId = userId,
+                username = "domenic",
+                onboardedAt = Instant.now()
+            )
+        )
+
         avroStore.append(
             UsernameChanged(
                 userId = userId,
@@ -427,4 +435,66 @@ class FactStoreTest {
         val number: Int
     )
 
+    @OptIn(FlowPreview::class)
+    @Test
+    fun testFactStreaming(): Unit = runBlocking {
+        // test global fact streaming
+
+        launch {
+            store.streamAll().timeout(5.seconds).collect {
+                println(it)
+            }
+        }
+
+
+        println("launching...")
+        launch {
+
+            val fact1 = Fact(
+                id = UUID.randomUUID(),
+                subject = Subject(
+                    type = "USER",
+                    id = "ALICE",
+                ),
+                type = "USER_CREATED",
+                payload = """{ "username": "Alice" }""".toByteArray(),
+                createdAt = Instant.now(),
+                metadata = emptyMap(),
+                tags = mapOf("role" to "admin", "region" to "eu")
+            )
+
+            val fact2 = Fact(
+                id = UUID.randomUUID(),
+                subject = Subject(
+                    type = "USER",
+                    id = "BOB",
+                ),
+                type = "USER_CREATED",
+                payload = """{ "username": "Bob" }""".toByteArray(),
+                createdAt = Instant.now(),
+                metadata = emptyMap(),
+                tags = mapOf("role" to "user", "region" to "us")
+            )
+
+            val fact3 = Fact(
+                id = UUID.randomUUID(),
+                subject = Subject(
+                    type = "USER",
+                    id = "CHARLIE",
+                ),
+                type = "USER_CREATED",
+                payload = """{ "username": "Charlie" }""".toByteArray(),
+                createdAt = Instant.now(),
+                metadata = emptyMap(),
+                tags = mapOf("role" to "admin", "region" to "us")
+            )
+
+            println("appending...")
+            store.append(fact1)
+            delay(1000)
+            store.append(fact2)
+            store.append(fact3)
+            delay(1000)
+        }
+    }
 }
