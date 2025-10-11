@@ -395,8 +395,10 @@ class FactStoreTest {
     fun testAvroFdbStore(): Unit = runBlocking {
 
         val avroStore = AvroFdbStore(store)
-        avroStore.register("USER_ONBOARDED", Avro.schema<UserOnboarded>())
-        avroStore.register("USERNAME_CHANGED", Avro.schema<UsernameChanged>())
+
+        FactRegistry.register(createAvroFactDescriptor<UserOnboarded>("USER_ONBOARDED"))
+        FactRegistry.register(createAvroFactDescriptor<UsernameChanged>("USERNAME_CHANGED"))
+
 
         val userId = UUID.randomUUID()
 

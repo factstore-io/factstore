@@ -1,10 +1,7 @@
 package com.cassisi.openeventstore.core.dcb
 
 import com.github.avrokotlin.avro4k.Avro
-import com.github.avrokotlin.avro4k.decodeFromByteArray
-import com.github.avrokotlin.avro4k.encodeToByteArray
 import kotlinx.serialization.*
-import org.apache.avro.Schema
 import java.time.Instant
 import java.util.UUID
 import kotlin.annotation.AnnotationRetention.RUNTIME
@@ -17,78 +14,14 @@ class AvroFdbStore(
     private val factStore: FactStore
 ) {
 
-    private val schemaMapping: MutableMap<String, Schema> = mutableMapOf()
-    private val typeMapping: MutableMap<String, KClass<*>> = mutableMapOf()
-
-    private val serializers: MutableMap<String, FactSerializerAndDeserializer<out Any>> = mutableMapOf()
-
-    fun register(eventType: String, type: Schema) {
-        schemaMapping[eventType] = type
-    }
-
-    fun registerAll() {
-        this.serializers["USER_ONBOARDED"] = UserOnboardSerializer()
-    }
-
-    suspend fun <T : Any> append(event: T) {
-        val classType = event::class
-        val factType = classType.findAnnotation<FactType>()?.name ?: classType.simpleName ?: throw IllegalArgumentException("Cannot extract simple name")
-
-        val schema = schemaMapping[factType]!!
-       // val payloadBytes = Avro.encodeToByteArray(schema, event)
-        val serializer: FactSerializerAndDeserializer<out Any> = serializers[factType]!!
-        with(serializer) {
-            event.serialize()
-        }
-
-        val subjectType = classType.findAnnotation<SubjectType>()?.value ?: throw IllegalArgumentException("Missing SubjectType")
-        println(subjectType)
-
-        val subjectId = classType
-            .memberProperties
-            .first { it.hasAnnotation<SubjectId>() }
-            .let { (it as KProperty1<Any, *>).get(event) }
-            .toString()
-
-        val tags = classType.memberProperties
-            .mapNotNull {
-                val key = it.findAnnotation<Tag>()?.name
-                if (key != null) {
-                    val value = (it as KProperty1<Any, *>).get(event).toString()
-                    Pair(key, value)
-                } else {
-                    null
-                }
-            }
-            .toMap()
+    suspend fun <T : Any> append(fact: T) =
+        factStore.append(fact = FactRegistry.toEnvelope(fact))
 
 
-        val fact = Fact(
-            id = UUID.randomUUID(),
-            type = factType,
-            payload = payloadBytes,
-            subject = Subject(
-                type = subjectType,
-                id = subjectId
-            ),
-            createdAt = Instant.now(),
-            metadata = emptyMap(),
-            tags = tags
-        )
-
-        println(fact)
-
-        factStore.append(fact)
-    }
-
-
-    suspend fun readSubject(type: String, id: String): List<*> {
-        return factStore.findBySubject(type, id)
-            .map {
-                val schema = schemaMapping[it.type]!!
-                Avro.decodeFromByteArray<Any>(schema, it.payload)
-            }
-    }
+    suspend fun readSubject(type: String, id: String): List<Any> =
+        factStore
+            .findBySubject(type, id)
+            .map { FactRegistry.fromEnvelope(it) }
 
 }
 
@@ -146,23 +79,104 @@ annotation class SubjectType(val value: String)
 @Target(PROPERTY)
 annotation class SubjectId
 
+data class FactDescriptor<T : Any>(
+    val type: String,
+    val version: Int = 1,
+    val clazz: KClass<T>,
+    val serializer: FactSerde<T>
+)
 
-interface FactSerializerAndDeserializer<T> {
+inline fun <reified T : Any> createAvroFactDescriptor(type: String, version: Int = 1): FactDescriptor<T> =
+    FactDescriptor(
+        type = type,
+        version = version,
+        clazz = T::class,
+        serializer = FactAvroSerde.create<T>()
+    )
 
-    fun T.serialize(): ByteArray
+object FactRegistry {
 
-    fun ByteArray.deserialize(): T
+    private val byType = mutableMapOf<String, FactDescriptor<*>>()
+    private val byClass = mutableMapOf<KClass<*>, FactDescriptor<*>>()
+
+    fun <T : Any> register(descriptor: FactDescriptor<T>) {
+        byType[descriptor.type] = descriptor
+        byClass[descriptor.clazz] = descriptor
+    }
+
+    fun fromEnvelope(fact: Fact): Any {
+        val descriptor = byType[fact.type] ?: error("Unknown fact type ${fact.type}")
+        val serde = (descriptor as FactDescriptor<Any>).serializer
+        return serde.deserialize(fact.payload)
+    }
+
+    fun toEnvelope(fact: Any): Fact {
+        return toFact(fact)
+    }
+
+    private fun toFact(fact: Any): Fact {
+        val factDescriptor = byClass[fact::class] ?: error("No FactDescriptor found for class ${fact::class}")
+        val factSerde = (factDescriptor as FactDescriptor<Any>).serializer
+
+        val classType = fact::class
+        val factType = classType.findAnnotation<FactType>()?.name ?: classType.simpleName
+        ?: throw IllegalArgumentException("Cannot extract simple name")
+        val subjectType =
+            classType.findAnnotation<SubjectType>()?.value ?: throw IllegalArgumentException("Missing SubjectType")
+        println(subjectType)
+
+        val subjectId = classType
+            .memberProperties
+            .first { it.hasAnnotation<SubjectId>() }
+            .let { (it as KProperty1<Any, *>).get(fact) }
+            .toString()
+
+        val tags = classType.memberProperties
+            .mapNotNull {
+                val key = it.findAnnotation<Tag>()?.name
+                if (key != null) {
+                    val value = (it as KProperty1<Any, *>).get(fact).toString()
+                    Pair(key, value)
+                } else {
+                    null
+                }
+            }
+            .toMap()
+
+        val fact = Fact(
+            id = UUID.randomUUID(),
+            type = factType,
+            payload = factSerde.serialize(fact),
+            subject = Subject(
+                type = subjectType,
+                id = subjectId
+            ),
+            createdAt = Instant.now(),
+            metadata = emptyMap(),
+            tags = tags
+        )
+        return fact
+    }
 
 }
 
-class UserOnboardSerializer : FactSerializerAndDeserializer<UserOnboarded> {
+interface FactSerde<T> {
 
-    override fun UserOnboarded.serialize(): ByteArray =
-        Avro.encodeToByteArray(this)
+    fun serialize(fact: T): ByteArray
 
-
-    override fun ByteArray.deserialize(): UserOnboarded =
-        Avro.decodeFromByteArray(this)
+    fun deserialize(byteArray: ByteArray): T
 
 }
 
+class FactAvroSerde<T>(val serializer: KSerializer<T>) : FactSerde<T> {
+
+    override fun serialize(fact: T): ByteArray =
+        Avro.encodeToByteArray(serializer, fact)
+
+    override fun deserialize(byteArray: ByteArray): T =
+        Avro.decodeFromByteArray(serializer, byteArray)
+
+    companion object {
+        inline fun <reified T> create(): FactAvroSerde<T> = FactAvroSerde(serializer())
+    }
+}
