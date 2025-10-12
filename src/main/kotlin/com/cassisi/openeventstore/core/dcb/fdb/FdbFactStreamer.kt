@@ -23,15 +23,20 @@ import kotlin.text.Charsets.UTF_8
 class FdbFactStreamer(private val store: FdbFactStore) : FactStreamer {
 
     override fun streamAll(streamingOptionSet: StreamingOptionSet): Flow<Fact> = flow {
-
-
         // stream over /fact-store/global/{versionstamp}/{index}/{factId}
-        var lastSeenKey: ByteArray? = null
+
+        // find position of last seen fact if supplied
+        var lastSeenKey: ByteArray? =
+            if (streamingOptionSet.lastSeenId == null)
+                null
+            else
+                getLastSeenKeyForFact(streamingOptionSet.lastSeenId)
+
         val globalRange = store.globalFactPositionSubspace.range()
 
         while (currentCoroutineContext().isActive) {
             // 1) Read the next batch of global positions after the cursor
-            val events = store.db.readAsync { tr ->
+            val factBatch = store.db.readAsync { tr ->
                 val beginSel =
                     if (lastSeenKey == null)
                         KeySelector.firstGreaterOrEqual(globalRange.begin)
@@ -41,29 +46,42 @@ class FdbFactStreamer(private val store: FdbFactStore) : FactStreamer {
                 val endSel = KeySelector.firstGreaterOrEqual(globalRange.end)
                 val batchSize = streamingOptionSet.batchSize
                 tr.getRange(beginSel, endSel, batchSize).asList().thenCompose { keyValues ->
-                    val factFutures: List<CompletableFuture<Fact?>> = keyValues.mapNotNull { keyValue ->
+                    val factFutures: List<CompletableFuture<InternalFact?>> = keyValues.mapNotNull { keyValue ->
                         val k = store.globalFactPositionSubspace.unpack(keyValue.key)
                         val factId = k.getUUID(k.size()-1)
-                        lastSeenKey = keyValue.key // VERY DIRTY, FIX ME!!!
+                        lastSeenKey = keyValue.key
                         tr.loadFact(factId)
                     }
 
                     CompletableFuture.allOf(*factFutures.toTypedArray()).thenApply {
-                        factFutures.mapNotNull { it.getNow(null) }
+                        factFutures.mapNotNull { it.getNow(null)?.fact }
                     }
                 }
             }.await()
 
-            if (events.isEmpty()) {
+            if (factBatch.isEmpty()) {
                 delay(streamingOptionSet.pollDelayMs)
                 continue
             }
 
-            emitAll(events.asFlow())
+            emitAll(factBatch.asFlow())
         }
     }
 
-    private fun ReadTransaction.loadFact(factId: UUID): CompletableFuture<Fact?> {
+    private suspend fun getLastSeenKeyForFact(factId: UUID): ByteArray {
+        return store.db.readAsync { tr ->
+            tr.loadFact(factId).thenApply { internalFact ->
+                if (internalFact == null) {
+                    error("Fact with ID $factId not found!")
+                }
+                val positionTuple = internalFact.positionTuple
+                val byteArray = store.globalFactPositionSubspace.pack(positionTuple.add(factId))
+                byteArray
+            }
+        }.await()
+    }
+
+    private fun ReadTransaction.loadFact(factId: UUID): CompletableFuture<InternalFact?> {
         val factIdTuple = Tuple.from(factId)
         val typeKey = store.factTypeSubspace.pack(factIdTuple)
         val createdAtKey = store.createdAtSubspace.pack(factIdTuple)
@@ -121,7 +139,7 @@ class FdbFactStreamer(private val store: FdbFactStore) : FactStreamer {
                 key to value
             }
 
-            Fact(
+            val fact = Fact(
                 id = factId,
                 type = typeBytes.toString(UTF_8),
                 payload = payloadBytes,
@@ -132,6 +150,11 @@ class FdbFactStreamer(private val store: FdbFactStore) : FactStreamer {
                 ),
                 metadata = metadata,
                 tags = tags,
+            )
+
+            InternalFact(
+                fact = fact,
+                positionTuple = positionTuple
             )
         }
     }

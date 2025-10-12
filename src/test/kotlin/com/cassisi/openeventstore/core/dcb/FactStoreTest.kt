@@ -6,7 +6,9 @@ import com.github.avrokotlin.avro4k.Avro
 import com.github.avrokotlin.avro4k.schema
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.timeout
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.Serializable
@@ -495,6 +497,14 @@ class FactStoreTest {
             store.append(fact2)
             store.append(fact3)
             delay(1000)
+
+            // start another stream but start after fact1,
+            // so expect to read fact2 and fact3
+            val streamedEvents = store.streamAll(StreamingOptionSet(lastSeenId = fact1.id))
+                .take(2)
+                .toList()
+
+            assertThat(streamedEvents).containsExactly(fact2, fact3)
         }
     }
 }
