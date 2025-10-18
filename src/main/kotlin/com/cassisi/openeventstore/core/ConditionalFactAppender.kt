@@ -25,3 +25,14 @@ data class MultiSubjectAppendCondition(
 interface ConditionalBatchFactAppender {
     suspend fun append(facts: List<Fact>, preCondition: MultiSubjectAppendCondition)
 }
+
+data class TagQueryBasedAppendCondition(
+    val failIfEventsMatch: TagQuery,
+    val after: UUID?
+)
+
+interface ConditionalTagQueryFactAppender {
+
+    suspend fun append(facts: List<Fact>, condition: TagQueryBasedAppendCondition)
+
+}

@@ -1,6 +1,9 @@
 package com.cassisi.openeventstore.core
 
+import com.apple.foundationdb.Database
 import com.apple.foundationdb.FDB
+import com.apple.foundationdb.KeySelector
+import com.apple.foundationdb.tuple.Tuple
 import com.cassisi.openeventstore.core.impl.*
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.delay
@@ -25,17 +28,20 @@ class FactStoreTest {
 
     private lateinit var store: FactStore
     private lateinit var resetHelper: FdbFactStoreResetHelper
+    private lateinit var db: Database
+    private lateinit var fdbFactStore: FdbFactStore
 
     @BeforeAll
     fun setupFDB() {
         FDB.selectAPIVersion(730)
-        val db = FDB.instance().open("/etc/foundationdb/fdb.cluster")
-        val fdbFactStore = FdbFactStore(db)
+        db = FDB.instance().open("/etc/foundationdb/fdb.cluster")
+        fdbFactStore = FdbFactStore(db)
         store = FactStore(
             factAppender = FdbFactAppender(fdbFactStore),
             factFinder = FdbFactFinder(fdbFactStore),
             factStreamer = FdbFactStreamer(fdbFactStore),
-            conditionalSubjectFactAppender = ConditionalFdbFactAppender(fdbFactStore)
+            conditionalSubjectFactAppender = ConditionalFdbFactAppender(fdbFactStore),
+            conditionalTagQueryFactAppender = ConditionalTagQueryFdbFactAppender(fdbFactStore),
         )
         resetHelper = FdbFactStoreResetHelper(fdbFactStore)
     }
@@ -923,12 +929,17 @@ class FactStoreTest {
         }.also { println(it) }
 
         measureTimeMillis {
-            store.findByTagQuery(TagQuery(listOf(FactQueryItem(
-                types = listOf("USER_CREATED"),
-                tags = listOf("role" to "custom")
-            ))))
+            store.findByTagQuery(
+                TagQuery(
+                    listOf(
+                        FactQueryItem(
+                            types = listOf("USER_CREATED"),
+                            tags = listOf("role" to "custom")
+                        )
+                    )
+                )
+            )
         }.also { println(it) }
-
 
 
         // Step 3: Verify that the result only contains facts with the expected tags
@@ -941,5 +952,162 @@ class FactStoreTest {
         println("Found ${result.size} events with 'role=user' and 'region=us'.")
     }
 
+
+    @Test
+    fun testConditionalAppendWithTagQuery(): Unit = runBlocking {
+
+        // append first event without an append condition
+        val fact1Id = UUID.randomUUID()
+        val fact1 = Fact(
+            id = fact1Id,
+            subject = Subject(
+                type = "USER",
+                id = "ALICE",
+            ),
+            type = "USER_CREATED",
+            payload = """{ "username": "Alice" }""".toByteArray(),
+            createdAt = Instant.now(),
+            tags = mapOf(
+                "user" to "ALICE",
+            )
+        )
+
+
+        val tagQuery = TagQuery(
+            queryItems = listOf(
+                FactQueryItem(
+                    types = listOf("USER_CREATED"),
+                    tags = listOf("user" to "ALICE"),
+                )
+            )
+        )
+
+        println("appending $fact1Id")
+        store.append(
+            facts = listOf(fact1),
+            condition = TagQueryBasedAppendCondition(
+                failIfEventsMatch = tagQuery,
+                after = null
+            )
+        )
+
+//        db.read { tr ->
+//            val range = fdbFactStore.tagsTypeIndexSubspace.range()
+//            val list = tr.getRange(range).asList().join().map { keyValue ->
+//                println("key: ${Tuple.fromBytes(keyValue.key)}")
+//            }
+//
+//        }
+
+        val fact2Id = UUID.randomUUID()
+        val fact2 = Fact(
+            id = fact2Id,
+            subject = Subject(
+                type = "USER",
+                id = "ALICE",
+            ),
+            type = "USER_LOCKED",
+            payload = """{ "username": "ALICE" }""".toByteArray(),
+            createdAt = Instant.now(),
+            tags = mapOf(
+                "user" to "ALICE",
+            )
+        )
+
+
+        store.append(
+            facts = listOf(fact2),
+            condition = TagQueryBasedAppendCondition(
+                failIfEventsMatch = tagQuery,
+                after = fact1Id
+            )
+        )
+
+        assertThatThrownBy {
+            runBlocking {
+                store.append(
+                    facts = listOf(fact2),
+                    condition = TagQueryBasedAppendCondition(
+                        failIfEventsMatch = tagQuery,
+                        after = null
+                    )
+                )
+            }
+        }.isInstanceOf(RuntimeException::class.java)
+
+
+        // append another user fact with another tag
+        val fact3Id = UUID.randomUUID()
+        val fact3 = Fact(
+            id = fact3Id,
+            subject = Subject(
+                type = "USER",
+                id = "BOB",
+            ),
+            type = "USER_CREATED",
+            payload = """{ "username": "BOB" }""".toByteArray(),
+            createdAt = Instant.now(),
+            tags = mapOf(
+                "user" to "BOB",
+            )
+        )
+
+        val tagQuery2 = TagQuery(
+            queryItems = listOf(
+                FactQueryItem(
+                    types = listOf("USER_CREATED"),
+                    tags = listOf("user" to "BOB"),
+                )
+            )
+        )
+
+//        db.read { tr ->
+//            val range = fdbFactStore.tagsTypeIndexSubspace.range()
+//            val list = tr.getRange(range).asList().join().map { keyValue ->
+//                println("key: ${Tuple.fromBytes(keyValue.key)}")
+//            }
+//
+//            val range2 = fdbFactStore.tagsTypeIndexSubspace.range(Tuple.from("USER_CREATED", "user", "BOB"))
+//            tr.getRange(range2).asList().join().forEach { println(it) }
+//            tr.getRange(
+//            //    KeySelector(Tuple.from("USER_CREATED", "user", "BOB").pack(), true, 0),
+//
+//            )
+//
+//        }
+
+        println("appending $fact3Id")
+        store.append(
+            facts = listOf(fact3),
+            condition = TagQueryBasedAppendCondition(
+                failIfEventsMatch = tagQuery2,
+                after = null
+            )
+        )
+
+        val fact4Id = UUID.randomUUID()
+        val fact4 = Fact(
+            id = fact4Id,
+            subject = Subject(
+                type = "USER",
+                id = "BOB",
+            ),
+            type = "USER_LOCKED",
+            payload = """{ "username": "BOB" }""".toByteArray(),
+            createdAt = Instant.now(),
+            tags = mapOf(
+                "user" to "BOB",
+            )
+        )
+
+        store.append(
+            facts = listOf(fact4),
+            condition = TagQueryBasedAppendCondition(
+                failIfEventsMatch = tagQuery2,
+                after = fact3Id
+            )
+        )
+
+    }
 
 }

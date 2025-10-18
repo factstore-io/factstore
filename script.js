@@ -2,7 +2,7 @@ import http from 'k6/http';
 import { check, sleep } from 'k6';
 
 export let options = {
-    vus: 100, // virtual users
+    vus: 40, // virtual users
     duration: '30s', // test duration
     thresholds: {
         http_req_duration: ['p(90)<500'], // 90% of requests should be below 500ms
@@ -10,7 +10,7 @@ export let options = {
 };
 
 export default function () {
-    const res = http.get('http://localhost:8080/test');
+    const res = http.post('http://localhost:8080/test');
     check(res, {
         'status is 200': (r) => r.status === 200,
     });

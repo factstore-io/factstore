@@ -1,9 +1,13 @@
 package com.cassisi.openeventstore.core.impl
 
 import com.apple.foundationdb.Database
+import com.apple.foundationdb.MutationType.SET_VERSIONSTAMPED_KEY
+import com.apple.foundationdb.MutationType.SET_VERSIONSTAMPED_VALUE
 import com.apple.foundationdb.ReadTransaction
+import com.apple.foundationdb.Transaction
 import com.apple.foundationdb.directory.DirectoryLayer
 import com.apple.foundationdb.tuple.Tuple
+import com.apple.foundationdb.tuple.Versionstamp
 import com.cassisi.openeventstore.core.Fact
 import com.cassisi.openeventstore.core.Subject
 import java.time.Instant
@@ -85,6 +89,78 @@ class FdbFactStore(
     internal val tagsIndexSubspace = root.subspace(Tuple.from(TAGS_INDEX))
     internal val tagsTypeIndexSubspace = root.subspace(Tuple.from(TAGS_TYPE_INDEX))
 
+
+
+    internal fun Transaction.store(fact: Fact, index: Int = DEFAULT_INDEX) {
+        storeFact(fact, index)
+        storeIndexes(fact, index)
+    }
+
+    private fun Transaction.storeFact(fact: Fact, index: Int) {
+        val factIdTuple = Tuple.from(fact.id)
+
+        this[factIdSubspace.pack(factIdTuple)] = EMPTY_BYTE_ARRAY
+        this[factTypeSubspace.pack(factIdTuple)] = fact.type.toByteArray(UTF_8)
+        this[factPayloadSubspace.pack(factIdTuple)] = fact.payload
+        this[subjectTypeSubspace.pack(factIdTuple)] = fact.subject.type.toByteArray(UTF_8)
+        this[subjectIdSubspace.pack(factIdTuple)] = fact.subject.id.toByteArray(UTF_8)
+        this[createdAtSubspace.pack(factIdTuple)] = Tuple.from(fact.createdAt.epochSecond, fact.createdAt.nano).pack()
+
+        val positionKey = positionSubspace.pack(factIdTuple)
+        val positionValue = Tuple.from(Versionstamp.incomplete(), index).packWithVersionstamp()
+        mutate(SET_VERSIONSTAMPED_VALUE, positionKey, positionValue)
+
+        fact.metadata.forEach { (key, value) ->
+            this[metadataSubspace.pack(factIdTuple.add(key))] = value.toByteArray(UTF_8)
+        }
+
+        fact.tags.forEach { (key, value) ->
+            this[tagsSubspace.pack(factIdTuple.add(key))] = value.toByteArray(UTF_8)
+        }
+    }
+
+    private fun Transaction.storeIndexes(fact: Fact, index: Int) {
+        val factId = fact.id
+
+        val globalPositionKey = globalFactPositionSubspace.packWithVersionstamp(
+            Tuple.from(Versionstamp.incomplete(), index, factId)
+        )
+        mutate(SET_VERSIONSTAMPED_KEY, globalPositionKey, EMPTY_BYTE_ARRAY)
+
+        val eventTypeIndexKey = eventTypeIndexSubspace.packWithVersionstamp(
+            Tuple.from(fact.type, Versionstamp.incomplete(), index, factId)
+        )
+        mutate(SET_VERSIONSTAMPED_KEY, eventTypeIndexKey, EMPTY_BYTE_ARRAY)
+
+        val createdAtIndexKey = createdAtIndexSubspace.packWithVersionstamp(
+            Tuple.from(fact.createdAt.epochSecond, fact.createdAt.nano, Versionstamp.incomplete(), index, factId)
+        )
+        mutate(SET_VERSIONSTAMPED_KEY, createdAtIndexKey, EMPTY_BYTE_ARRAY)
+
+        val subjectIndex = subjectIndexSubspace.packWithVersionstamp(
+            Tuple.from(fact.subject.type, fact.subject.id, Versionstamp.incomplete(), index, factId)
+        )
+        mutate(SET_VERSIONSTAMPED_KEY, subjectIndex, EMPTY_BYTE_ARRAY)
+
+        fact.metadata.forEach { (key, value) ->
+            val metadataEntryIndex = metadataIndexSubspace.packWithVersionstamp(
+                Tuple.from(key, value, Versionstamp.incomplete(), index, factId)
+            )
+            mutate(SET_VERSIONSTAMPED_KEY, metadataEntryIndex, EMPTY_BYTE_ARRAY)
+        }
+
+        fact.tags.forEach { (key, value) ->
+            val tagsEntryIndex = tagsIndexSubspace.packWithVersionstamp(
+                Tuple.from(key, value, Versionstamp.incomplete(), index, factId)
+            )
+            mutate(SET_VERSIONSTAMPED_KEY, tagsEntryIndex, EMPTY_BYTE_ARRAY)
+
+            val tagTypeIndex = tagsTypeIndexSubspace.packWithVersionstamp(
+                Tuple.from(fact.type, key, value, Versionstamp.incomplete(), index, factId)
+            )
+            mutate(SET_VERSIONSTAMPED_KEY, tagTypeIndex, EMPTY_BYTE_ARRAY)
+        }
+    }
 
 
     internal fun ReadTransaction.loadFact(factId: UUID): CompletableFuture<FdbFact?> {
