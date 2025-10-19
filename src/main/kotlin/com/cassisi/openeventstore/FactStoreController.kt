@@ -5,6 +5,7 @@ import com.cassisi.openeventstore.core.FactQueryItem
 import com.cassisi.openeventstore.core.FactStore
 import com.cassisi.openeventstore.core.Subject
 import com.cassisi.openeventstore.core.TagQuery
+import com.cassisi.openeventstore.core.TagQueryBasedAppendCondition
 import jakarta.ws.rs.GET
 import jakarta.ws.rs.POST
 import jakarta.ws.rs.Path
@@ -19,16 +20,31 @@ class FactStoreController(
 
     @POST
     suspend fun test() {
+        val id = UUID.randomUUID()
         db.append(
-            Fact(
-                id = UUID.randomUUID(),
-                type = "TEST_TYPE",
-                payload = """ { "test": 123 } """.toByteArray(),
-                createdAt = Instant.now(),
-                subject = Subject(
-                    type = "TEST",
-                    id = "123"
+            facts = listOf(
+                element = Fact(
+                    id = id,
+                    type = "TEST_TYPE",
+                    payload = """ { "test": 123 } """.toByteArray(),
+                    createdAt = Instant.now(),
+                    subject = Subject(
+                        type = "TEST",
+                        id = "$id"
+                    ),
+                    tags = mapOf("TEST" to "$id")
+                )
+            ),
+            condition = TagQueryBasedAppendCondition(
+                failIfEventsMatch = TagQuery(
+                    queryItems = listOf(
+                        FactQueryItem(
+                            types = listOf("TEST_TYPE"),
+                            tags = listOf("TEST" to "$id")
+                        )
+                    )
                 ),
+                after = null
             )
         )
 

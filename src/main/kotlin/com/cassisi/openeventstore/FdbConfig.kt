@@ -4,6 +4,7 @@ import com.apple.foundationdb.Database
 import com.apple.foundationdb.FDB
 import com.cassisi.openeventstore.core.FactStore
 import com.cassisi.openeventstore.core.impl.ConditionalFdbFactAppender
+import com.cassisi.openeventstore.core.impl.ConditionalTagQueryFdbFactAppender
 import com.cassisi.openeventstore.core.impl.FdbFactAppender
 import com.cassisi.openeventstore.core.impl.FdbFactFinder
 import com.cassisi.openeventstore.core.impl.FdbFactStore
@@ -32,7 +33,14 @@ class FdbConfig {
         val factFinder = FdbFactFinder(fdbFactStore)
         val factStreamer= FdbFactStreamer(fdbFactStore)
         val conditionalAppender = ConditionalFdbFactAppender(fdbFactStore)
-        return FactStore(factAppender, factFinder, factStreamer, conditionalAppender)
+        val conditionalTagQueryFdbFactAppender = ConditionalTagQueryFdbFactAppender(fdbFactStore)
+        return FactStore(
+            factAppender = factAppender,
+            factFinder = factFinder,
+            factStreamer = factStreamer,
+            conditionalSubjectFactAppender = conditionalAppender,
+            conditionalTagQueryFactAppender = conditionalTagQueryFdbFactAppender
+        )
     }
 
 }
