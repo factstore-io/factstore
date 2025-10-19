@@ -3,6 +3,8 @@ package com.cassisi.openeventstore.avro
 import com.cassisi.openeventstore.core.Fact
 import com.cassisi.openeventstore.core.FactStore
 import com.cassisi.openeventstore.core.Subject
+import com.cassisi.openeventstore.core.TagQuery
+import com.cassisi.openeventstore.core.TagQueryBasedAppendCondition
 import com.github.avrokotlin.avro4k.Avro
 import kotlinx.serialization.*
 import java.time.Instant
@@ -20,12 +22,21 @@ class AvroFdbStore(
     suspend fun <T : Any> append(fact: T) =
         factStore.append(fact = FactRegistry.toEnvelope(fact))
 
+    suspend fun <T : Any> append(facts: List<T>, condition: TagQueryBasedAppendCondition) =
+        facts
+            .map { FactRegistry.toEnvelope(it) }
+            .also { factStore.append(it, condition) }
+
 
     suspend fun readSubject(type: String, id: String): List<Any> =
         factStore
             .findBySubject(type, id)
             .map { FactRegistry.fromEnvelope(it) }
 
+    suspend fun readFromTagQuery(tagQuery: TagQuery): List<Pair<UUID, Any>> =
+        factStore
+            .findByTagQuery(tagQuery)
+            .map { Pair(it.id, FactRegistry.fromEnvelope(it)) }
 }
 
 @Retention(RUNTIME)

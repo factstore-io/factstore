@@ -19,6 +19,7 @@ val kotlinSerializationJsonVersion="1.9.0"
 val avro4kVersion = "2.6.0"
 val assertJVersion = "3.27.4"
 val coroutinesVersion = "1.10.2"
+val fModelVersion="3.6.1"
 
 dependencies {
     implementation(enforcedPlatform("${quarkusPlatformGroupId}:${quarkusPlatformArtifactId}:${quarkusPlatformVersion}"))
@@ -34,6 +35,10 @@ dependencies {
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutinesVersion")
     implementation("io.vertx:vertx-lang-kotlin-coroutines")
+
+    // fmodel
+    implementation("com.fraktalio.fmodel:domain:${fModelVersion}")
+    implementation("com.fraktalio.fmodel:application-vanilla:${fModelVersion}")
 
     implementation("io.quarkus:quarkus-arc")
     testImplementation("io.quarkus:quarkus-junit5")
