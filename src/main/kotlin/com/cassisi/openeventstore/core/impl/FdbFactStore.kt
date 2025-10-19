@@ -90,6 +90,11 @@ class FdbFactStore(
     internal val tagsTypeIndexSubspace = root.subspace(Tuple.from(TAGS_TYPE_INDEX))
 
 
+    internal fun List<Fact>.store(transaction: Transaction) {
+        forEachIndexed { index, fact ->
+            transaction.store(fact, index)
+        }
+    }
 
     internal fun Transaction.store(fact: Fact, index: Int = DEFAULT_INDEX) {
         storeFact(fact, index)
@@ -241,4 +246,18 @@ class FdbFactStore(
         }
     }
 
+    fun UUID.getPosition(transaction: ReadTransaction): CompletableFuture<Pair<Versionstamp, Long>> =
+        transaction[positionSubspace.pack(Tuple.from(this))].thenApply {
+            it?.let { bytes ->
+                val positionTuple = Tuple.fromBytes(bytes)
+                Pair(positionTuple.getVersionstamp(0), positionTuple.getLong(1))
+            } ?: throw RuntimeException("Fact does not exist!")
+        }
+
 }
+
+// utils
+
+fun Tuple.getLastAsUuid(): UUID = getUUID(size() -1)
+
+
