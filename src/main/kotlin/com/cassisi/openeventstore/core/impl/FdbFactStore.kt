@@ -9,7 +9,9 @@ import com.apple.foundationdb.directory.DirectoryLayer
 import com.apple.foundationdb.tuple.Tuple
 import com.apple.foundationdb.tuple.Versionstamp
 import com.cassisi.openeventstore.core.Fact
+import com.cassisi.openeventstore.core.FactId
 import com.cassisi.openeventstore.core.Subject
+import com.cassisi.openeventstore.core.toFactId
 import com.github.avrokotlin.avro4k.Avro
 import kotlinx.serialization.decodeFromByteArray
 import kotlinx.serialization.encodeToByteArray
@@ -84,7 +86,7 @@ class FdbFactStore(
     }
 
     private fun Transaction.storeFact(fact: Fact, index: Int) {
-        val factIdTuple = Tuple.from(fact.id)
+        val factIdTuple = fact.id.toTuple()
 
         // store fact itself
         val serializedFactBytes = fact.toSerializableFdbFact().encodeToByteArray()
@@ -98,7 +100,7 @@ class FdbFactStore(
     }
 
     private fun Transaction.storeIndexes(fact: Fact, index: Int) {
-        val factId = fact.id
+        val factId = fact.id.uuid
 
         val globalPositionKey = globalFactPositionSubspace.packWithVersionstamp(
             Tuple.from(Versionstamp.incomplete(), index, factId)
@@ -141,8 +143,8 @@ class FdbFactStore(
     }
 
 
-    internal fun ReadTransaction.loadFact(factId: UUID): CompletableFuture<FdbFact?> {
-        val factIdTuple = Tuple.from(factId)
+    internal fun ReadTransaction.loadFactById(factId: FactId): CompletableFuture<FdbFact?> {
+        val factIdTuple = factId.toTuple()
         val factKey = factsSubspace.pack(factIdTuple)
         val factPositionKey = factPositionsSubspace.pack(factIdTuple)
 
@@ -161,8 +163,8 @@ class FdbFactStore(
         }
     }
 
-    fun UUID.getPosition(transaction: ReadTransaction): CompletableFuture<Pair<Versionstamp, Long>> =
-        transaction[factPositionsSubspace.pack(Tuple.from(this))].thenApply {
+    internal fun FactId.getPosition(transaction: ReadTransaction): CompletableFuture<Pair<Versionstamp, Long>> =
+        transaction[factPositionsSubspace.pack(Tuple.from(this.uuid))].thenApply {
             it?.let { bytes ->
                 val positionTuple = Tuple.fromBytes(bytes)
                 Pair(positionTuple.getVersionstamp(0), positionTuple.getLong(1))
@@ -175,8 +177,10 @@ class FdbFactStore(
 
 internal fun Tuple.getLastAsUuid(): UUID = getUUID(size() - 1)
 
+internal fun Tuple.getLastAsFactId(): FactId = getLastAsUuid().toFactId()
+
 internal fun Fact.toSerializableFdbFact() = SerializableFdbFact(
-    id = id,
+    id = id.uuid,
     type = type,
     subjectType = subject.type,
     subjectId = subject.id,
@@ -192,7 +196,7 @@ internal fun SerializableFdbFact.encodeToByteArray() = Avro.encodeToByteArray(th
 internal fun ByteArray.toSerializableFdbFact() = Avro.decodeFromByteArray<SerializableFdbFact>(this)
 
 internal fun SerializableFdbFact.toFact() = Fact(
-    id = id,
+    id = FactId(id),
     type = type,
     payload = payload,
     subject = Subject(
@@ -203,3 +207,5 @@ internal fun SerializableFdbFact.toFact() = Fact(
     metadata = metadata,
     tags = tags
 )
+
+internal fun FactId.toTuple() = Tuple.from(this.uuid)

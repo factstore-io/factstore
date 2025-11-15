@@ -11,8 +11,8 @@ interface FactStreamer {
 
 }
 
-data class StreamingOptionSet( // find better name
-    val lastSeenId: UUID? = null, // todo later
+data class StreamingOptionSet(
+    val lastSeenId: FactId? = null,
     val batchSize: Int = 128,
     val pollDelayMs: Long = 250L
 )

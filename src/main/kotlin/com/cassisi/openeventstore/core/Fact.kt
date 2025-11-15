@@ -4,7 +4,7 @@ import java.time.Instant
 import java.util.*
 
 data class Fact(
-    val id: UUID,
+    val id: FactId,
     val type: String,
     val payload: ByteArray,
     val subject: Subject,
@@ -45,3 +45,15 @@ data class Subject(
     val type: String,
     val id: String
 )
+
+@JvmInline
+value class FactId(val uuid: UUID) {
+
+    companion object {
+
+        fun generate() = FactId(UUID.randomUUID())
+
+    }
+}
+
+fun UUID.toFactId() = FactId(this)

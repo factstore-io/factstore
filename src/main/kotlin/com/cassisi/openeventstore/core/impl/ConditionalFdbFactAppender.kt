@@ -4,7 +4,6 @@ import com.apple.foundationdb.Transaction
 import com.apple.foundationdb.tuple.Tuple
 import com.cassisi.openeventstore.core.*
 import kotlinx.coroutines.future.await
-import java.util.*
 import java.util.concurrent.CompletableFuture
 
 const val ERROR_MESSAGE_TEMPLATE = "PreCondition not met for subject (%s, %s): expected %s but got %s"
@@ -61,12 +60,12 @@ class ConditionalFdbFactAppender(
         }
     }
 
-    private fun Transaction.getLastFactId(subjectType: String, subjectId: String) : UUID? {
+    private fun Transaction.getLastFactId(subjectType: String, subjectId: String) : FactId? {
         val subjectIndexKeyBegin = Tuple.from(subjectType, subjectId)
         val subjectRange = store.subjectIndexSubspace.range(subjectIndexKeyBegin)
         val latestFactKeyValue = this.getRange(subjectRange, 1, true).firstOrNull()
         return latestFactKeyValue?.let {
-            store.subjectIndexSubspace.unpack(it.key).getLastAsUuid()
+            store.subjectIndexSubspace.unpack(it.key).getLastAsFactId()
         }
     }
 

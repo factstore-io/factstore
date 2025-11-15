@@ -1,7 +1,5 @@
 package com.cassisi.openeventstore.core
 
-import java.util.UUID
-
 interface ConditionalFactAppender<P> {
 
     suspend fun append(fact: Fact, preCondition: P)
@@ -10,7 +8,7 @@ interface ConditionalFactAppender<P> {
 
 @JvmInline
 value class SubjectAppendCondition(
-    val expectedLatestEventId: UUID?
+    val expectedLatestEventId: FactId?
 )
 
 interface ConditionalSubjectFactAppender :
@@ -19,7 +17,7 @@ interface ConditionalSubjectFactAppender :
 
 
 data class MultiSubjectAppendCondition(
-    val expectedLastEventIds: Map<Pair<String, String>, UUID?> // Map<(subjectType, subjectId), expectedLastFactId>
+    val expectedLastEventIds: Map<Pair<String, String>, FactId?> // Map<(subjectType, subjectId), expectedLastFactId>
 )
 
 interface ConditionalBatchFactAppender {
@@ -28,7 +26,7 @@ interface ConditionalBatchFactAppender {
 
 data class TagQueryBasedAppendCondition(
     val failIfEventsMatch: TagQuery,
-    val after: UUID?
+    val after: FactId?
 )
 
 interface ConditionalTagQueryFactAppender {

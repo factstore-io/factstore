@@ -1,13 +1,12 @@
 package com.cassisi.openeventstore.core
 
 import java.time.Instant
-import java.util.*
 
 interface FactFinder {
 
-    suspend fun findById(factId: UUID): Fact?
+    suspend fun findById(factId: FactId): Fact?
 
-    suspend fun existsById(factId: UUID): Boolean
+    suspend fun existsById(factId: FactId): Boolean
 
     suspend fun findInTimeRange(start: Instant, end: Instant = Instant.now()): List<Fact>
 

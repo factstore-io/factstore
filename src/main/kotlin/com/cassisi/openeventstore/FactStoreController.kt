@@ -1,17 +1,11 @@
 package com.cassisi.openeventstore
 
-import com.cassisi.openeventstore.core.Fact
-import com.cassisi.openeventstore.core.TagTypeItem
-import com.cassisi.openeventstore.core.FactStore
-import com.cassisi.openeventstore.core.Subject
-import com.cassisi.openeventstore.core.TagQuery
-import com.cassisi.openeventstore.core.TagQueryBasedAppendCondition
+import com.cassisi.openeventstore.core.*
 import jakarta.ws.rs.GET
 import jakarta.ws.rs.POST
 import jakarta.ws.rs.Path
 import jakarta.ws.rs.core.Response
 import java.time.Instant
-import java.util.UUID
 
 @Path("/test")
 class FactStoreController(
@@ -20,7 +14,7 @@ class FactStoreController(
 
     @POST
     suspend fun test() {
-        val id = UUID.randomUUID()
+        val id = FactId.generate()
         db.append(
             facts = listOf(
                 element = Fact(

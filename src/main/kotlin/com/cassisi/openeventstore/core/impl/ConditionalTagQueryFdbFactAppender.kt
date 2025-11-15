@@ -8,6 +8,7 @@ import com.apple.foundationdb.tuple.Versionstamp
 import com.cassisi.openeventstore.core.AppendConditionViolationException
 import com.cassisi.openeventstore.core.ConditionalTagQueryFactAppender
 import com.cassisi.openeventstore.core.Fact
+import com.cassisi.openeventstore.core.FactId
 import com.cassisi.openeventstore.core.TagOnlyQueryItem
 import com.cassisi.openeventstore.core.TagTypeItem
 import com.cassisi.openeventstore.core.TagQueryBasedAppendCondition
@@ -58,7 +59,7 @@ class ConditionalTagQueryFdbFactAppender(
         }
     }
 
-    private fun UUID.getPosition(transaction: ReadTransaction) = with(store) {
+    private fun FactId.getPosition(transaction: ReadTransaction) = with(store) {
         this@getPosition.getPosition(transaction)
     }
 

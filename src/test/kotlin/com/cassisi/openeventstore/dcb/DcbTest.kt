@@ -5,6 +5,7 @@ import com.apple.foundationdb.FDB
 import com.cassisi.openeventstore.avro.AvroFdbStore
 import com.cassisi.openeventstore.avro.FactRegistry
 import com.cassisi.openeventstore.avro.createAvroFactDescriptor
+import com.cassisi.openeventstore.core.FactId
 import com.cassisi.openeventstore.core.TagTypeItem
 import com.cassisi.openeventstore.core.FactStore
 import com.cassisi.openeventstore.core.FdbFactStoreResetHelper
@@ -66,7 +67,7 @@ class DcbTest {
 
 
         val avroStore = AvroFdbStore(store)
-        val repo: DcbEventLockingRepository<TagQuery, ProjectAdded, UUID> = FdbDecisionModelRepo(avroStore)
+        val repo: DcbEventLockingRepository<TagQuery, ProjectAdded, FactId> = FdbDecisionModelRepo(avroStore)
 
         val addProjectDecider = addProjectDecider()
         val queryMapper = CommandToQueryMapper<AddProject, TagQuery> {
@@ -106,9 +107,9 @@ class DcbTest {
 
 class FdbDecisionModelRepo(
     private val store: AvroFdbStore
-) : DcbEventLockingRepository<TagQuery, ProjectAdded, UUID> {
+) : DcbEventLockingRepository<TagQuery, ProjectAdded, FactId> {
 
-    override suspend fun TagQuery.fetchEvents(): Pair<Flow<ProjectAdded>, UUID?> {
+    override suspend fun TagQuery.fetchEvents(): Pair<Flow<ProjectAdded>, FactId?> {
         val events = store.readFromTagQuery(this)
         val lastId = events.lastOrNull()?.first
         return Pair(
@@ -119,7 +120,7 @@ class FdbDecisionModelRepo(
 
     override fun Flow<ProjectAdded>.save(
         query: TagQuery,
-        version: UUID?
+        version: FactId?
     ): Flow<ProjectAdded> = flow {
         val condition = TagQueryBasedAppendCondition(
             failIfEventsMatch = query,

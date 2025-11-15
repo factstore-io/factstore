@@ -4,8 +4,10 @@ import com.apple.foundationdb.KeySelector
 import com.apple.foundationdb.Range
 import com.apple.foundationdb.ReadTransaction
 import com.cassisi.openeventstore.core.Fact
+import com.cassisi.openeventstore.core.FactId
 import com.cassisi.openeventstore.core.FactStreamer
 import com.cassisi.openeventstore.core.StreamingOptionSet
+import com.cassisi.openeventstore.core.toFactId
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -14,7 +16,6 @@ import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.future.await
 import kotlinx.coroutines.isActive
-import java.util.*
 import java.util.concurrent.CompletableFuture
 
 class FdbFactStreamer(private val store: FdbFactStore) : FactStreamer {
@@ -66,7 +67,7 @@ class FdbFactStreamer(private val store: FdbFactStore) : FactStreamer {
         return tr.getRange(beginSel, endSel, batchSize).asList().thenCompose { keyValues ->
             val factFutures: List<CompletableFuture<FdbFact?>> = keyValues.mapNotNull { keyValue ->
                 val k = store.globalFactPositionSubspace.unpack(keyValue.key)
-                val factId = k.getUUID(k.size() - 1)
+                val factId = k.getUUID(k.size() - 1).toFactId()
                 tr.loadFact(factId)
             }
 
@@ -76,23 +77,23 @@ class FdbFactStreamer(private val store: FdbFactStore) : FactStreamer {
         }
     }
 
-    private suspend fun getLastSeenKeyForFact(factId: UUID): ByteArray {
+    private suspend fun getLastSeenKeyForFact(factId: FactId): ByteArray {
         return store.db.readAsync { tr ->
             tr.loadFact(factId).thenApply { internalFact ->
                 if (internalFact == null) {
                     error("Fact with ID $factId not found!")
                 }
                 val positionTuple = internalFact.positionTuple
-                val byteArray = store.globalFactPositionSubspace.pack(positionTuple.add(factId))
+                val byteArray = store.globalFactPositionSubspace.pack(positionTuple.add(factId.uuid))
                 byteArray
             }
         }.await()
     }
 
 
-    private fun ReadTransaction.loadFact(factId: UUID): CompletableFuture<FdbFact?> =
+    private fun ReadTransaction.loadFact(factId: FactId): CompletableFuture<FdbFact?> =
         with(store) {
-            this@loadFact.loadFact(factId)
+            this@loadFact.loadFactById(factId)
         }
 
 }

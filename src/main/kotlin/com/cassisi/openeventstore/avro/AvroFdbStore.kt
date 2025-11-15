@@ -1,6 +1,7 @@
 package com.cassisi.openeventstore.avro
 
 import com.cassisi.openeventstore.core.Fact
+import com.cassisi.openeventstore.core.FactId
 import com.cassisi.openeventstore.core.FactStore
 import com.cassisi.openeventstore.core.Subject
 import com.cassisi.openeventstore.core.TagQuery
@@ -33,7 +34,7 @@ class AvroFdbStore(
             .findBySubject(type, id)
             .map { FactRegistry.fromEnvelope(it) }
 
-    suspend fun readFromTagQuery(tagQuery: TagQuery): List<Pair<UUID, Any>> =
+    suspend fun readFromTagQuery(tagQuery: TagQuery): List<Pair<FactId, Any>> =
         factStore
             .findByTagQuery(tagQuery)
             .map { Pair(it.id, FactRegistry.fromEnvelope(it)) }
@@ -122,7 +123,7 @@ object FactRegistry {
             .toMap()
 
         val fact = Fact(
-            id = UUID.randomUUID(),
+            id = FactId.generate(),
             type = factType,
             payload = factSerde.serialize(fact),
             subject = Subject(

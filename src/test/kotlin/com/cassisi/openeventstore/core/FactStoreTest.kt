@@ -51,7 +51,7 @@ class FactStoreTest {
 
     @Test
     fun testSimpleAppend(): Unit = runBlocking {
-        val id = UUID.randomUUID()
+        val id = FactId.generate()
         val payload = """ { "username": "Peter" } """.toByteArray()
         val createdAt = Instant.now()
 
@@ -78,7 +78,7 @@ class FactStoreTest {
 
     @Test
     fun testExists(): Unit = runBlocking {
-        val nonExistingFactId = UUID.randomUUID()
+        val nonExistingFactId = FactId.generate()
         assertThat(store.existsById(nonExistingFactId)).isFalse()
     }
 
@@ -87,7 +87,7 @@ class FactStoreTest {
         val now = Instant.now()
 
         val fact1 = Fact(
-            id = UUID.randomUUID(),
+            id = FactId.generate(),
             subject = Subject(
                 type = "USER",
                 id = "ALICE",
@@ -98,7 +98,7 @@ class FactStoreTest {
         )
 
         val fact2 = Fact(
-            id = UUID.randomUUID(),
+            id = FactId.generate(),
             subject = Subject(
                 type = "USER",
                 id = "ALICE",
@@ -109,7 +109,7 @@ class FactStoreTest {
         )
 
         val fact3 = Fact(
-            id = UUID.randomUUID(),
+            id = FactId.generate(),
             subject = Subject(
                 type = "USER",
                 id = "BOB",
@@ -135,7 +135,7 @@ class FactStoreTest {
     @Test
     fun testConditionalAppendWithSubject(): Unit = runBlocking {
         // append first event without an append condition
-        val fact1Id = UUID.randomUUID()
+        val fact1Id = FactId.generate()
         val fact1 = Fact(
             id = fact1Id,
             subject = Subject(
@@ -153,7 +153,7 @@ class FactStoreTest {
 
 
         // append fact2
-        val fact2Id = UUID.randomUUID()
+        val fact2Id = FactId.generate()
         val fact2 = Fact(
             id = fact2Id,
             subject = Subject(
@@ -169,7 +169,7 @@ class FactStoreTest {
         store.append(fact2, secondPreCondition)
 
         // appending a third fact with the same fact ID in the append condition should fail
-        val fact3 = fact2.copy(id = UUID.randomUUID())
+        val fact3 = fact2.copy(id = FactId.generate())
         assertThatThrownBy {
             runBlocking { store.append(fact3, SubjectAppendCondition(fact1Id)) }
         }.isInstanceOf(AppendConditionViolationException::class.java)
@@ -178,9 +178,9 @@ class FactStoreTest {
     @Test
     fun testMultipleFactsOptimisticAppend(): Unit = runBlocking {
 
-        val fact1Id = UUID.randomUUID()
-        val fact2Id = UUID.randomUUID()
-        val fact3Id = UUID.randomUUID()
+        val fact1Id = FactId.generate()
+        val fact2Id = FactId.generate()
+        val fact3Id = FactId.generate()
 
         val fact1 = Fact(
             id = fact1Id,
@@ -217,7 +217,7 @@ class FactStoreTest {
 
         val factsToAppend = listOf(fact1, fact2, fact3)
 
-        val appendCondition: Map<Pair<String, String>, UUID?> = mapOf(
+        val appendCondition: Map<Pair<String, String>, FactId?> = mapOf(
             Pair("USER", "ALICE") to null,
             Pair("USER", "BOB") to null,
         )
@@ -231,9 +231,9 @@ class FactStoreTest {
     @Test
     fun testSubjectQueries(): Unit = runBlocking {
 
-        val fact1Id = UUID.randomUUID()
-        val fact2Id = UUID.randomUUID()
-        val fact3Id = UUID.randomUUID()
+        val fact1Id = FactId.generate()
+        val fact2Id = FactId.generate()
+        val fact3Id = FactId.generate()
 
         val fact1 = Fact(
             id = fact1Id,
@@ -285,8 +285,8 @@ class FactStoreTest {
     @Test
     fun testWithMetadata(): Unit = runBlocking {
 
-        val fact1Id = UUID.randomUUID()
-        val fact2Id = UUID.randomUUID()
+        val fact1Id = FactId.generate()
+        val fact2Id = FactId.generate()
 
         val fact1 = Fact(
             id = fact1Id,
@@ -322,7 +322,7 @@ class FactStoreTest {
     @Test
     fun appendEventsWithTagsAndFindThem(): Unit = runBlocking {
         val fact1 = Fact(
-            id = UUID.randomUUID(),
+            id = FactId.generate(),
             subject = Subject(
                 type = "USER",
                 id = "ALICE",
@@ -335,7 +335,7 @@ class FactStoreTest {
         )
 
         val fact2 = Fact(
-            id = UUID.randomUUID(),
+            id = FactId.generate(),
             subject = Subject(
                 type = "USER",
                 id = "BOB",
@@ -348,7 +348,7 @@ class FactStoreTest {
         )
 
         val fact3 = Fact(
-            id = UUID.randomUUID(),
+            id = FactId.generate(),
             subject = Subject(
                 type = "USER",
                 id = "CHARLIE",
@@ -403,7 +403,7 @@ class FactStoreTest {
         launch {
 
             val fact1 = Fact(
-                id = UUID.randomUUID(),
+                id = FactId.generate(),
                 subject = Subject(
                     type = "USER",
                     id = "ALICE",
@@ -416,7 +416,7 @@ class FactStoreTest {
             )
 
             val fact2 = Fact(
-                id = UUID.randomUUID(),
+                id = FactId.generate(),
                 subject = Subject(
                     type = "USER",
                     id = "BOB",
@@ -429,7 +429,7 @@ class FactStoreTest {
             )
 
             val fact3 = Fact(
-                id = UUID.randomUUID(),
+                id = FactId.generate(),
                 subject = Subject(
                     type = "USER",
                     id = "CHARLIE",
@@ -464,7 +464,7 @@ class FactStoreTest {
         // define facts to append
 
         val fact1 = Fact(
-            id = UUID.randomUUID(),
+            id = FactId.generate(),
             subject = Subject(
                 type = "USER",
                 id = "ALICE",
@@ -477,7 +477,7 @@ class FactStoreTest {
         )
 
         val fact2 = Fact(
-            id = UUID.randomUUID(),
+            id = FactId.generate(),
             subject = Subject(
                 type = "USER",
                 id = "BOB",
@@ -490,7 +490,7 @@ class FactStoreTest {
         )
 
         val fact3 = Fact(
-            id = UUID.randomUUID(),
+            id = FactId.generate(),
             subject = Subject(
                 type = "USER",
                 id = "CHARLIE",
@@ -628,7 +628,7 @@ class FactStoreTest {
     fun testMultipleFactTypesOneQueryItem(): Unit = runBlocking {
         // Create facts with different types
         val fact1 = Fact(
-            id = UUID.randomUUID(),
+            id = FactId.generate(),
             subject = Subject(type = "USER", id = "ALICE"),
             type = "USER_CREATED",
             payload = """{ "username": "Alice" }""".toByteArray(),
@@ -638,7 +638,7 @@ class FactStoreTest {
         )
 
         val fact2 = Fact(
-            id = UUID.randomUUID(),
+            id = FactId.generate(),
             subject = Subject(type = "USER", id = "BOB"),
             type = "USER_UPDATED",
             payload = """{ "username": "Bob" }""".toByteArray(),
@@ -648,7 +648,7 @@ class FactStoreTest {
         )
 
         val fact3 = Fact(
-            id = UUID.randomUUID(),
+            id = FactId.generate(),
             subject = Subject(type = "USER", id = "CHARLIE"),
             type = "USER_CREATED",
             payload = """{ "username": "Charlie" }""".toByteArray(),
@@ -679,7 +679,7 @@ class FactStoreTest {
     fun testMultipleQueryItems(): Unit = runBlocking {
         // Create facts with different types and tags
         val fact1 = Fact(
-            id = UUID.randomUUID(),
+            id = FactId.generate(),
             subject = Subject(type = "USER", id = "ALICE"),
             type = "USER_CREATED",
             payload = """{ "username": "Alice" }""".toByteArray(),
@@ -689,7 +689,7 @@ class FactStoreTest {
         )
 
         val fact2 = Fact(
-            id = UUID.randomUUID(),
+            id = FactId.generate(),
             subject = Subject(type = "USER", id = "BOB"),
             type = "USER_UPDATED",
             payload = """{ "username": "Bob" }""".toByteArray(),
@@ -699,7 +699,7 @@ class FactStoreTest {
         )
 
         val fact3 = Fact(
-            id = UUID.randomUUID(),
+            id = FactId.generate(),
             subject = Subject(type = "USER", id = "CHARLIE"),
             type = "USER_CREATED",
             payload = """{ "username": "Charlie" }""".toByteArray(),
@@ -735,7 +735,7 @@ class FactStoreTest {
     fun testMixedTypesAndTagsQueryItems(): Unit = runBlocking {
         // Create facts with different types and tags
         val fact1 = Fact(
-            id = UUID.randomUUID(),
+            id = FactId.generate(),
             subject = Subject(type = "USER", id = "ALICE"),
             type = "USER_CREATED",
             payload = """{ "username": "Alice" }""".toByteArray(),
@@ -745,7 +745,7 @@ class FactStoreTest {
         )
 
         val fact2 = Fact(
-            id = UUID.randomUUID(),
+            id = FactId.generate(),
             subject = Subject(type = "USER", id = "BOB"),
             type = "USER_UPDATED",
             payload = """{ "username": "Bob" }""".toByteArray(),
@@ -755,7 +755,7 @@ class FactStoreTest {
         )
 
         val fact3 = Fact(
-            id = UUID.randomUUID(),
+            id = FactId.generate(),
             subject = Subject(type = "USER", id = "CHARLIE"),
             type = "USER_CREATED",
             payload = """{ "username": "Charlie" }""".toByteArray(),
@@ -791,7 +791,7 @@ class FactStoreTest {
     fun testNoMatchingFacts(): Unit = runBlocking {
         // Create facts with different types and tags
         val fact1 = Fact(
-            id = UUID.randomUUID(),
+            id = FactId.generate(),
             subject = Subject(type = "USER", id = "ALICE"),
             type = "USER_CREATED",
             payload = """{ "username": "Alice" }""".toByteArray(),
@@ -827,7 +827,7 @@ class FactStoreTest {
             val region = if (index % 2 == 0) "us" else "eu" // Use alternating regions
 
             Fact(
-                id = UUID.randomUUID(),
+                id = FactId.generate(),
                 subject = Subject(
                     type = "USER",
                     id = "user-$index"
@@ -851,10 +851,10 @@ class FactStoreTest {
         // append a few more events
         store.append(
             Fact(
-                id = UUID.randomUUID(),
+                id = FactId.generate(),
                 subject = Subject(
                     type = "USER",
-                    id = "user-${UUID.randomUUID()}"
+                    id = "user-${FactId.generate()}"
                 ),
                 type = "USER_CREATED",
                 payload = """{ "username": "user" }""".toByteArray(),
@@ -914,7 +914,7 @@ class FactStoreTest {
     fun testConditionalAppendWithTagQuery(): Unit = runBlocking {
 
         // append first event without an append condition
-        val fact1Id = UUID.randomUUID()
+        val fact1Id = FactId.generate()
         val fact1 = Fact(
             id = fact1Id,
             subject = Subject(
@@ -956,7 +956,7 @@ class FactStoreTest {
 //
 //        }
 
-        val fact2Id = UUID.randomUUID()
+        val fact2Id = FactId.generate()
         val fact2 = Fact(
             id = fact2Id,
             subject = Subject(
@@ -994,7 +994,7 @@ class FactStoreTest {
 
 
         // append another user fact with another tag
-        val fact3Id = UUID.randomUUID()
+        val fact3Id = FactId.generate()
         val fact3 = Fact(
             id = fact3Id,
             subject = Subject(
@@ -1042,7 +1042,7 @@ class FactStoreTest {
             )
         )
 
-        val fact4Id = UUID.randomUUID()
+        val fact4Id = FactId.generate()
         val fact4 = Fact(
             id = fact4Id,
             subject = Subject(
