@@ -4,6 +4,7 @@ import com.apple.foundationdb.FDB
 import com.cassisi.openeventstore.core.FactStore
 import com.cassisi.openeventstore.core.FdbFactStoreResetHelper
 import com.cassisi.openeventstore.core.impl.*
+import earth.adi.testcontainers.containers.FoundationDBContainer
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.Contextual
 import kotlinx.serialization.SerialName
@@ -12,28 +13,42 @@ import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
+import org.junit.jupiter.api.TestInstance.Lifecycle.PER_CLASS
+import org.testcontainers.junit.jupiter.Container
+import org.testcontainers.junit.jupiter.Testcontainers
+import org.testcontainers.utility.DockerImageName
 import java.time.Instant
 import java.util.*
 
-@TestInstance(TestInstance.Lifecycle.PER_CLASS)
+const val FDB_VERSION = "7.3.69"
+const val FDB_API_VERSION = 730
+
+@TestInstance(PER_CLASS)
+@Testcontainers
 class AvroFactStoreTest {
 
-    private lateinit var store: FactStore
-    private lateinit var resetHelper: FdbFactStoreResetHelper
+    companion object {
 
-    @BeforeAll
-    fun setupFDB() {
-        FDB.selectAPIVersion(730)
-        val db = FDB.instance().open("/etc/foundationdb/fdb.cluster")
-        val fdbFactStore = FdbFactStore(db)
-        store = FactStore(
-            factAppender = FdbFactAppender(fdbFactStore),
-            factFinder = FdbFactFinder(fdbFactStore),
-            factStreamer = FdbFactStreamer(fdbFactStore),
-            conditionalSubjectFactAppender = ConditionalFdbFactAppender(fdbFactStore),
-            conditionalTagQueryFactAppender = ConditionalTagQueryFdbFactAppender(fdbFactStore)
-        )
-        resetHelper = FdbFactStoreResetHelper(db)
+        lateinit var store: FactStore
+        lateinit var resetHelper: FdbFactStoreResetHelper
+        lateinit var clusterFilePath: String
+
+        @Container
+        val testFdbCluster = FoundationDBContainer(DockerImageName.parse("foundationdb/foundationdb:$FDB_VERSION"))
+
+        @JvmStatic
+        @BeforeAll
+        fun setupFDB() {
+            FDB.selectAPIVersion(FDB_API_VERSION)
+            clusterFilePath = testFdbCluster.clusterFilePath
+            val db = FDB.instance().open(clusterFilePath)
+            store = buildFdbFactStore(
+                clusterFilePath = testFdbCluster.clusterFilePath,
+                name = "integration-test"
+            )
+            resetHelper = FdbFactStoreResetHelper(db)
+        }
+
     }
 
     @BeforeEach

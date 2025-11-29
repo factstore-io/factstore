@@ -1,25 +1,42 @@
 package com.cassisi.openeventstore.classic
 
 import com.apple.foundationdb.FDB
+import earth.adi.testcontainers.containers.FoundationDBContainer
 import org.assertj.core.api.Assertions
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
+import org.junit.jupiter.api.TestInstance.Lifecycle.PER_CLASS
+import org.testcontainers.junit.jupiter.Container
+import org.testcontainers.junit.jupiter.Testcontainers
+import org.testcontainers.utility.DockerImageName
 import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.CompletionException
 
-@TestInstance(TestInstance.Lifecycle.PER_CLASS)
+const val FDB_VERSION = "7.3.69"
+const val FDB_API_VERSION = 730
+
+@TestInstance(PER_CLASS)
+@Testcontainers
 class ClassicEventStoreTest {
 
-    private lateinit var store: ClassicEventStore
+    companion object {
 
-    @BeforeAll
-    fun setupFDB() {
-        FDB.selectAPIVersion(730)
-        val db = FDB.instance().open("/etc/foundationdb/fdb.cluster")
-        store = ClassicEventStore(db)
+        @Container
+        val testFdbCluster = FoundationDBContainer(DockerImageName.parse("foundationdb/foundationdb:${FDB_VERSION}"))
+
+        lateinit var store: ClassicEventStore
+
+        @JvmStatic
+        @BeforeAll
+        fun setupFDB() {
+            FDB.selectAPIVersion(FDB_API_VERSION)
+            val db = FDB.instance().open(testFdbCluster.clusterFilePath)
+            store = ClassicEventStore(db)
+        }
+
     }
 
     @BeforeEach

@@ -1,27 +1,13 @@
 package com.cassisi.openeventstore.dcb
 
-import com.apple.foundationdb.Database
 import com.apple.foundationdb.FDB
 import com.cassisi.openeventstore.avro.AvroFdbStore
 import com.cassisi.openeventstore.avro.FactRegistry
 import com.cassisi.openeventstore.avro.createAvroFactDescriptor
-import com.cassisi.openeventstore.core.FactId
-import com.cassisi.openeventstore.core.TagTypeItem
-import com.cassisi.openeventstore.core.FactStore
-import com.cassisi.openeventstore.core.FdbFactStoreResetHelper
-import com.cassisi.openeventstore.core.TagQuery
-import com.cassisi.openeventstore.core.TagQueryBasedAppendCondition
-import com.cassisi.openeventstore.core.impl.ConditionalFdbFactAppender
-import com.cassisi.openeventstore.core.impl.ConditionalTagQueryFdbFactAppender
-import com.cassisi.openeventstore.core.impl.FdbFactAppender
-import com.cassisi.openeventstore.core.impl.FdbFactFinder
-import com.cassisi.openeventstore.core.impl.FdbFactStore
-import com.cassisi.openeventstore.core.impl.FdbFactStreamer
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.asFlow
-import kotlinx.coroutines.flow.emitAll
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.toList
+import com.cassisi.openeventstore.core.*
+import com.cassisi.openeventstore.core.impl.buildFdbFactStore
+import earth.adi.testcontainers.containers.FoundationDBContainer
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.runBlocking
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeAll
@@ -29,32 +15,39 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import org.junit.jupiter.api.TestInstance.Lifecycle.PER_CLASS
-import java.util.UUID
+import org.testcontainers.junit.jupiter.Container
+import org.testcontainers.junit.jupiter.Testcontainers
+import org.testcontainers.utility.DockerImageName
+import java.util.*
 
 @TestInstance(PER_CLASS)
+@Testcontainers
 class DcbTest {
 
-    private lateinit var store: FactStore
-    private lateinit var resetHelper: FdbFactStoreResetHelper
-    private lateinit var db: Database
-    private lateinit var fdbFactStore: FdbFactStore
+    companion object {
 
-    @BeforeAll
-    fun setupFDB() {
-        FDB.selectAPIVersion(730)
-        db = FDB.instance().open("/etc/foundationdb/fdb.cluster")
-        fdbFactStore = FdbFactStore(db)
-        store = FactStore(
-            factAppender = FdbFactAppender(fdbFactStore),
-            factFinder = FdbFactFinder(fdbFactStore),
-            factStreamer = FdbFactStreamer(fdbFactStore),
-            conditionalSubjectFactAppender = ConditionalFdbFactAppender(fdbFactStore),
-            conditionalTagQueryFactAppender = ConditionalTagQueryFdbFactAppender(fdbFactStore),
-        )
-        resetHelper = FdbFactStoreResetHelper(db)
+        lateinit var store: FactStore
+        lateinit var resetHelper: FdbFactStoreResetHelper
+        lateinit var clusterFilePath: String
 
+        @Container
+        val testFdbCluster = FoundationDBContainer(DockerImageName.parse("foundationdb/foundationdb:$FDB_VERSION"))
 
-        FactRegistry.register(createAvroFactDescriptor<ProjectAdded>("PROJECT_ADDED"))
+        @JvmStatic
+        @BeforeAll
+        fun setupFDB() {
+            FDB.selectAPIVersion(FDB_API_VERSION)
+            clusterFilePath = testFdbCluster.clusterFilePath
+            val db = FDB.instance().open(clusterFilePath)
+            store = buildFdbFactStore(
+                clusterFilePath = testFdbCluster.clusterFilePath,
+                name = "integration-test"
+            )
+            resetHelper = FdbFactStoreResetHelper(db)
+
+            FactRegistry.register(createAvroFactDescriptor<ProjectAdded>("PROJECT_ADDED"))
+        }
+
     }
 
     @BeforeEach
