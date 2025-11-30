@@ -28,6 +28,14 @@ jobs:
         java-version: '21'
         distribution: 'temurin'
 
+    - name: Install FoundationDB Client
+      run: |
+        wget https://github.com/apple/foundationdb/releases/download/7.3.69/foundationdb-clients_7.3.69-1_amd64.deb
+        sudo dpkg -i foundationdb-clients_7.3.69-1_amd64.deb
+        
+        # Print client version for debugging
+        fdbcli --version
+
     # Configure Gradle for optimal use in GitHub Actions, including caching of downloaded dependencies.
     # See: https://github.com/gradle/actions/blob/main/setup-gradle/README.md
     - name: Setup Gradle
