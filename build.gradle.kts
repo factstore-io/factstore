@@ -16,7 +16,7 @@ val quarkusPlatformVersion: String by project
 
 val foundationDbVersion="7.3.67"
 val kotlinSerializationJsonVersion="1.9.0"
-val avro4kVersion = "2.6.0"
+val avro4kVersion = "2.7.0"
 val assertJVersion = "3.27.6"
 val coroutinesVersion = "1.10.2"
 val fModelVersion="3.6.1"
