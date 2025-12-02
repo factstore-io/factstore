@@ -1,58 +1,78 @@
-# open-event-store
+# FactStore
 
-This project uses Quarkus, the Supersonic Subatomic Java Framework.
+A lightweight, Kotlin-first event store designed for clarity, correctness, and extensibility — built on a clean specification and powered by FoundationDB. 🚀
 
-If you want to learn more about Quarkus, please visit its website: <https://quarkus.io/>.
+## 📚 Overview
 
-## Running the application in dev mode
+FactStore is a modular event-sourcing system with two main parts:
 
-You can run your application in dev mode that enables live coding using:
+### `fact-store-specification`
 
-```shell script
-./gradlew quarkusDev
+This subproject defines the core contracts and behavioral rules for a FactStore implementation.
+It is written in Kotlin and establishes the APIs for:
+
+Appending events (also called facts)
+
+Reading streams of facts
+
+Subscribing to live or historical streams
+
+Managing event ordering and consistency guarantees
+
+This module is intentionally implementation-agnostic, serving as the foundation for any backend.
+
+### `fact-store-foundationdb`
+
+An implementation of the specification using FoundationDB as the storage engine.
+This module provides:
+- A stateless event-sourcing layer built on FoundationDB’s transactional model 
+- Strong consistency and ordered event writes
+- Efficient range reads and streams
+- A clean separation between domain logic and storage mechanics
+
+If you want a production-ready FactStore backed by FoundationDB, this is the module for you.
+
+## ✨ Features
+
+- Clear contract-driven architecture
+- Append-only fact storage
+- Predictable event ordering
+- Streaming APIs for real-time or catch-up subscribers
+- Stateless FoundationDB implementation
+- Kotlin-first, but compatible with the JVM ecosystem
+
+## 🧱 Project Structure
+```
+factstore/
+├── fact-store-specification/      # Core APIs and contracts
+└── fact-store-foundationdb/       # FoundationDB-backed implementation
 ```
 
-> **_NOTE:_**  Quarkus now ships with a Dev UI, which is available in dev mode only at <http://localhost:8080/q/dev/>.
+## 🎯 Why FactStore?
 
-## Packaging and running the application
+Event stores can become complex or overly opinionated. FactStore aims to stay:
 
-The application can be packaged using:
+- Minimal — The spec defines only what’s essential
+- Predictable — Behavior is explicitly defined
+- Extensible — Write your own backend if you want
+- Fast & Reliable — The FoundationDB implementation ensures strong guarantees
 
-```shell script
-./gradlew build
-```
+## 🚀 Getting Started
 
-It produces the `quarkus-run.jar` file in the `build/quarkus-app/` directory.
-Be aware that it’s not an _über-jar_ as the dependencies are copied into the `build/quarkus-app/lib/` directory.
+*Using the Specification*
 
-The application is now runnable using `java -jar build/quarkus-app/quarkus-run.jar`.
+Add the spec module as a dependency and implement the interfaces if you want a custom backend.
 
-If you want to build an _über-jar_, execute the following command:
+*Using the FoundationDB Implementation*
 
-```shell script
-./gradlew build -Dquarkus.package.jar.type=uber-jar
-```
+Add the FoundationDB-backed store to integrate a production-ready FactStore into your application.
+(Include Gradle/Maven coordinates here once you publish them.)
 
-The application, packaged as an _über-jar_, is now runnable using `java -jar build/*-runner.jar`.
+## 🤝 Contributing
 
-## Creating a native executable
+Issues, ideas, and contributions are welcome!
+Whether you want to improve the specification, suggest a new backend, or optimize the existing implementation, feel free to open a PR.
 
-You can create a native executable using:
+## 📜 License
 
-```shell script
-./gradlew build -Dquarkus.native.enabled=true
-```
-
-Or, if you don't have GraalVM installed, you can run the native executable build in a container using:
-
-```shell script
-./gradlew build -Dquarkus.native.enabled=true -Dquarkus.native.container-build=true
-```
-
-You can then execute your native executable with: `./build/open-event-store-1.0.0-SNAPSHOT-runner`
-
-If you want to learn more about building native executables, please consult <https://quarkus.io/guides/gradle-tooling>.
-
-## Related Guides
-
-- Kotlin ([guide](https://quarkus.io/guides/kotlin)): Write your services in Kotlin
+This project is released under the Apache 2.0 License.

@@ -1,0 +1,33 @@
+
+[versions]
+kotlin = "2.2.21"
+junit = "5.11.0"
+assertj = "3.27.4"
+kotlinx-coroutines-core = "1.10.2"
+fdb-java = "7.3.67"
+json-serialization = "1.9.0"
+avro4k = "2.7.0"
+avro = "1.12.1"
+testcontainers-junit-jupiter = "1.21.3"
+testcontainers-foundationdb = "1.1.0"
+fmodel = "3.6.1"
+
+[plugins]
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+
+[libraries]
+org-jetbrains-kotlinx-kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines-core" }
+org-foundationdb-fdb-java = { module = "org.foundationdb:fdb-java", version.ref = "fdb-java" }
+org-jetbrains-kotlinx-kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "json-serialization" }
+com-github-avro-kotlin-avro4k-avro4k-core = { module = "com.github.avro-kotlin.avro4k:avro4k-core", version.ref = "avro4k" }
+org-junit-jupiter-junit-jupiter-api = { module = "org.junit.jupiter:junit-jupiter-api", version.ref = "junit" }
+org-junit-jupiter-junit-jupiter-params = { module = "org.junit.jupiter:junit-jupiter-params", version.ref = "junit" }
+org-junit-jupiter-junit-jupiter-engine = { module = "org.junit.jupiter:junit-jupiter-engine", version.ref = "junit" }
+org-junit-platform-junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+org-assertj-assertj-core = { module = "org.assertj:assertj-core", version.ref = "assertj" }
+org-testcontainers-junit-jupiter = { module = "org.testcontainers:junit-jupiter", version.ref = "testcontainers-junit-jupiter" }
+earth-adi-testcontainers-foundationdb = { module = "earth.adi:testcontainers-foundationdb", version.ref = "testcontainers-foundationdb"}
+org-apache-avro-avro = { module = "org.apache.avro:avro", version.ref = "avro" }
+com-fraktalio-fmodel-domain = { module = "com.fraktalio.fmodel:domain", version.ref = "fmodel" }
+com-fraktalio-fmodel-application-vanilla = { module = "com.fraktalio.fmodel:application-vanilla", version.ref = "fmodel" }

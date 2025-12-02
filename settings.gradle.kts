@@ -10,4 +10,12 @@ pluginManagement {
         id(quarkusPluginId) version quarkusPluginVersion
     }
 }
-rootProject.name="open-event-store"
+rootProject.name="fact-store"
+
+include(
+    "fact-store-specification",
+    "fact-store-foundationdb",
+    "fact-store-avro",
+    "fact-store-fmodel",
+    "fact-explorer"
+)
