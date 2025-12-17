@@ -14,11 +14,6 @@ dependencies {
 
     // serialization
     implementation(libs.com.github.avro.kotlin.avro4k.avro4k.core)
-    constraints {
-        implementation(libs.org.apache.avro.avro) {
-            because("older version have known vulnerabilities")
-        }
-    }
 
     // test
     testImplementation(libs.org.assertj.assertj.core)

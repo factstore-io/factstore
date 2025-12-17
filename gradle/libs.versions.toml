@@ -7,7 +7,6 @@ kotlinx-coroutines-core = "1.10.2"
 fdb-java = "7.3.67"
 json-serialization = "1.9.0"
 avro4k = "2.8.0"
-avro = "1.12.1"
 testcontainers-junit-jupiter = "1.21.3"
 testcontainers-foundationdb = "1.1.0"
 fmodel = "3.7.0"
@@ -28,6 +27,5 @@ org-junit-platform-junit-platform-launcher = { module = "org.junit.platform:juni
 org-assertj-assertj-core = { module = "org.assertj:assertj-core", version.ref = "assertj" }
 org-testcontainers-junit-jupiter = { module = "org.testcontainers:junit-jupiter", version.ref = "testcontainers-junit-jupiter" }
 earth-adi-testcontainers-foundationdb = { module = "earth.adi:testcontainers-foundationdb", version.ref = "testcontainers-foundationdb"}
-org-apache-avro-avro = { module = "org.apache.avro:avro", version.ref = "avro" }
 com-fraktalio-fmodel-domain = { module = "com.fraktalio.fmodel:domain", version.ref = "fmodel" }
 com-fraktalio-fmodel-application-vanilla = { module = "com.fraktalio.fmodel:application-vanilla", version.ref = "fmodel" }
