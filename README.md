@@ -72,4 +72,11 @@ Whether you want to improve the specification, suggest a new backend, or optimiz
 
 ## 📜 License
 
-This project is released under the Apache 2.0 License.
+FactStore is currently licensed under the Apache License 2.0.
+
+The author may offer alternative commercial licensing options for
+future versions of FactStore. Commercial licenses would provide
+the right to use FactStore in production environments without the
+obligations of the open-source license.
+
+No commercial license is required at this time.
