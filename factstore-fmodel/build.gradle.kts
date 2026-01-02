@@ -4,9 +4,9 @@ plugins {
 }
 
 dependencies {
-    implementation(project(":fact-store-specification"))
-    implementation(project(":fact-store-foundationdb"))
-    implementation(project(":fact-store-avro"))
+    implementation(project(":factstore-specification"))
+    implementation(project(":factstore-foundationdb"))
+    implementation(project(":factstore-avro"))
     implementation(kotlin("reflect"))
 
     implementation(libs.org.jetbrains.kotlinx.kotlinx.coroutines.core)

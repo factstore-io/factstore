@@ -10,12 +10,12 @@ pluginManagement {
         id(quarkusPluginId) version quarkusPluginVersion
     }
 }
-rootProject.name="fact-store"
+rootProject.name="factstore"
 
 include(
-    "fact-store-specification",
-    "fact-store-foundationdb",
-    "fact-store-avro",
-    "fact-store-fmodel",
+    "factstore-specification",
+    "factstore-foundationdb",
+    "factstore-avro",
+    "factstore-fmodel",
     "fact-explorer"
 )

@@ -6,7 +6,7 @@ A lightweight, Kotlin-first event store designed for clarity, correctness, and e
 
 FactStore is a modular event-sourcing system with two main parts:
 
-### `fact-store-specification`
+### `factstore-specification`
 
 This subproject defines the core contracts and behavioral rules for a FactStore implementation.
 It is written in Kotlin and establishes the APIs for:
@@ -18,7 +18,7 @@ It is written in Kotlin and establishes the APIs for:
 
 This module is intentionally implementation-agnostic, serving as the foundation for any backend.
 
-### `fact-store-foundationdb`
+### `factstore-foundationdb`
 
 An implementation of the specification using FoundationDB as the storage engine.
 This module provides:
@@ -41,8 +41,8 @@ If you want a production-ready FactStore backed by FoundationDB, this is the mod
 ## 🧱 Project Structure
 ```
 factstore/
-├── fact-store-specification/      # Core APIs and contracts
-└── fact-store-foundationdb/       # FoundationDB-backed implementation
+├── factstore-specification/      # Core APIs and contracts
+└── factstore-foundationdb/       # FoundationDB-backed implementation
 ```
 
 ## 🎯 Why FactStore?

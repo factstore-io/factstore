@@ -4,14 +4,15 @@ plugins {
 }
 
 dependencies {
-    implementation(project(":fact-store-specification"))
+    implementation(project(":factstore-specification"))
+    implementation(project(":factstore-foundationdb"))
+    implementation(kotlin("reflect"))
     implementation(libs.org.jetbrains.kotlinx.kotlinx.coroutines.core)
 
     // foundation db client
     implementation(libs.org.foundationdb.fdb.java)
 
     // serialization
-    implementation(libs.org.jetbrains.kotlinx.kotlinx.serialization.json)
     implementation(libs.com.github.avro.kotlin.avro4k.avro4k.core)
 
     // test
