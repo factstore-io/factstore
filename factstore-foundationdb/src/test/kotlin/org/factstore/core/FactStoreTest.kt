@@ -68,7 +68,7 @@ class FactStoreTest {
 
         val fact = Fact(
             id = id,
-            subject = Subject(
+            subjectRef = SubjectRef(
                 type = "USER",
                 id = "ALICE",
             ),
@@ -99,7 +99,7 @@ class FactStoreTest {
 
         val fact1 = Fact(
             id = FactId.generate(),
-            subject = Subject(
+            subjectRef = SubjectRef(
                 type = "USER",
                 id = "ALICE",
             ),
@@ -110,7 +110,7 @@ class FactStoreTest {
 
         val fact2 = Fact(
             id = FactId.generate(),
-            subject = Subject(
+            subjectRef = SubjectRef(
                 type = "USER",
                 id = "ALICE",
             ),
@@ -121,7 +121,7 @@ class FactStoreTest {
 
         val fact3 = Fact(
             id = FactId.generate(),
-            subject = Subject(
+            subjectRef = SubjectRef(
                 type = "USER",
                 id = "BOB",
             ),
@@ -149,7 +149,7 @@ class FactStoreTest {
         val fact1Id = FactId.generate()
         val fact1 = Fact(
             id = fact1Id,
-            subject = Subject(
+            subjectRef = SubjectRef(
                 type = "USER",
                 id = "ALICE",
             ),
@@ -159,15 +159,28 @@ class FactStoreTest {
         )
 
         // append fact1
-        val firstPreCondition = SubjectAppendCondition(null)
-        store.append(fact1, firstPreCondition)
+        val appendRequestWithEmptySubjectCondition = AppendRequest(
+            facts = listOf(fact1),
+            idempotencyKey = IdempotencyKey(),
+            condition = AppendCondition.ExpectedLastFact(
+                subjectRef = SubjectRef(
+                    type = "USER",
+                    id = "ALICE"
+                ),
+                expectedLastFactId = null
+            )
+        )
+
+        store.append(appendRequestWithEmptySubjectCondition).also {
+            assertThat(it).isInstanceOf(AppendResult.Appended::class.java)
+        }
 
 
         // append fact2
         val fact2Id = FactId.generate()
         val fact2 = Fact(
             id = fact2Id,
-            subject = Subject(
+            subjectRef = SubjectRef(
                 type = "USER",
                 id = "ALICE",
             ),
@@ -176,14 +189,40 @@ class FactStoreTest {
             createdAt = Instant.now()
         )
 
-        val secondPreCondition = SubjectAppendCondition(fact1Id)
-        store.append(fact2, secondPreCondition)
+        val appendRequestWithFirstFactSubjectCondition = AppendRequest(
+            facts = listOf(fact2),
+            idempotencyKey = IdempotencyKey(),
+            condition = AppendCondition.ExpectedLastFact(
+                subjectRef = SubjectRef(
+                    type = "USER",
+                    id = "ALICE"
+                ),
+                expectedLastFactId = fact1Id
+            )
+        )
+
+        store.append(appendRequestWithFirstFactSubjectCondition).also {
+            assertThat(it).isInstanceOf(AppendResult.Appended::class.java)
+        }
 
         // appending a third fact with the same fact ID in the append condition should fail
+        // this simulates two concurrent/conflicting append requests
         val fact3 = fact2.copy(id = FactId.generate())
-        assertThatThrownBy {
-            runBlocking { store.append(fact3, SubjectAppendCondition(fact1Id)) }
-        }.isInstanceOf(AppendConditionViolationException::class.java)
+        val appendRequestWithViolatingSubjectCondition = AppendRequest(
+            facts = listOf(fact3),
+            idempotencyKey = IdempotencyKey(),
+            condition = AppendCondition.ExpectedLastFact(
+                subjectRef = SubjectRef(
+                    type = "USER",
+                    id = "ALICE"
+                ),
+                expectedLastFactId = fact1Id // <-- this will cause the violation
+            )
+        )
+
+        store.append(appendRequestWithViolatingSubjectCondition).also {
+            assertThat(it).isInstanceOf(AppendResult.AppendConditionViolated::class.java)
+        }
     }
 
     @Test
@@ -195,7 +234,7 @@ class FactStoreTest {
 
         val fact1 = Fact(
             id = fact1Id,
-            subject = Subject(
+            subjectRef = SubjectRef(
                 type = "USER",
                 id = "ALICE",
             ),
@@ -206,7 +245,7 @@ class FactStoreTest {
 
         val fact2 = Fact(
             id = fact2Id,
-            subject = Subject(
+            subjectRef = SubjectRef(
                 type = "USER",
                 id = "BOB",
             ),
@@ -217,7 +256,7 @@ class FactStoreTest {
 
         val fact3 = Fact(
             id = fact3Id,
-            subject = Subject(
+            subjectRef = SubjectRef(
                 type = "USER",
                 id = "ALICE",
             ),
@@ -226,16 +265,20 @@ class FactStoreTest {
             createdAt = Instant.now()
         )
 
-        val factsToAppend = listOf(fact1, fact2, fact3)
+        val appendRequest = AppendRequest(
+            facts = listOf(fact1, fact2, fact3),
+            idempotencyKey = IdempotencyKey(),
+            condition = AppendCondition.ExpectedMultiSubjectLastFact(
+                expections = mapOf(
+                    SubjectRef("USER", "ALICE") to null,
+                    SubjectRef("USER", "BOB") to null,
+                )
+            )
+        )
 
-        val appendCondition: Map<Pair<String, String>, FactId?> = mapOf(
-            Pair("USER", "ALICE") to null,
-            Pair("USER", "BOB") to null,
-        )
-        val batchCondition = MultiSubjectAppendCondition(
-            appendCondition
-        )
-        store.append(factsToAppend, batchCondition)
+        store.append(appendRequest).also {
+            assertThat(it).isInstanceOf(AppendResult.Appended::class.java)
+        }
 
     }
 
@@ -248,7 +291,7 @@ class FactStoreTest {
 
         val fact1 = Fact(
             id = fact1Id,
-            subject = Subject(
+            subjectRef = SubjectRef(
                 type = "USER",
                 id = "ALICE",
             ),
@@ -259,7 +302,7 @@ class FactStoreTest {
 
         val fact2 = Fact(
             id = fact2Id,
-            subject = Subject(
+            subjectRef = SubjectRef(
                 type = "USER",
                 id = "BOB",
             ),
@@ -270,7 +313,7 @@ class FactStoreTest {
 
         val fact3 = Fact(
             id = fact3Id,
-            subject = Subject(
+            subjectRef = SubjectRef(
                 type = "USER",
                 id = "ALICE",
             ),
@@ -301,7 +344,7 @@ class FactStoreTest {
 
         val fact1 = Fact(
             id = fact1Id,
-            subject = Subject(
+            subjectRef = SubjectRef(
                 type = "USER",
                 id = "ALICE",
             ),
@@ -313,7 +356,7 @@ class FactStoreTest {
 
         val fact2 = Fact(
             id = fact2Id,
-            subject = Subject(
+            subjectRef = SubjectRef(
                 type = "USER",
                 id = "BOB",
             ),
@@ -334,7 +377,7 @@ class FactStoreTest {
     fun appendEventsWithTagsAndFindThem(): Unit = runBlocking {
         val fact1 = Fact(
             id = FactId.generate(),
-            subject = Subject(
+            subjectRef = SubjectRef(
                 type = "USER",
                 id = "ALICE",
             ),
@@ -347,7 +390,7 @@ class FactStoreTest {
 
         val fact2 = Fact(
             id = FactId.generate(),
-            subject = Subject(
+            subjectRef = SubjectRef(
                 type = "USER",
                 id = "BOB",
             ),
@@ -360,7 +403,7 @@ class FactStoreTest {
 
         val fact3 = Fact(
             id = FactId.generate(),
-            subject = Subject(
+            subjectRef = SubjectRef(
                 type = "USER",
                 id = "CHARLIE",
             ),
@@ -415,7 +458,7 @@ class FactStoreTest {
 
             val fact1 = Fact(
                 id = FactId.generate(),
-                subject = Subject(
+                subjectRef = SubjectRef(
                     type = "USER",
                     id = "ALICE",
                 ),
@@ -428,7 +471,7 @@ class FactStoreTest {
 
             val fact2 = Fact(
                 id = FactId.generate(),
-                subject = Subject(
+                subjectRef = SubjectRef(
                     type = "USER",
                     id = "BOB",
                 ),
@@ -441,7 +484,7 @@ class FactStoreTest {
 
             val fact3 = Fact(
                 id = FactId.generate(),
-                subject = Subject(
+                subjectRef = SubjectRef(
                     type = "USER",
                     id = "CHARLIE",
                 ),
@@ -476,7 +519,7 @@ class FactStoreTest {
 
         val fact1 = Fact(
             id = FactId.generate(),
-            subject = Subject(
+            subjectRef = SubjectRef(
                 type = "USER",
                 id = "ALICE",
             ),
@@ -489,7 +532,7 @@ class FactStoreTest {
 
         val fact2 = Fact(
             id = FactId.generate(),
-            subject = Subject(
+            subjectRef = SubjectRef(
                 type = "USER",
                 id = "BOB",
             ),
@@ -502,7 +545,7 @@ class FactStoreTest {
 
         val fact3 = Fact(
             id = FactId.generate(),
-            subject = Subject(
+            subjectRef = SubjectRef(
                 type = "USER",
                 id = "CHARLIE",
             ),
@@ -640,7 +683,7 @@ class FactStoreTest {
         // Create facts with different types
         val fact1 = Fact(
             id = FactId.generate(),
-            subject = Subject(type = "USER", id = "ALICE"),
+            subjectRef = SubjectRef(type = "USER", id = "ALICE"),
             type = "USER_CREATED",
             payload = """{ "username": "Alice" }""".toByteArray(),
             createdAt = Instant.now(),
@@ -650,7 +693,7 @@ class FactStoreTest {
 
         val fact2 = Fact(
             id = FactId.generate(),
-            subject = Subject(type = "USER", id = "BOB"),
+            subjectRef = SubjectRef(type = "USER", id = "BOB"),
             type = "USER_UPDATED",
             payload = """{ "username": "Bob" }""".toByteArray(),
             createdAt = Instant.now(),
@@ -660,7 +703,7 @@ class FactStoreTest {
 
         val fact3 = Fact(
             id = FactId.generate(),
-            subject = Subject(type = "USER", id = "CHARLIE"),
+            subjectRef = SubjectRef(type = "USER", id = "CHARLIE"),
             type = "USER_CREATED",
             payload = """{ "username": "Charlie" }""".toByteArray(),
             createdAt = Instant.now(),
@@ -691,7 +734,7 @@ class FactStoreTest {
         // Create facts with different types and tags
         val fact1 = Fact(
             id = FactId.generate(),
-            subject = Subject(type = "USER", id = "ALICE"),
+            subjectRef = SubjectRef(type = "USER", id = "ALICE"),
             type = "USER_CREATED",
             payload = """{ "username": "Alice" }""".toByteArray(),
             createdAt = Instant.now(),
@@ -701,7 +744,7 @@ class FactStoreTest {
 
         val fact2 = Fact(
             id = FactId.generate(),
-            subject = Subject(type = "USER", id = "BOB"),
+            subjectRef = SubjectRef(type = "USER", id = "BOB"),
             type = "USER_UPDATED",
             payload = """{ "username": "Bob" }""".toByteArray(),
             createdAt = Instant.now(),
@@ -711,7 +754,7 @@ class FactStoreTest {
 
         val fact3 = Fact(
             id = FactId.generate(),
-            subject = Subject(type = "USER", id = "CHARLIE"),
+            subjectRef = SubjectRef(type = "USER", id = "CHARLIE"),
             type = "USER_CREATED",
             payload = """{ "username": "Charlie" }""".toByteArray(),
             createdAt = Instant.now(),
@@ -747,7 +790,7 @@ class FactStoreTest {
         // Create facts with different types and tags
         val fact1 = Fact(
             id = FactId.generate(),
-            subject = Subject(type = "USER", id = "ALICE"),
+            subjectRef = SubjectRef(type = "USER", id = "ALICE"),
             type = "USER_CREATED",
             payload = """{ "username": "Alice" }""".toByteArray(),
             createdAt = Instant.now(),
@@ -757,7 +800,7 @@ class FactStoreTest {
 
         val fact2 = Fact(
             id = FactId.generate(),
-            subject = Subject(type = "USER", id = "BOB"),
+            subjectRef = SubjectRef(type = "USER", id = "BOB"),
             type = "USER_UPDATED",
             payload = """{ "username": "Bob" }""".toByteArray(),
             createdAt = Instant.now(),
@@ -767,7 +810,7 @@ class FactStoreTest {
 
         val fact3 = Fact(
             id = FactId.generate(),
-            subject = Subject(type = "USER", id = "CHARLIE"),
+            subjectRef = SubjectRef(type = "USER", id = "CHARLIE"),
             type = "USER_CREATED",
             payload = """{ "username": "Charlie" }""".toByteArray(),
             createdAt = Instant.now(),
@@ -803,7 +846,7 @@ class FactStoreTest {
         // Create facts with different types and tags
         val fact1 = Fact(
             id = FactId.generate(),
-            subject = Subject(type = "USER", id = "ALICE"),
+            subjectRef = SubjectRef(type = "USER", id = "ALICE"),
             type = "USER_CREATED",
             payload = """{ "username": "Alice" }""".toByteArray(),
             createdAt = Instant.now(),
@@ -839,7 +882,7 @@ class FactStoreTest {
 
             Fact(
                 id = FactId.generate(),
-                subject = Subject(
+                subjectRef = SubjectRef(
                     type = "USER",
                     id = "user-$index"
                 ),
@@ -863,7 +906,7 @@ class FactStoreTest {
         store.append(
             Fact(
                 id = FactId.generate(),
-                subject = Subject(
+                subjectRef = SubjectRef(
                     type = "USER",
                     id = "user-${FactId.generate()}"
                 ),
@@ -928,7 +971,7 @@ class FactStoreTest {
         val fact1Id = FactId.generate()
         val fact1 = Fact(
             id = fact1Id,
-            subject = Subject(
+            subjectRef = SubjectRef(
                 type = "USER",
                 id = "ALICE",
             ),
@@ -952,17 +995,20 @@ class FactStoreTest {
 
         println("appending $fact1Id")
         store.append(
-            facts = listOf(fact1),
-            condition = TagQueryBasedAppendCondition(
-                failIfEventsMatch = tagQuery,
-                after = null
+            AppendRequest(
+                facts = listOf(fact1),
+                idempotencyKey = IdempotencyKey(),
+                condition = AppendCondition.TagQueryBased(
+                    failIfEventsMatch = tagQuery,
+                    after = null
+                )
             )
-        )
+        ).also { assertThat(it).isInstanceOf(AppendResult.Appended::class.java) }
 
         val fact2Id = FactId.generate()
         val fact2 = Fact(
             id = fact2Id,
-            subject = Subject(
+            subjectRef = SubjectRef(
                 type = "USER",
                 id = "ALICE",
             ),
@@ -974,33 +1020,36 @@ class FactStoreTest {
             )
         )
 
-
-        store.append(
+        val appendRequest2 = AppendRequest(
             facts = listOf(fact2),
-            condition = TagQueryBasedAppendCondition(
+            idempotencyKey = IdempotencyKey(),
+            condition = AppendCondition.TagQueryBased(
                 failIfEventsMatch = tagQuery,
                 after = fact1Id
             )
         )
 
-        assertThatThrownBy {
-            runBlocking {
-                store.append(
-                    facts = listOf(fact2),
-                    condition = TagQueryBasedAppendCondition(
-                        failIfEventsMatch = tagQuery,
-                        after = null
-                    )
-                )
-            }
-        }.isInstanceOf(AppendConditionViolationException::class.java)
+        store.append(appendRequest2).also { assertThat(it).isInstanceOf(AppendResult.Appended::class.java) }
+
+        val appendRequest3 = AppendRequest(
+            facts = listOf(fact2),
+            idempotencyKey = IdempotencyKey(),
+            condition = AppendCondition.TagQueryBased(
+                failIfEventsMatch = tagQuery,
+                after = null
+            )
+        )
+
+        store.append(appendRequest3).also {
+            assertThat(it).isInstanceOf(AppendResult.AppendConditionViolated::class.java)
+        }
 
 
         // append another user fact with another tag
         val fact3Id = FactId.generate()
         val fact3 = Fact(
             id = fact3Id,
-            subject = Subject(
+            subjectRef = SubjectRef(
                 type = "USER",
                 id = "BOB",
             ),
@@ -1022,18 +1071,20 @@ class FactStoreTest {
         )
 
         println("appending $fact3Id")
-        store.append(
+        val appendRequest4 = AppendRequest(
             facts = listOf(fact3),
-            condition = TagQueryBasedAppendCondition(
+            idempotencyKey = IdempotencyKey(),
+            condition = AppendCondition.TagQueryBased(
                 failIfEventsMatch = tagQuery2,
                 after = null
             )
         )
+        store.append(appendRequest4).also { assertThat(it).isInstanceOf(AppendResult.Appended::class.java) }
 
         val fact4Id = FactId.generate()
         val fact4 = Fact(
             id = fact4Id,
-            subject = Subject(
+            subjectRef = SubjectRef(
                 type = "USER",
                 id = "BOB",
             ),
@@ -1045,13 +1096,18 @@ class FactStoreTest {
             )
         )
 
-        store.append(
+        val appendRequestThatShouldAppendFact4 = AppendRequest(
             facts = listOf(fact4),
-            condition = TagQueryBasedAppendCondition(
+            idempotencyKey = IdempotencyKey(),
+            condition = AppendCondition.TagQueryBased(
                 failIfEventsMatch = tagQuery2,
                 after = fact3Id
             )
         )
+
+        store.append(appendRequestThatShouldAppendFact4).also {
+            assertThat(it).isInstanceOf(AppendResult.Appended::class.java)
+        }
 
     }
 
@@ -1071,7 +1127,7 @@ class FactStoreTest {
 
         val fact1 = Fact(
             id = FactId.generate(),
-            subject = Subject(
+            subjectRef = SubjectRef(
                 type = "USER",
                 id = "BOB",
             ),
@@ -1083,7 +1139,7 @@ class FactStoreTest {
 
         val fact2 = Fact(
             id = FactId.generate(),
-            subject = Subject(
+            subjectRef = SubjectRef(
                 type = "USER",
                 id = "ALICE",
             ),
@@ -1107,6 +1163,46 @@ class FactStoreTest {
         val factStore3 = buildFdbFactStore(clusterFilePath = clusterFilePath, name = factStore1Name)
         assertThat(factStore3.existsById(fact1.id)).isTrue()
         assertThat(factStore3.existsById(fact2.id)).isFalse()
+    }
+
+    @Test
+    fun testNewAppend(): Unit = runBlocking {
+
+        val fact1 = Fact(
+            id = FactId.generate(),
+            subjectRef = SubjectRef(
+                type = "USER",
+                id = "DOMI",
+            ),
+            type = "USER_LOCKED",
+            payload = """{ "username": "DOMI" }""".toByteArray(),
+            createdAt = Instant.now(),
+            tags = emptyMap()
+        )
+        val idempotencyKey = IdempotencyKey(UUID.randomUUID())
+        val appendRequest = AppendRequest(
+            facts = listOf(fact1),
+            idempotencyKey = idempotencyKey,
+            condition = AppendCondition.ExpectedLastFact(
+                subjectRef = SubjectRef(
+                    type = "USER",
+                    id = "DOMI",
+                ),
+                expectedLastFactId = null
+            )
+        )
+
+        val appendResult = store.append(appendRequest)
+
+        assertThat(appendResult).isInstanceOf(AppendResult.Appended::class.java)
+
+        // trying to append again should return early
+
+        val appendResult2 = store.append(appendRequest)
+
+        assertThat(appendResult2).isInstanceOf(AppendResult.AlreadyApplied::class.java)
+
+
     }
 
 }

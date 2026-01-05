@@ -8,10 +8,10 @@ import org.assertj.core.api.Assertions.assertThat
 import org.factstore.avro.AvroFdbStore
 import org.factstore.avro.FactRegistry
 import org.factstore.avro.createAvroFactDescriptor
+import org.factstore.core.AppendCondition
 import org.factstore.core.FactId
 import org.factstore.core.FactStore
 import org.factstore.core.TagQuery
-import org.factstore.core.TagQueryBasedAppendCondition
 import org.factstore.core.TagTypeItem
 import org.factstore.core.buildFdbFactStore
 import org.junit.jupiter.api.BeforeAll
@@ -112,7 +112,7 @@ class FdbDecisionModelRepo(
         query: TagQuery,
         version: FactId?
     ): Flow<ProjectAdded> = flow {
-        val condition = TagQueryBasedAppendCondition(
+        val condition = AppendCondition.TagQueryBased(
             failIfEventsMatch = query,
             after = version
         )

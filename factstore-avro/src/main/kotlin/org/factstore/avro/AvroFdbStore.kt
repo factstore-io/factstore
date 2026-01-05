@@ -1,4 +1,5 @@
 package org.factstore.avro
+
 import com.github.avrokotlin.avro4k.Avro
 import kotlinx.serialization.*
 import org.factstore.core.*
@@ -16,10 +17,18 @@ class AvroFdbStore(
     suspend fun <T : Any> append(fact: T) =
         factStore.append(fact = FactRegistry.toEnvelope(fact))
 
-    suspend fun <T : Any> append(facts: List<T>, condition: TagQueryBasedAppendCondition) =
+    suspend fun <T : Any> append(facts: List<T>, condition: AppendCondition.TagQueryBased) =
         facts
             .map { FactRegistry.toEnvelope(it) }
-            .also { factStore.append(it, condition) }
+            .also {
+                factStore.append(
+                    AppendRequest(
+                        facts = it,
+                        idempotencyKey = IdempotencyKey(),
+                        condition = condition
+                    )
+                )
+            }
 
 
     suspend fun readSubject(type: String, id: String): List<Any> =
@@ -119,7 +128,7 @@ object FactRegistry {
             id = FactId.generate(),
             type = factType,
             payload = factSerde.serialize(fact),
-            subject = Subject(
+            subjectRef = SubjectRef(
                 type = subjectType,
                 id = subjectId
             ),
