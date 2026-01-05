@@ -7,7 +7,7 @@ data class Fact(
     val id: FactId,
     val type: String,
     val payload: ByteArray,
-    val subject: Subject,
+    val subjectRef: SubjectRef,
     val createdAt: Instant,
     val metadata: Map<String, String> = emptyMap(),
     val tags: Map<String, String> = emptyMap(),
@@ -21,7 +21,7 @@ data class Fact(
         if (id != other.id) return false
         if (type != other.type) return false
         if (!payload.contentEquals(other.payload)) return false
-        if (subject != other.subject) return false
+        if (subjectRef != other.subjectRef) return false
         if (createdAt != other.createdAt) return false
         if (metadata != other.metadata) return false
         if (tags != other.tags) return false
@@ -33,7 +33,7 @@ data class Fact(
         var result = id.hashCode()
         result = 31 * result + type.hashCode()
         result = 31 * result + payload.contentHashCode()
-        result = 31 * result + subject.hashCode()
+        result = 31 * result + subjectRef.hashCode()
         result = 31 * result + createdAt.hashCode()
         result = 31 * result + metadata.hashCode()
         result = 31 * result + tags.hashCode()
@@ -41,7 +41,7 @@ data class Fact(
     }
 }
 
-data class Subject(
+data class SubjectRef(
     val type: String,
     val id: String
 )

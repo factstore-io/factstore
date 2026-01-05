@@ -6,4 +6,6 @@ interface FactAppender {
 
     suspend fun append(facts: List<Fact>)
 
+    suspend fun append(request: AppendRequest): AppendResult
+
 }

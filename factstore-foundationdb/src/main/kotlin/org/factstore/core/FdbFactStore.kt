@@ -26,6 +26,8 @@ const val METADATA_INDEX = 104
 const val TAGS_INDEX = 105
 const val TAGS_TYPE_INDEX = 106
 
+const val IDEMPOTENCY_KEYS = 200
+
 val EMPTY_BYTE_ARRAY = ByteArray(0)
 const val DEFAULT_INDEX = 0
 
@@ -70,6 +72,9 @@ class FdbFactStore(
     internal val metadataIndexSubspace = root.subspace(Tuple.from(METADATA_INDEX))
     internal val tagsIndexSubspace = root.subspace(Tuple.from(TAGS_INDEX))
     internal val tagsTypeIndexSubspace = root.subspace(Tuple.from(TAGS_TYPE_INDEX))
+
+    // IDEMPOTENCY SPACES
+    internal val idempotencySubspace = root.subspace(Tuple.from(IDEMPOTENCY_KEYS))
 
 
     internal fun List<Fact>.store(transaction: Transaction) {
@@ -116,7 +121,7 @@ class FdbFactStore(
         mutate(SET_VERSIONSTAMPED_KEY, createdAtIndexKey, EMPTY_BYTE_ARRAY)
 
         val subjectIndex = subjectIndexSubspace.packWithVersionstamp(
-            Tuple.from(fact.subject.type, fact.subject.id, Versionstamp.incomplete(), index, factId)
+            Tuple.from(fact.subjectRef.type, fact.subjectRef.id, Versionstamp.incomplete(), index, factId)
         )
         mutate(SET_VERSIONSTAMPED_KEY, subjectIndex, EMPTY_BYTE_ARRAY)
 
@@ -180,8 +185,8 @@ internal fun Tuple.getLastAsFactId(): FactId = getLastAsUuid().toFactId()
 internal fun Fact.toSerializableFdbFact() = SerializableFdbFact(
     id = id.uuid,
     type = type,
-    subjectType = subject.type,
-    subjectId = subject.id,
+    subjectType = subjectRef.type,
+    subjectId = subjectRef.id,
     timeEpochSeconds = createdAt.epochSecond,
     timeNanos = createdAt.nano,
     metadata = metadata,
@@ -197,7 +202,7 @@ internal fun SerializableFdbFact.toFact() = Fact(
     id = FactId(id),
     type = type,
     payload = payload,
-    subject = Subject(
+    subjectRef = SubjectRef(
         type = subjectType,
         id = subjectId
     ),

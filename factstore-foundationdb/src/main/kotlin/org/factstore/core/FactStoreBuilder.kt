@@ -12,7 +12,5 @@ fun buildFdbFactStore(
         factAppender = FdbFactAppender(fdbFactStore),
         factFinder = FdbFactFinder(fdbFactStore),
         factStreamer = FdbFactStreamer(fdbFactStore),
-        conditionalSubjectFactAppender = ConditionalFdbFactAppender(fdbFactStore),
-        conditionalTagQueryFactAppender = ConditionalTagQueryFdbFactAppender(fdbFactStore),
     )
 }
