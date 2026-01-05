@@ -1,4 +1,4 @@
-package org.factstore.core
+package org.factstore.foundationdb
 
 import com.apple.foundationdb.Database
 import com.apple.foundationdb.MutationType.SET_VERSIONSTAMPED_KEY
@@ -11,6 +11,7 @@ import com.apple.foundationdb.tuple.Versionstamp
 import com.github.avrokotlin.avro4k.Avro
 import kotlinx.serialization.decodeFromByteArray
 import kotlinx.serialization.encodeToByteArray
+import org.factstore.core.*
 import java.time.Instant
 import java.util.*
 import java.util.concurrent.CompletableFuture

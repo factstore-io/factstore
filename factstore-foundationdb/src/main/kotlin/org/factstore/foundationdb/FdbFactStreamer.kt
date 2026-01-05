@@ -1,4 +1,4 @@
-package org.factstore.core
+package org.factstore.foundationdb
 
 import com.apple.foundationdb.KeySelector
 import com.apple.foundationdb.Range
@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.future.await
 import kotlinx.coroutines.isActive
+import org.factstore.core.*
 import java.util.concurrent.CompletableFuture
 
 class FdbFactStreamer(private val store: FdbFactStore) : FactStreamer {

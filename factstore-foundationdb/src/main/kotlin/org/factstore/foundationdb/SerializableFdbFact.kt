@@ -1,4 +1,4 @@
-package org.factstore.core
+package org.factstore.foundationdb
 
 import kotlinx.serialization.Contextual
 import kotlinx.serialization.Serializable

@@ -1,4 +1,4 @@
-package org.factstore.core
+package org.factstore.foundationdb
 
 import com.apple.foundationdb.KeySelector
 import com.apple.foundationdb.ReadTransaction
@@ -6,6 +6,7 @@ import com.apple.foundationdb.Transaction
 import com.apple.foundationdb.tuple.Tuple
 import com.apple.foundationdb.tuple.Versionstamp
 import kotlinx.coroutines.future.await
+import org.factstore.core.*
 import java.util.UUID
 import java.util.concurrent.CompletableFuture
 import kotlin.collections.orEmpty

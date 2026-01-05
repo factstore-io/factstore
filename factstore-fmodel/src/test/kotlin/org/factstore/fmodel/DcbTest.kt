@@ -13,7 +13,7 @@ import org.factstore.core.FactId
 import org.factstore.core.FactStore
 import org.factstore.core.TagQuery
 import org.factstore.core.TagTypeItem
-import org.factstore.core.buildFdbFactStore
+import org.factstore.foundationdb.buildFdbFactStore
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance

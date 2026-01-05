@@ -1,6 +1,7 @@
-package org.factstore.core
+package org.factstore.foundationdb
 
 import com.apple.foundationdb.FDB
+import org.factstore.core.FactStore
 
 fun buildFdbFactStore(
     clusterFilePath: String = "/etc/foundationdb/fdb.cluster",

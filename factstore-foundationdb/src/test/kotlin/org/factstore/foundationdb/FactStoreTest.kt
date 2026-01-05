@@ -1,4 +1,4 @@
-package org.factstore.core
+package org.factstore.foundationdb
 
 import com.apple.foundationdb.FDB
 import earth.adi.testcontainers.containers.FoundationDBContainer
@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.assertj.core.api.Assertions.assertThat
-import org.assertj.core.api.Assertions.assertThatThrownBy
+import org.factstore.core.*
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -875,7 +875,6 @@ class FactStoreTest {
     @Test
     fun testLargeDatasetQueryByTags(): Unit = runBlocking {
         // Step 1: Append 10,000 events with varying tags
-        val random = Random()
         val events = (1..10_000).map { index ->
             val tag = if (index % 2 == 0) "user" else "admin" // Use alternating tags
             val region = if (index % 2 == 0) "us" else "eu" // Use alternating regions

@@ -1,8 +1,9 @@
-package org.factstore.core
+package org.factstore.foundationdb
 
 import com.apple.foundationdb.ReadTransaction
 import com.apple.foundationdb.tuple.Tuple
 import kotlinx.coroutines.future.await
+import org.factstore.core.*
 import java.time.Instant
 import java.util.*
 import java.util.concurrent.CompletableFuture
