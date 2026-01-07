@@ -90,7 +90,7 @@ class FdbFactAppender(
     }
 
     private fun AppendCondition.ExpectedMultiSubjectLastFact.isSatisfied(tr: Transaction): CompletableFuture<Boolean> {
-        val isSatisfied = expections.all { it.key.getLastFactId(tr) == it.value }
+        val isSatisfied = expectations.all { it.key.getLastFactId(tr) == it.value }
         return CompletableFuture.completedFuture(isSatisfied)
     }
 

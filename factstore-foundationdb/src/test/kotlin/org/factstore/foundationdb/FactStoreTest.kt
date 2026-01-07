@@ -269,7 +269,7 @@ class FactStoreTest {
             facts = listOf(fact1, fact2, fact3),
             idempotencyKey = IdempotencyKey(),
             condition = AppendCondition.ExpectedMultiSubjectLastFact(
-                expections = mapOf(
+                expectations = mapOf(
                     SubjectRef("USER", "ALICE") to null,
                     SubjectRef("USER", "BOB") to null,
                 )

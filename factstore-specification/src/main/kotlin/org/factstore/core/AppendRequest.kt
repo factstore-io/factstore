@@ -21,7 +21,7 @@ sealed interface AppendCondition {
     ) : AppendCondition
 
     data class ExpectedMultiSubjectLastFact(
-        val expections: Map<SubjectRef, FactId?>
+        val expectations: Map<SubjectRef, FactId?>
     ) : AppendCondition
 
     data class TagQueryBased(
