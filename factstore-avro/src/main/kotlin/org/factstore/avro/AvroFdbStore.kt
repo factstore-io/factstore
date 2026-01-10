@@ -33,7 +33,7 @@ class AvroFdbStore(
 
     suspend fun readSubject(type: String, id: String): List<Any> =
         factStore
-            .findBySubject(type, id)
+            .findBySubject(SubjectRef(type, id))
             .map { FactRegistry.fromEnvelope(it) }
 
     suspend fun readFromTagQuery(tagQuery: TagQuery): List<Pair<FactId, Any>> =

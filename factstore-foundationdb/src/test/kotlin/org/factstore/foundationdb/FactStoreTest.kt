@@ -326,14 +326,14 @@ class FactStoreTest {
 
         store.append(factsToAppend)
 
-        assertThat(store.findBySubject("USER", "ALICE"))
+        assertThat(store.findBySubject(SubjectRef("USER", "ALICE")))
             .containsExactly(fact1, fact3)
 
-        assertThat(store.findBySubject("USER", "BOB"))
+        assertThat(store.findBySubject(SubjectRef("USER", "BOB")))
             .containsExactly(fact2)
 
-        assertThat(store.findBySubject("USER", "PETER")).isEmpty()
-        assertThat(store.findBySubject("UNKNOWN", "UNKNOWN")).isEmpty()
+        assertThat(store.findBySubject(SubjectRef("USER", "PETER"))).isEmpty()
+        assertThat(store.findBySubject(SubjectRef("UNKNOWN", "UNKNOWN"))).isEmpty()
     }
 
     @Test

@@ -49,9 +49,9 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
         }.await()
     }
 
-    override suspend fun findBySubject(subjectType: String, subjectId: String): List<Fact> {
+    override suspend fun findBySubject(subjectRef: SubjectRef): List<Fact> {
         return db.readAsync { tr ->
-            val subjectRange = subjectIndexSubspace.range(Tuple.from(subjectType, subjectId))
+            val subjectRange = subjectIndexSubspace.range(Tuple.from(subjectRef.type, subjectRef.id))
             tr.getRange(subjectRange).asList().thenCompose { kvs ->
                 val factFutures: List<CompletableFuture<FdbFact?>> = kvs.map { kv ->
                     val tuple = subjectIndexSubspace.unpack(kv.key)
