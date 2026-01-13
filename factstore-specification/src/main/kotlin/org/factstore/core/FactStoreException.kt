@@ -27,3 +27,27 @@ sealed class InvalidAppendRequestException(message: String) :
  */
 class DuplicateFactIdException(val factIds: List<FactId>) :
     InvalidAppendRequestException("FactId(s) $factIds already exists")
+
+/**
+ * Base type for exceptions caused by invalid streaming requests.
+ *
+ * These exceptions indicate that the provided streaming parameters
+ * cannot be satisfied by the current state of the FactStore.
+ */
+sealed class InvalidStreamingRequestException(message: String) :
+        FactStoreException(message)
+
+/**
+ * Thrown when a streaming request references a [FactId] that does not exist.
+ *
+ * This exception is typically raised when [StreamingOptionSet.lastSeenId]
+ * is set to a fact identifier that is unknown to the store.
+ *
+ * Streaming requires the last-seen fact to exist in order to resume
+ * deterministically from a known position.
+ *
+ * @property factId the fact identifier that could not be found
+ */
+class FactIdNotFoundException(val factId: FactId) :
+        InvalidStreamingRequestException("FactId $factId not found")
+

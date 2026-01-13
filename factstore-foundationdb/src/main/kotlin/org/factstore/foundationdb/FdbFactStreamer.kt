@@ -74,7 +74,7 @@ class FdbFactStreamer(private val store: FdbFactStore) : FactStreamer {
         return store.db.readAsync { tr ->
             tr.loadFact(factId).thenApply { internalFact ->
                 if (internalFact == null) {
-                    error("Fact with ID $factId not found!")
+                    throw FactIdNotFoundException(factId)
                 }
                 val positionTuple = internalFact.positionTuple
                 val byteArray = store.globalFactPositionSubspace.pack(positionTuple.add(factId.uuid))

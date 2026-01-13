@@ -4,6 +4,7 @@ import com.apple.foundationdb.FDB
 import earth.adi.testcontainers.containers.FoundationDBContainer
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.timeout
 import kotlinx.coroutines.flow.toList
@@ -511,6 +512,14 @@ class FactStoreTest {
                 .toList()
 
             assertThat(streamedEvents).containsExactly(fact2, fact3)
+
+            // request to stream from a fact that does not exist should throw an error
+            val nonExistingFactId = FactId.generate()
+            assertThatThrownBy {
+                runBlocking { store.streamAll(StreamingOptionSet(lastSeenId = nonExistingFactId)).collect() }
+            }
+                .isInstanceOf(FactIdNotFoundException::class.java)
+                .matches { (it as FactIdNotFoundException).factId == nonExistingFactId }
         }
     }
 
