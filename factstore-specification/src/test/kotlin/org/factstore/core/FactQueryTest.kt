@@ -9,8 +9,8 @@ class FactQueryTest {
 
     @Test
     fun `TagTypeItem constructs successfully with valid types and tags`() {
-        val types = listOf("person", "event")
-        val tags = listOf("key1" to "value1", "key2" to "value2")
+        val types = listOf(FactType("person"), FactType("event"))
+        val tags = listOf(TagKey("key1") to TagValue("value1"), TagKey("key2") to TagValue("value2"))
 
         val item = TagTypeItem(types, tags)
 
@@ -20,8 +20,8 @@ class FactQueryTest {
 
     @Test
     fun `TagTypeItem fails when types is empty`() {
-        val types = emptyList<String>()
-        val tags = listOf("key" to "value")
+        val types = emptyList<FactType>()
+        val tags = listOf(TagKey("key") to TagValue("value"))
 
         val ex = assertThrows<IllegalArgumentException> {
             TagTypeItem(types, tags)
@@ -31,8 +31,8 @@ class FactQueryTest {
 
     @Test
     fun `TagTypeItem fails when tags is empty`() {
-        val types = listOf("person")
-        val tags = emptyList<Pair<String, String>>()
+        val types = listOf(FactType("person"))
+        val tags = emptyList<Pair<TagKey, TagValue>>()
 
         val ex = assertThrows<IllegalArgumentException> {
             TagTypeItem(types, tags)
@@ -52,7 +52,7 @@ class FactQueryTest {
 
     @Test
     fun `TagOnlyQueryItem constructs successfully with tags`() {
-        val tags = listOf("country" to "US")
+        val tags = listOf(TagKey("country") to TagValue("US"))
 
         val item = TagOnlyQueryItem(tags)
 
@@ -71,8 +71,8 @@ class FactQueryTest {
 
     @Test
     fun `TagQuery constructs successfully with mixed query items`() {
-        val item1 = TagOnlyQueryItem(listOf("k1" to "v1"))
-        val item2 = TagTypeItem(listOf("type1"), listOf("k2" to "v2"))
+        val item1 = TagOnlyQueryItem(listOf(TagKey("k1") to TagValue("v1")))
+        val item2 = TagTypeItem(listOf(FactType("type1")), listOf(TagKey("k2") to TagValue("v2")))
 
         val query = TagQuery(listOf(item1, item2))
 

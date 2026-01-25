@@ -56,7 +56,7 @@ interface FactFinder {
      * @param tags the list of tag key-value pairs
      * @return the list of facts matching the specified tags
      */
-    suspend fun findByTags(tags: List<Pair<String, String>>): List<Fact>
+    suspend fun findByTags(tags: List<Pair<TagKey, TagValue>>): List<Fact>
 
     /**
      * Finds all facts that match the given tag query.

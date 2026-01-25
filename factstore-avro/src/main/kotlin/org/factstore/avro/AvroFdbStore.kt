@@ -86,7 +86,7 @@ object FactRegistry {
     }
 
     fun fromEnvelope(fact: Fact): Any {
-        val descriptor = byType[fact.type] ?: error("Unknown fact type ${fact.type}")
+        val descriptor = byType[fact.type.value] ?: error("Unknown fact type ${fact.type}")
         val serde = (descriptor as FactDescriptor<Any>).serializer
         return serde.deserialize(fact.payload)
     }
@@ -126,7 +126,7 @@ object FactRegistry {
 
         val fact = Fact(
             id = FactId.generate(),
-            type = factType,
+            type = org.factstore.core.FactType(factType),
             payload = factSerde.serialize(fact),
             subjectRef = SubjectRef(
                 type = subjectType,
@@ -134,7 +134,7 @@ object FactRegistry {
             ),
             createdAt = Instant.now(),
             metadata = emptyMap(),
-            tags = tags
+            tags = tags.entries.associate { it.key.toTagKey() to it.value.toTagValue() }
         )
         return fact
     }

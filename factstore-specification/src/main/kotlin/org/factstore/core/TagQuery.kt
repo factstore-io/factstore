@@ -25,8 +25,8 @@ sealed interface TagQueryItem
  * @author Domenic Cassisi
  */
 data class TagTypeItem(
-    val types: List<String>,
-    val tags: List<Pair<String, String>>
+    val types: List<FactType>,
+    val tags: List<Pair<TagKey, TagValue>>
 ) : TagQueryItem {
     init {
         require(types.isNotEmpty() && tags.isNotEmpty()) {
@@ -48,7 +48,7 @@ data class TagTypeItem(
  * @author Domenic Cassisi
  */
 data class TagOnlyQueryItem(
-    val tags: List<Pair<String, String>>
+    val tags: List<Pair<TagKey, TagValue>>
 ) : TagQueryItem {
     init {
         require(tags.isNotEmpty()) { "Tags must be defined!" }

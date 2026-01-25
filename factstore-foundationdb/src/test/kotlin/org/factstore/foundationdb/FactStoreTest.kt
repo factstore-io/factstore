@@ -75,7 +75,7 @@ class FactStoreTest {
                 type = "USER",
                 id = "ALICE",
             ),
-            type = "USER_ONBOARDED",
+            type = "USER_ONBOARDED".toFactType(),
             payload = payload,
             createdAt = createdAt
         )
@@ -106,7 +106,7 @@ class FactStoreTest {
                 type = "USER",
                 id = "ALICE",
             ),
-            type = "USER_CREATED",
+            type = "USER_CREATED".toFactType(),
             payload = """{ "username": "Alice" }""".toByteArray(),
             createdAt = now.minusSeconds(60) // 1 minute ago
         )
@@ -117,7 +117,7 @@ class FactStoreTest {
                 type = "USER",
                 id = "ALICE",
             ),
-            type = "USER_UPDATED",
+            type = "USER_UPDATED".toFactType(),
             payload = """{ "username": "Alice", "status": "active" }""".toByteArray(),
             createdAt = now
         )
@@ -128,7 +128,7 @@ class FactStoreTest {
                 type = "USER",
                 id = "BOB",
             ),
-            type = "USER_DELETED",
+            type = "USER_DELETED".toFactType(),
             payload = """{ "username": "Bob" }""".toByteArray(),
             createdAt = now.plusSeconds(60) // 1 minute in the future
         )
@@ -156,7 +156,7 @@ class FactStoreTest {
                 type = "USER",
                 id = "ALICE",
             ),
-            type = "USER_CREATED",
+            type = "USER_CREATED".toFactType(),
             payload = """{ "username": "Alice" }""".toByteArray(),
             createdAt = Instant.now()
         )
@@ -187,7 +187,7 @@ class FactStoreTest {
                 type = "USER",
                 id = "ALICE",
             ),
-            type = "USER_LOCKED",
+            type = "USER_LOCKED".toFactType(),
             payload = """{ "username": "Alice" }""".toByteArray(),
             createdAt = Instant.now()
         )
@@ -241,7 +241,7 @@ class FactStoreTest {
                 type = "USER",
                 id = "ALICE",
             ),
-            type = "USER_CREATED",
+            type = "USER_CREATED".toFactType(),
             payload = """{ "username": "Alice" }""".toByteArray(),
             createdAt = Instant.now()
         )
@@ -252,7 +252,7 @@ class FactStoreTest {
                 type = "USER",
                 id = "BOB",
             ),
-            type = "USER_CREATED",
+            type = "USER_CREATED".toFactType(),
             payload = """{ "username": "BOB" }""".toByteArray(),
             createdAt = Instant.now()
         )
@@ -263,7 +263,7 @@ class FactStoreTest {
                 type = "USER",
                 id = "ALICE",
             ),
-            type = "USER_LOCKED",
+            type = "USER_LOCKED".toFactType(),
             payload = """{ "username": "Alice" }""".toByteArray(),
             createdAt = Instant.now()
         )
@@ -298,7 +298,7 @@ class FactStoreTest {
                 type = "USER",
                 id = "ALICE",
             ),
-            type = "USER_CREATED",
+            type = "USER_CREATED".toFactType(),
             payload = """{ "username": "Alice" }""".toByteArray(),
             createdAt = Instant.now()
         )
@@ -309,7 +309,7 @@ class FactStoreTest {
                 type = "USER",
                 id = "BOB",
             ),
-            type = "USER_CREATED",
+            type = "USER_CREATED".toFactType(),
             payload = """{ "username": "BOB" }""".toByteArray(),
             createdAt = Instant.now()
         )
@@ -320,7 +320,7 @@ class FactStoreTest {
                 type = "USER",
                 id = "ALICE",
             ),
-            type = "USER_LOCKED",
+            type = "USER_LOCKED".toFactType(),
             payload = """{ "username": "Alice" }""".toByteArray(),
             createdAt = Instant.now()
         )
@@ -351,7 +351,7 @@ class FactStoreTest {
                 type = "USER",
                 id = "ALICE",
             ),
-            type = "USER_CREATED",
+            type = "USER_CREATED".toFactType(),
             payload = """{ "username": "Alice" }""".toByteArray(),
             createdAt = Instant.now(),
             metadata = mapOf("test" to "123", "loc" to "world")
@@ -363,7 +363,7 @@ class FactStoreTest {
                 type = "USER",
                 id = "BOB",
             ),
-            type = "USER_CREATED",
+            type = "USER_CREATED".toFactType(),
             payload = """{ "username": "BOB" }""".toByteArray(),
             createdAt = Instant.now()
         )
@@ -384,11 +384,11 @@ class FactStoreTest {
                 type = "USER",
                 id = "ALICE",
             ),
-            type = "USER_CREATED",
+            type = "USER_CREATED".toFactType(),
             payload = """{ "username": "Alice" }""".toByteArray(),
             createdAt = Instant.now(),
             metadata = emptyMap(),
-            tags = mapOf("role" to "admin", "region" to "eu")
+            tags = mapOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("eu"))
         )
 
         val fact2 = Fact(
@@ -397,11 +397,11 @@ class FactStoreTest {
                 type = "USER",
                 id = "BOB",
             ),
-            type = "USER_CREATED",
+            type = "USER_CREATED".toFactType(),
             payload = """{ "username": "Bob" }""".toByteArray(),
             createdAt = Instant.now(),
             metadata = emptyMap(),
-            tags = mapOf("role" to "user", "region" to "us")
+            tags = mapOf(TagKey("role") to TagValue("user"), TagKey("region") to TagValue("us"))
         )
 
         val fact3 = Fact(
@@ -410,29 +410,29 @@ class FactStoreTest {
                 type = "USER",
                 id = "CHARLIE",
             ),
-            type = "USER_CREATED",
+            type = "USER_CREATED".toFactType(),
             payload = """{ "username": "Charlie" }""".toByteArray(),
             createdAt = Instant.now(),
             metadata = emptyMap(),
-            tags = mapOf("role" to "admin", "region" to "us")
+            tags = mapOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("us"))
         )
 
         store.append(listOf(fact1, fact2, fact3))
 
         // --- Query 1: Find all role=admin (OR semantics → fact1 + fact3)
-        val adminFacts = store.findByTags(listOf("role" to "admin"))
+        val adminFacts = store.findByTags(listOf(TagKey("role") to TagValue("admin")))
         assertThat(adminFacts).containsExactly(fact1, fact3)
 
         // --- Query 2: Find all region=us (OR semantics → fact2 + fact3)
-        val usFacts = store.findByTags(listOf("region" to "us"))
+        val usFacts = store.findByTags(listOf(TagKey("region") to TagValue("us")))
         assertThat(usFacts).containsExactly(fact2, fact3)
 
         // --- Query 3: Find all role=admin OR region=eu (OR semantics → fact1 + fact3)
-        val adminOrEuFacts = store.findByTags(listOf("role" to "admin", "region" to "eu"))
+        val adminOrEuFacts = store.findByTags(listOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("eu")))
         assertThat(adminOrEuFacts).containsExactly(fact1, fact3)
 
         // --- Query 4: Non-existent tag → empty
-        val noFacts = store.findByTags(listOf("region" to "asia"))
+        val noFacts = store.findByTags(listOf(TagKey("region") to TagValue("asia")))
         assertThat(noFacts).isEmpty()
 
         // --- Query 5: Union of all queries (just to validate coverage)
@@ -440,7 +440,14 @@ class FactStoreTest {
         val fact1Loaded = store.findById(fact1.id)
         println(fact1Loaded)
 
-        val allFacts = store.findByTags(listOf("role" to "admin", "role" to "user", "region" to "eu", "region" to "us"))
+        val allFacts = store.findByTags(
+            listOf(
+                TagKey("role") to TagValue("admin"),
+                TagKey("role") to TagValue("user"),
+                TagKey("region") to TagValue("eu"),
+                TagKey("region") to TagValue("us")
+            )
+        )
         assertThat(allFacts).containsExactly(fact1, fact2, fact3)
     }
 
@@ -465,11 +472,11 @@ class FactStoreTest {
                     type = "USER",
                     id = "ALICE",
                 ),
-                type = "USER_CREATED",
+                type = "USER_CREATED".toFactType(),
                 payload = """{ "username": "Alice" }""".toByteArray(),
                 createdAt = Instant.now(),
                 metadata = emptyMap(),
-                tags = mapOf("role" to "admin", "region" to "eu")
+                tags = mapOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("eu"))
             )
 
             val fact2 = Fact(
@@ -478,11 +485,11 @@ class FactStoreTest {
                     type = "USER",
                     id = "BOB",
                 ),
-                type = "USER_CREATED",
+                type = "USER_CREATED".toFactType(),
                 payload = """{ "username": "Bob" }""".toByteArray(),
                 createdAt = Instant.now(),
                 metadata = emptyMap(),
-                tags = mapOf("role" to "user", "region" to "us")
+                tags = mapOf(TagKey("role") to TagValue("user"), TagKey("region") to TagValue("us"))
             )
 
             val fact3 = Fact(
@@ -491,11 +498,11 @@ class FactStoreTest {
                     type = "USER",
                     id = "CHARLIE",
                 ),
-                type = "USER_CREATED",
+                type = "USER_CREATED".toFactType(),
                 payload = """{ "username": "Charlie" }""".toByteArray(),
                 createdAt = Instant.now(),
                 metadata = emptyMap(),
-                tags = mapOf("role" to "admin", "region" to "us")
+                tags = mapOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("us"))
             )
 
             println("appending...")
@@ -534,11 +541,11 @@ class FactStoreTest {
                 type = "USER",
                 id = "ALICE",
             ),
-            type = "USER_CREATED",
+            type = "USER_CREATED".toFactType(),
             payload = """{ "username": "Alice" }""".toByteArray(),
             createdAt = Instant.now(),
             metadata = emptyMap(),
-            tags = mapOf("username" to "alice", "region" to "eu")
+            tags = mapOf(TagKey("username") to TagValue("alice"), TagKey("region") to TagValue("eu"))
         )
 
         val fact2 = Fact(
@@ -547,11 +554,11 @@ class FactStoreTest {
                 type = "USER",
                 id = "BOB",
             ),
-            type = "USER_CREATED",
+            type = "USER_CREATED".toFactType(),
             payload = """{ "username": "Bob" }""".toByteArray(),
             createdAt = Instant.now(),
             metadata = emptyMap(),
-            tags = mapOf("username" to "bob", "region" to "us")
+            tags = mapOf(TagKey("username") to TagValue("bob"), TagKey("region") to TagValue("us"))
         )
 
         val fact3 = Fact(
@@ -560,11 +567,11 @@ class FactStoreTest {
                 type = "USER",
                 id = "CHARLIE",
             ),
-            type = "USER_CREATED",
+            type = "USER_CREATED".toFactType(),
             payload = """{ "username": "Charlie" }""".toByteArray(),
             createdAt = Instant.now(),
             metadata = emptyMap(),
-            tags = mapOf("username" to "charlie", "region" to "us")
+            tags = mapOf(TagKey("username") to TagValue("charlie"), TagKey("region") to TagValue("us"))
         )
 
         store.append(listOf(fact1, fact2, fact3))
@@ -574,8 +581,8 @@ class FactStoreTest {
         val bobQuery = TagQuery(
             queryItems = listOf(
                 TagTypeItem(
-                    types = listOf("USER_CREATED"),
-                    tags = listOf("username" to "bob")
+                    types = listOf(FactType("USER_CREATED")),
+                    tags = listOf(TagKey("username") to TagValue("bob"))
                 )
             )
         )
@@ -587,8 +594,8 @@ class FactStoreTest {
         val multipleTagsQuery = TagQuery(
             queryItems = listOf(
                 TagTypeItem(
-                    types = listOf("USER_CREATED"),
-                    tags = listOf("username" to "bob", "region" to "us")
+                    types = listOf(FactType("USER_CREATED")),
+                    tags = listOf(TagKey("username") to TagValue("bob"), TagKey("region") to TagValue("us"))
                 )
             )
         )
@@ -600,8 +607,8 @@ class FactStoreTest {
         val noMatchQuery = TagQuery(
             queryItems = listOf(
                 TagTypeItem(
-                    types = listOf("USER_CREATED"),
-                    tags = listOf("username" to "bob", "region" to "eu")
+                    types = listOf(FactType("USER_CREATED")),
+                    tags = listOf(TagKey("username") to TagValue("bob"), TagKey("region") to TagValue("eu"))
                 )
             )
         )
@@ -613,8 +620,8 @@ class FactStoreTest {
         val multipleTypesQuery = TagQuery(
             queryItems = listOf(
                 TagTypeItem(
-                    types = listOf("USER_CREATED", "USER_DELETED"),
-                    tags = listOf("username" to "bob")
+                    types = listOf("USER_CREATED".toFactType(), "USER_DELETED".toFactType()),
+                    tags = listOf(TagKey("username") to TagValue("bob"))
                 )
             )
         )
@@ -626,8 +633,8 @@ class FactStoreTest {
         val complexQuery = TagQuery(
             queryItems = listOf(
                 TagTypeItem(
-                    types = listOf("USER_CREATED", "USER_DELETED"),
-                    tags = listOf("username" to "bob", "region" to "us")
+                    types = listOf("USER_CREATED".toFactType(), "USER_DELETED".toFactType()),
+                    tags = listOf(TagKey("username") to TagValue("bob"), TagKey("region") to TagValue("us"))
                 )
             )
         )
@@ -639,8 +646,8 @@ class FactStoreTest {
         val noMatchingTagQuery = TagQuery(
             queryItems = listOf(
                 TagTypeItem(
-                    types = listOf("USER_CREATED"),
-                    tags = listOf("username" to "dave")
+                    types = listOf(FactType("USER_CREATED")),
+                    tags = listOf(TagKey("username") to TagValue("dave"))
                 )
             )
         )
@@ -652,8 +659,8 @@ class FactStoreTest {
         val noMatchingTypeQuery = TagQuery(
             queryItems = listOf(
                 TagTypeItem(
-                    types = listOf("USER_DELETED"),
-                    tags = listOf("username" to "bob")
+                    types = listOf(FactType("USER_DELETED")),
+                    tags = listOf(TagKey("username") to TagValue("bob"))
                 )
             )
         )
@@ -665,8 +672,8 @@ class FactStoreTest {
         val tagsNoFactsQuery = TagQuery(
             queryItems = listOf(
                 TagTypeItem(
-                    types = listOf("USER_CREATED"),
-                    tags = listOf("username" to "david", "region" to "asia")
+                    types = listOf(FactType("USER_CREATED")),
+                    tags = listOf(TagKey("username") to TagValue("david"), TagKey("region") to TagValue("asia"))
                 )
             )
         )
@@ -678,8 +685,8 @@ class FactStoreTest {
         val differentTagsQuery = TagQuery(
             queryItems = listOf(
                 TagTypeItem(
-                    types = listOf("USER_CREATED"),
-                    tags = listOf("username" to "charlie", "region" to "us")
+                    types = listOf(FactType("USER_CREATED")),
+                    tags = listOf(TagKey("username") to TagValue("charlie"), TagKey("region") to TagValue("us"))
                 )
             )
         )
@@ -695,31 +702,31 @@ class FactStoreTest {
         val fact1 = Fact(
             id = FactId.generate(),
             subjectRef = SubjectRef(type = "USER", id = "ALICE"),
-            type = "USER_CREATED",
+            type = "USER_CREATED".toFactType(),
             payload = """{ "username": "Alice" }""".toByteArray(),
             createdAt = Instant.now(),
             metadata = emptyMap(),
-            tags = mapOf("username" to "alice", "region" to "eu")
+            tags = mapOf(TagKey("username") to TagValue("alice"), TagKey("region") to TagValue("eu"))
         )
 
         val fact2 = Fact(
             id = FactId.generate(),
             subjectRef = SubjectRef(type = "USER", id = "BOB"),
-            type = "USER_UPDATED",
+            type = "USER_UPDATED".toFactType(),
             payload = """{ "username": "Bob" }""".toByteArray(),
             createdAt = Instant.now(),
             metadata = emptyMap(),
-            tags = mapOf("username" to "bob", "region" to "us")
+            tags = mapOf(TagKey("username") to TagValue("bob"), TagKey("region") to TagValue("us"))
         )
 
         val fact3 = Fact(
             id = FactId.generate(),
             subjectRef = SubjectRef(type = "USER", id = "CHARLIE"),
-            type = "USER_CREATED",
+            type = "USER_CREATED".toFactType(),
             payload = """{ "username": "Charlie" }""".toByteArray(),
             createdAt = Instant.now(),
             metadata = emptyMap(),
-            tags = mapOf("username" to "charlie", "region" to "us")
+            tags = mapOf(TagKey("username") to TagValue("charlie"), TagKey("region") to TagValue("us"))
         )
 
         store.append(listOf(fact1, fact2, fact3))
@@ -728,8 +735,8 @@ class FactStoreTest {
         val query = TagQuery(
             queryItems = listOf(
                 TagTypeItem(
-                    types = listOf("USER_CREATED", "USER_UPDATED"),
-                    tags = listOf("username" to "alice")
+                    types = listOf("USER_CREATED".toFactType(), "USER_UPDATED".toFactType()),
+                    tags = listOf(TagKey("username") to TagValue("alice"))
                 )
             )
         )
@@ -746,31 +753,31 @@ class FactStoreTest {
         val fact1 = Fact(
             id = FactId.generate(),
             subjectRef = SubjectRef(type = "USER", id = "ALICE"),
-            type = "USER_CREATED",
+            type = "USER_CREATED".toFactType(),
             payload = """{ "username": "Alice" }""".toByteArray(),
             createdAt = Instant.now(),
             metadata = emptyMap(),
-            tags = mapOf("username" to "alice", "region" to "eu")
+            tags = mapOf(TagKey("username") to TagValue("alice"), TagKey("region") to TagValue("eu"))
         )
 
         val fact2 = Fact(
             id = FactId.generate(),
             subjectRef = SubjectRef(type = "USER", id = "BOB"),
-            type = "USER_UPDATED",
+            type = "USER_UPDATED".toFactType(),
             payload = """{ "username": "Bob" }""".toByteArray(),
             createdAt = Instant.now(),
             metadata = emptyMap(),
-            tags = mapOf("username" to "bob", "region" to "us")
+            tags = mapOf(TagKey("username") to TagValue("bob"), TagKey("region") to TagValue("us"))
         )
 
         val fact3 = Fact(
             id = FactId.generate(),
             subjectRef = SubjectRef(type = "USER", id = "CHARLIE"),
-            type = "USER_CREATED",
+            type = "USER_CREATED".toFactType(),
             payload = """{ "username": "Charlie" }""".toByteArray(),
             createdAt = Instant.now(),
             metadata = emptyMap(),
-            tags = mapOf("username" to "charlie", "region" to "us")
+            tags = mapOf(TagKey("username") to TagValue("charlie"), TagKey("region") to TagValue("us"))
         )
 
         store.append(listOf(fact1, fact2, fact3))
@@ -779,12 +786,12 @@ class FactStoreTest {
         val query = TagQuery(
             queryItems = listOf(
                 TagTypeItem(
-                    types = listOf("USER_CREATED", "USER_UPDATED"),
-                    tags = listOf("username" to "bob")
+                    types = listOf("USER_CREATED".toFactType(), "USER_UPDATED".toFactType()),
+                    tags = listOf(TagKey("username") to TagValue("bob"))
                 ),
                 TagTypeItem(
-                    types = listOf("USER_CREATED"),
-                    tags = listOf("region" to "us")
+                    types = listOf("USER_CREATED".toFactType()),
+                    tags = listOf(TagKey("region") to TagValue("us"))
                 )
             )
         )
@@ -802,31 +809,31 @@ class FactStoreTest {
         val fact1 = Fact(
             id = FactId.generate(),
             subjectRef = SubjectRef(type = "USER", id = "ALICE"),
-            type = "USER_CREATED",
+            type = "USER_CREATED".toFactType(),
             payload = """{ "username": "Alice" }""".toByteArray(),
             createdAt = Instant.now(),
             metadata = emptyMap(),
-            tags = mapOf("username" to "alice", "region" to "eu")
+            tags = mapOf(TagKey("username") to TagValue("alice"), TagKey("region") to TagValue("eu"))
         )
 
         val fact2 = Fact(
             id = FactId.generate(),
             subjectRef = SubjectRef(type = "USER", id = "BOB"),
-            type = "USER_UPDATED",
+            type = "USER_UPDATED".toFactType(),
             payload = """{ "username": "Bob" }""".toByteArray(),
             createdAt = Instant.now(),
             metadata = emptyMap(),
-            tags = mapOf("username" to "bob", "region" to "us")
+            tags = mapOf(TagKey("username") to TagValue("bob"), TagKey("region") to TagValue("us"))
         )
 
         val fact3 = Fact(
             id = FactId.generate(),
             subjectRef = SubjectRef(type = "USER", id = "CHARLIE"),
-            type = "USER_CREATED",
+            type = "USER_CREATED".toFactType(),
             payload = """{ "username": "Charlie" }""".toByteArray(),
             createdAt = Instant.now(),
             metadata = emptyMap(),
-            tags = mapOf("username" to "charlie", "region" to "us")
+            tags = mapOf(TagKey("username") to TagValue("charlie"), TagKey("region") to TagValue("us"))
         )
 
         store.append(listOf(fact1, fact2, fact3))
@@ -835,12 +842,12 @@ class FactStoreTest {
         val query = TagQuery(
             queryItems = listOf(
                 TagTypeItem(
-                    types = listOf("USER_CREATED", "USER_UPDATED"),
-                    tags = listOf("username" to "bob", "region" to "us")
+                    types = listOf("USER_CREATED".toFactType(), "USER_UPDATED".toFactType()),
+                    tags = listOf(TagKey("username") to TagValue("bob"), TagKey("region") to TagValue("us"))
                 ),
                 TagTypeItem(
-                    types = listOf("USER_CREATED"),
-                    tags = listOf("region" to "eu", "username" to "alice")
+                    types = listOf("USER_CREATED".toFactType()),
+                    tags = listOf(TagKey("region") to TagValue("eu"), TagKey("username") to TagValue("alice"))
                 )
             )
         )
@@ -858,11 +865,11 @@ class FactStoreTest {
         val fact1 = Fact(
             id = FactId.generate(),
             subjectRef = SubjectRef(type = "USER", id = "ALICE"),
-            type = "USER_CREATED",
+            type = "USER_CREATED".toFactType(),
             payload = """{ "username": "Alice" }""".toByteArray(),
             createdAt = Instant.now(),
             metadata = emptyMap(),
-            tags = mapOf("username" to "alice", "region" to "eu")
+            tags = mapOf(TagKey("username") to TagValue("alice"), TagKey("region") to TagValue("eu"))
         )
 
         store.append(listOf(fact1))
@@ -871,8 +878,8 @@ class FactStoreTest {
         val query = TagQuery(
             queryItems = listOf(
                 TagTypeItem(
-                    types = listOf("USER_UPDATED"),
-                    tags = listOf("username" to "bob")
+                    types = listOf(FactType("USER_UPDATED")),
+                    tags = listOf(TagKey("username") to TagValue("bob"))
                 )
             )
         )
@@ -896,13 +903,13 @@ class FactStoreTest {
                     type = "USER",
                     id = "user-$index"
                 ),
-                type = "USER_CREATED",
+                type = "USER_CREATED".toFactType(),
                 payload = """{ "username": "user$index" }""".toByteArray(),
                 createdAt = Instant.now(),
                 metadata = emptyMap(),
                 tags = mapOf(
-                    "role" to tag,
-                    "region" to region
+                    TagKey("role") to TagValue(tag),
+                    TagKey("region") to TagValue(region)
                 )
             )
         }
@@ -920,13 +927,13 @@ class FactStoreTest {
                     type = "USER",
                     id = "user-${FactId.generate()}"
                 ),
-                type = "USER_CREATED",
+                type = "USER_CREATED".toFactType(),
                 payload = """{ "username": "user" }""".toByteArray(),
                 createdAt = Instant.now(),
                 metadata = emptyMap(),
                 tags = mapOf(
-                    "role" to "custom",
-                    "region" to "eu"
+                    TagKey("role") to TagValue("custom"),
+                    TagKey("region") to TagValue("eu")
                 )
             )
         )
@@ -936,8 +943,8 @@ class FactStoreTest {
         val query = TagQuery(
             queryItems = listOf(
                 TagTypeItem(
-                    types = listOf("USER_CREATED"),
-                    tags = listOf("role" to "user", "region" to "us")
+                    types = listOf(FactType("USER_CREATED")),
+                    tags = listOf(TagKey("role") to TagValue("user"), TagKey("region") to TagValue("us"))
                 )
             )
         )
@@ -954,8 +961,8 @@ class FactStoreTest {
                 TagQuery(
                     listOf(
                         TagTypeItem(
-                            types = listOf("USER_CREATED"),
-                            tags = listOf("role" to "custom")
+                            types = listOf(FactType("USER_CREATED")),
+                            tags = listOf(TagKey("role") to TagValue("custom"))
                         )
                     )
                 )
@@ -965,9 +972,9 @@ class FactStoreTest {
 
         // Step 3: Verify that the result only contains facts with the expected tags
         // The number of events matching "role=user" and "region=us" should be around half of 10,000 (i.e., ~5000).
-        val expectedCount = events.count { it.tags["role"] == "user" && it.tags["region"] == "us" }
+        val expectedCount = events.count { it.tags[TagKey("role")] == TagValue("user") && it.tags[TagKey("region")] == TagValue("us") }
         assertThat(result).hasSize(expectedCount) // Ensure the correct number of matching events
-        assertThat(result).allMatch { it.tags["role"] == "user" && it.tags["region"] == "us" } // Ensure correct tags
+        assertThat(result).allMatch { it.tags[TagKey("role")] == TagValue("user") && it.tags[TagKey("region")] == TagValue("us") } // Ensure correct tags
 
         // Step 4: Optionally, print out some details to confirm the query works (only if needed)
         println("Found ${result.size} events with 'role=user' and 'region=us'.")
@@ -985,11 +992,11 @@ class FactStoreTest {
                 type = "USER",
                 id = "ALICE",
             ),
-            type = "USER_CREATED",
+            type = "USER_CREATED".toFactType(),
             payload = """{ "username": "Alice" }""".toByteArray(),
             createdAt = Instant.now(),
             tags = mapOf(
-                "user" to "ALICE",
+                TagKey("user") to TagValue("ALICE"),
             )
         )
 
@@ -997,8 +1004,8 @@ class FactStoreTest {
         val tagQuery = TagQuery(
             queryItems = listOf(
                 TagTypeItem(
-                    types = listOf("USER_CREATED"),
-                    tags = listOf("user" to "ALICE"),
+                    types = listOf(FactType("USER_CREATED")),
+                    tags = listOf(TagKey("user") to TagValue("ALICE")),
                 )
             )
         )
@@ -1022,11 +1029,11 @@ class FactStoreTest {
                 type = "USER",
                 id = "ALICE",
             ),
-            type = "USER_LOCKED",
+            type = "USER_LOCKED".toFactType(),
             payload = """{ "username": "ALICE" }""".toByteArray(),
             createdAt = Instant.now(),
             tags = mapOf(
-                "user" to "ALICE",
+                TagKey("user") to TagValue("ALICE"),
             )
         )
 
@@ -1063,19 +1070,19 @@ class FactStoreTest {
                 type = "USER",
                 id = "BOB",
             ),
-            type = "USER_CREATED",
+            type = "USER_CREATED".toFactType(),
             payload = """{ "username": "BOB" }""".toByteArray(),
             createdAt = Instant.now(),
             tags = mapOf(
-                "user" to "BOB",
+                TagKey("user") to TagValue("BOB"),
             )
         )
 
         val tagQuery2 = TagQuery(
             queryItems = listOf(
                 TagTypeItem(
-                    types = listOf("USER_CREATED"),
-                    tags = listOf("user" to "BOB"),
+                    types = listOf(FactType("USER_CREATED")),
+                    tags = listOf(TagKey("user") to TagValue("BOB")),
                 )
             )
         )
@@ -1098,11 +1105,11 @@ class FactStoreTest {
                 type = "USER",
                 id = "BOB",
             ),
-            type = "USER_LOCKED",
+            type = "USER_LOCKED".toFactType(),
             payload = """{ "username": "BOB" }""".toByteArray(),
             createdAt = Instant.now(),
             tags = mapOf(
-                "user" to "BOB",
+                TagKey("user") to TagValue("BOB"),
             )
         )
 
@@ -1141,7 +1148,7 @@ class FactStoreTest {
                 type = "USER",
                 id = "BOB",
             ),
-            type = "USER_LOCKED",
+            type = "USER_LOCKED".toFactType(),
             payload = """{ "username": "BOB" }""".toByteArray(),
             createdAt = Instant.now(),
             tags = emptyMap()
@@ -1153,7 +1160,7 @@ class FactStoreTest {
                 type = "USER",
                 id = "ALICE",
             ),
-            type = "USER_LOCKED",
+            type = "USER_LOCKED".toFactType(),
             payload = """{ "username": "ALICE" }""".toByteArray(),
             createdAt = Instant.now(),
             tags = emptyMap()
@@ -1184,7 +1191,7 @@ class FactStoreTest {
                 type = "USER",
                 id = "DOMI",
             ),
-            type = "USER_LOCKED",
+            type = "USER_LOCKED".toFactType(),
             payload = """{ "username": "DOMI" }""".toByteArray(),
             createdAt = Instant.now(),
             tags = emptyMap()
@@ -1225,7 +1232,7 @@ class FactStoreTest {
                 type = "TEST_TYPE",
                 id = "TEST_ID",
             ),
-            type = "TEST_FACT_TYPE",
+            type = "TEST_FACT_TYPE".toFactType(),
             payload = """DATA""".toByteArray(),
             createdAt = Instant.now(),
             tags = emptyMap()

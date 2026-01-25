@@ -11,8 +11,11 @@ import org.factstore.avro.createAvroFactDescriptor
 import org.factstore.core.AppendCondition
 import org.factstore.core.FactId
 import org.factstore.core.FactStore
+import org.factstore.core.FactType
+import org.factstore.core.TagKey
 import org.factstore.core.TagQuery
 import org.factstore.core.TagTypeItem
+import org.factstore.core.TagValue
 import org.factstore.foundationdb.buildFdbFactStore
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
@@ -64,8 +67,8 @@ class DcbTest {
             TagQuery(
                 queryItems = listOf(
                     TagTypeItem(
-                        listOf("PROJECT_ADDED"),
-                        tags = listOf("projectId" to projectId.toString())
+                        listOf(FactType("PROJECT_ADDED")),
+                        tags = listOf(TagKey("projectId") to TagValue(projectId.toString()))
                     )
                 )
             )

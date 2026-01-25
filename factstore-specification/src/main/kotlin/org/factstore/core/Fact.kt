@@ -25,12 +25,12 @@ import java.util.*
  */
 data class Fact(
     val id: FactId,
-    val type: String,
+    val type: FactType,
     val payload: ByteArray,
     val subjectRef: SubjectRef,
     val createdAt: Instant,
     val metadata: Map<String, String> = emptyMap(),
-    val tags: Map<String, String> = emptyMap(),
+    val tags: Map<TagKey, TagValue> = emptyMap(),
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -101,6 +101,70 @@ value class FactId(val uuid: UUID) {
 }
 
 /**
+ * Identifies the logical type of a [Fact].
+ *
+ * A [FactType] represents the semantic classification of a fact, such as
+ * `"OrderCreated"` or `"PaymentAuthorized"`. Fact types are used for
+ * categorization, querying, and downstream processing, but FactStore does
+ * not impose any domain-specific semantics or schema constraints on them.
+ *
+ * The value is treated as an opaque, non-blank identifier. Naming conventions
+ * and lifecycle management of fact types are intentionally left to clients.
+ *
+ * @property value the textual representation of the fact type
+ *
+ * @author Domenic Cassisi
+ */
+@JvmInline
+value class FactType(val value: String) {
+    init {
+        require(value.isNotBlank()) { "Type must not be blank" }
+    }
+}
+
+/**
+ * Identifies a tag key used to classify or annotate facts.
+ *
+ * A [TagKey] represents the name of a tag, such as `"region"`, `"tenant"`,
+ * or `"archived"`. Tag keys are used in combination with [TagValue]s to
+ * support flexible querying and secondary indexing.
+ *
+ * Tag keys are required to be non-blank. No additional constraints or
+ * naming conventions are enforced by FactStore.
+ *
+ * @property value the textual representation of the tag key
+ *
+ * @author Domenic Cassisi
+ */
+@JvmInline
+value class TagKey(val value: String) {
+    init {
+        require(value.isNotBlank()) { "TagKey must not be blank" }
+    }
+}
+
+/**
+ * Represents the value associated with a [TagKey].
+ *
+ * A [TagValue] may either carry a meaningful value (for example `"eu"` or
+ * `"v2"`) or be empty to indicate presence-only semantics. Empty values are
+ * commonly used to express boolean-like or classificatory tags, such as
+ * `"archived"`.
+ *
+ * FactStore does not impose any interpretation on tag values; their meaning
+ * is entirely defined by the client.
+ *
+ * @property value the textual representation of the tag value, which may be empty
+ *
+ * @author Domenic Cassisi
+ */
+@JvmInline
+value class TagValue(val value: String)
+
+/**
  * Converts a [UUID] to a [FactId].
  */
 fun UUID.toFactId() = FactId(this)
+fun String.toFactType() = FactType(this)
+fun String.toTagKey() = TagKey(this)
+fun String.toTagValue() = TagValue(this)
