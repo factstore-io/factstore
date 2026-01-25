@@ -112,7 +112,7 @@ class FdbFactStore(
         mutate(SET_VERSIONSTAMPED_KEY, globalPositionKey, EMPTY_BYTE_ARRAY)
 
         val eventTypeIndexKey = eventTypeIndexSubspace.packWithVersionstamp(
-            Tuple.from(fact.type, Versionstamp.incomplete(), index, factId)
+            Tuple.from(fact.type.value, Versionstamp.incomplete(), index, factId)
         )
         mutate(SET_VERSIONSTAMPED_KEY, eventTypeIndexKey, EMPTY_BYTE_ARRAY)
 
@@ -135,12 +135,12 @@ class FdbFactStore(
 
         fact.tags.forEach { (key, value) ->
             val tagsEntryIndex = tagsIndexSubspace.packWithVersionstamp(
-                Tuple.from(key, value, Versionstamp.incomplete(), index, factId)
+                Tuple.from(key.value, value.value, Versionstamp.incomplete(), index, factId)
             )
             mutate(SET_VERSIONSTAMPED_KEY, tagsEntryIndex, EMPTY_BYTE_ARRAY)
 
             val tagTypeIndex = tagsTypeIndexSubspace.packWithVersionstamp(
-                Tuple.from(fact.type, key, value, Versionstamp.incomplete(), index, factId)
+                Tuple.from(fact.type.value, key.value, value.value, Versionstamp.incomplete(), index, factId)
             )
             mutate(SET_VERSIONSTAMPED_KEY, tagTypeIndex, EMPTY_BYTE_ARRAY)
         }
@@ -185,13 +185,13 @@ internal fun Tuple.getLastAsFactId(): FactId = getLastAsUuid().toFactId()
 
 internal fun Fact.toSerializableFdbFact() = SerializableFdbFact(
     id = id.uuid,
-    type = type,
+    type = type.value,
     subjectType = subjectRef.type,
     subjectId = subjectRef.id,
     timeEpochSeconds = createdAt.epochSecond,
     timeNanos = createdAt.nano,
     metadata = metadata,
-    tags = tags,
+    tags = tags.entries.associate { it.key.value to it.value.value },
     payload = payload
 )
 
@@ -201,7 +201,7 @@ internal fun ByteArray.toSerializableFdbFact() = Avro.decodeFromByteArray<Serial
 
 internal fun SerializableFdbFact.toFact() = Fact(
     id = FactId(id),
-    type = type,
+    type = FactType(type),
     payload = payload,
     subjectRef = SubjectRef(
         type = subjectType,
@@ -209,7 +209,7 @@ internal fun SerializableFdbFact.toFact() = Fact(
     ),
     createdAt = Instant.ofEpochSecond(timeEpochSeconds, timeNanos.toLong()),
     metadata = metadata,
-    tags = tags
+    tags = tags.entries.associate { it.key.toTagKey() to it.value.toTagValue() }
 )
 
 internal fun FactId.toTuple() = Tuple.from(this.uuid)

@@ -66,12 +66,12 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
         }.await()
     }
 
-    override suspend fun findByTags(tags: List<Pair<String, String>>): List<Fact> {
+    override suspend fun findByTags(tags: List<Pair<TagKey, TagValue>>): List<Fact> {
         if (tags.isEmpty()) return emptyList()
         return db.readAsync { tr ->
             // For each (key, value) pair, get matching factIds
             val tagFutures: List<CompletableFuture<Set<UUID>>> = tags.map { (key, value) ->
-                val range = tagsIndexSubspace.range(Tuple.from(key, value))
+                val range = tagsIndexSubspace.range(Tuple.from(key.value, value.value))
                 tr.getRange(range).asList().thenApply { kvs ->
                     kvs.mapTo(mutableSetOf()) { kv ->
                         val tuple = tagsIndexSubspace.unpack(kv.key)
@@ -153,7 +153,7 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
         // use composite "type+tag" index
         val futures: List<CompletableFuture<Set<UUID>>> = types.map { type ->
             val tagFutures = tags.map { tag ->
-                val range = tagsTypeIndexSubspace.range(Tuple.from(type, tag.first, tag.second))
+                val range = tagsTypeIndexSubspace.range(Tuple.from(type.value, tag.first.value, tag.second.value))
                 tr.getRange(range).asList().thenApply { keyValues ->
                     keyValues.map {
                         val tuple = tagsTypeIndexSubspace.unpack(it.key)

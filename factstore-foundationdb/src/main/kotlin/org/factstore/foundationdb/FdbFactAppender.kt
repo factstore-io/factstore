@@ -172,15 +172,15 @@ class FdbFactAppender(
 
         // Helper function to create begin and end selectors for the range query
         fun createSelectors(
-            tag: Pair<String, String>,
+            tag: Pair<TagKey, TagValue>,
             afterPosition: Pair<Versionstamp, Long>?
         ): Pair<KeySelector, KeySelector> {
             val tuple = if (afterPosition != null) {
                 // If there's a afterPosition, include it in the tuple
-                Tuple.from(tag.first, tag.second, afterPosition.first, afterPosition.second)
+                Tuple.from(tag.first.value, tag.second.value, afterPosition.first, afterPosition.second)
             } else {
                 // If there's no afterPosition, just use the tag
-                Tuple.from(tag.first, tag.second)
+                Tuple.from(tag.first.value, tag.second.value)
             }
 
             // Create the beginSelector (first greater than if afterPosition is provided)
@@ -191,7 +191,7 @@ class FdbFactAppender(
             }
 
             // Create the end selector based on the tag range
-            val range = tagsIndexSubspace.range(Tuple.from(tag.first, tag.second))
+            val range = tagsIndexSubspace.range(Tuple.from(tag.first.value, tag.second.value))
             val endSelector = KeySelector.lastLessOrEqual(range.end)
 
             return Pair(beginSelector, endSelector)
@@ -225,14 +225,14 @@ class FdbFactAppender(
     ): CompletableFuture<Set<UUID>> {
         // Helper function to create start and end selectors
         fun createSelectors(
-            type: String,
-            tag: Pair<String, String>,
+            type: FactType,
+            tag: Pair<TagKey, TagValue>,
             afterPosition: Pair<Versionstamp, Long>?
         ): Pair<KeySelector, KeySelector> {
             val tuple = if (afterPosition != null) {
-                Tuple.from(type, tag.first, tag.second, afterPosition.first, afterPosition.second)
+                Tuple.from(type.value, tag.first.value, tag.second.value, afterPosition.first, afterPosition.second)
             } else {
-                Tuple.from(type, tag.first, tag.second)
+                Tuple.from(type.value, tag.first.value, tag.second.value)
             }
 
             val startKeySelector = if (afterPosition != null) {
@@ -241,7 +241,7 @@ class FdbFactAppender(
                 KeySelector(tagsTypeIndexSubspace.pack(tuple), OR_EQUAL, ZERO_OFFSET)
             }
 
-            val range = tagsTypeIndexSubspace.subspace(Tuple.from(type, tag.first, tag.second)).range()
+            val range = tagsTypeIndexSubspace.subspace(Tuple.from(type.value, tag.first.value, tag.second.value)).range()
             val endSelector = KeySelector.lastLessOrEqual(range.end)
 
             return Pair(startKeySelector, endSelector)
