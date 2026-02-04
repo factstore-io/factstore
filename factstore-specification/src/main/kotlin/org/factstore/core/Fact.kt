@@ -16,7 +16,7 @@ import java.util.*
  * - **Payload** ([payload]) containing the event data and its transport metadata
  * - **Subject association** ([subjectRef]) defining the entity or context
  *   the fact belongs to
- * - **Temporal information** ([createdAt]) indicating when the fact occurred
+ * - **Temporal information** ([appendedAt]) indicating when the fact occurred
  * - **Metadata** ([metadata]) for auxiliary, non-indexed information
  * - **Tags** ([tags]) for classification, filtering, and efficient querying
  *
@@ -28,7 +28,7 @@ import java.util.*
  * @property type the logical type of the fact
  * @property payload the serialized fact payload
  * @property subjectRef the subject the fact is associated with
- * @property createdAt the time the fact was created
+ * @property appendedAt the time the fact was appended
  * @property metadata optional metadata associated with the fact
  * @property tags optional tags used for querying and classification
  *
@@ -39,7 +39,7 @@ data class Fact(
     val type: FactType,
     val payload: FactPayload,
     val subjectRef: SubjectRef,
-    val createdAt: Instant,
+    val appendedAt: Instant,
     val metadata: Map<String, String> = emptyMap(),
     val tags: Map<TagKey, TagValue> = emptyMap(),
 )
