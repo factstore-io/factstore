@@ -66,7 +66,7 @@ class FactStoreTest {
     @Test
     fun testSimpleAppend(): Unit = runBlocking {
         val id = FactId.generate()
-        val payload = """ { "username": "Peter" } """.toByteArray()
+        val payload = """ { "username": "Peter" } """.toFactPayload()
         val createdAt = Instant.now()
 
         val fact = Fact(
@@ -107,7 +107,7 @@ class FactStoreTest {
                 id = "ALICE",
             ),
             type = "USER_CREATED".toFactType(),
-            payload = """{ "username": "Alice" }""".toByteArray(),
+            payload = """{ "username": "Alice" }""".toFactPayload(),
             createdAt = now.minusSeconds(60) // 1 minute ago
         )
 
@@ -118,7 +118,7 @@ class FactStoreTest {
                 id = "ALICE",
             ),
             type = "USER_UPDATED".toFactType(),
-            payload = """{ "username": "Alice", "status": "active" }""".toByteArray(),
+            payload = """{ "username": "Alice", "status": "active" }""".toFactPayload(),
             createdAt = now
         )
 
@@ -129,7 +129,7 @@ class FactStoreTest {
                 id = "BOB",
             ),
             type = "USER_DELETED".toFactType(),
-            payload = """{ "username": "Bob" }""".toByteArray(),
+            payload = """{ "username": "Bob" }""".toFactPayload(),
             createdAt = now.plusSeconds(60) // 1 minute in the future
         )
 
@@ -157,7 +157,7 @@ class FactStoreTest {
                 id = "ALICE",
             ),
             type = "USER_CREATED".toFactType(),
-            payload = """{ "username": "Alice" }""".toByteArray(),
+            payload = """{ "username": "Alice" }""".toFactPayload(),
             createdAt = Instant.now()
         )
 
@@ -188,7 +188,7 @@ class FactStoreTest {
                 id = "ALICE",
             ),
             type = "USER_LOCKED".toFactType(),
-            payload = """{ "username": "Alice" }""".toByteArray(),
+            payload = """{ "username": "Alice" }""".toFactPayload(),
             createdAt = Instant.now()
         )
 
@@ -242,7 +242,7 @@ class FactStoreTest {
                 id = "ALICE",
             ),
             type = "USER_CREATED".toFactType(),
-            payload = """{ "username": "Alice" }""".toByteArray(),
+            payload = """{ "username": "Alice" }""".toFactPayload(),
             createdAt = Instant.now()
         )
 
@@ -253,7 +253,7 @@ class FactStoreTest {
                 id = "BOB",
             ),
             type = "USER_CREATED".toFactType(),
-            payload = """{ "username": "BOB" }""".toByteArray(),
+            payload = """{ "username": "BOB" }""".toFactPayload(),
             createdAt = Instant.now()
         )
 
@@ -264,7 +264,7 @@ class FactStoreTest {
                 id = "ALICE",
             ),
             type = "USER_LOCKED".toFactType(),
-            payload = """{ "username": "Alice" }""".toByteArray(),
+            payload = """{ "username": "Alice" }""".toFactPayload(),
             createdAt = Instant.now()
         )
 
@@ -299,7 +299,7 @@ class FactStoreTest {
                 id = "ALICE",
             ),
             type = "USER_CREATED".toFactType(),
-            payload = """{ "username": "Alice" }""".toByteArray(),
+            payload = """{ "username": "Alice" }""".toFactPayload(),
             createdAt = Instant.now()
         )
 
@@ -310,7 +310,7 @@ class FactStoreTest {
                 id = "BOB",
             ),
             type = "USER_CREATED".toFactType(),
-            payload = """{ "username": "BOB" }""".toByteArray(),
+            payload = """{ "username": "BOB" }""".toFactPayload(),
             createdAt = Instant.now()
         )
 
@@ -321,7 +321,7 @@ class FactStoreTest {
                 id = "ALICE",
             ),
             type = "USER_LOCKED".toFactType(),
-            payload = """{ "username": "Alice" }""".toByteArray(),
+            payload = """{ "username": "Alice" }""".toFactPayload(),
             createdAt = Instant.now()
         )
 
@@ -352,7 +352,7 @@ class FactStoreTest {
                 id = "ALICE",
             ),
             type = "USER_CREATED".toFactType(),
-            payload = """{ "username": "Alice" }""".toByteArray(),
+            payload = """{ "username": "Alice" }""".toFactPayload(),
             createdAt = Instant.now(),
             metadata = mapOf("test" to "123", "loc" to "world")
         )
@@ -364,7 +364,7 @@ class FactStoreTest {
                 id = "BOB",
             ),
             type = "USER_CREATED".toFactType(),
-            payload = """{ "username": "BOB" }""".toByteArray(),
+            payload = """{ "username": "BOB" }""".toFactPayload(),
             createdAt = Instant.now()
         )
 
@@ -385,7 +385,7 @@ class FactStoreTest {
                 id = "ALICE",
             ),
             type = "USER_CREATED".toFactType(),
-            payload = """{ "username": "Alice" }""".toByteArray(),
+            payload = """{ "username": "Alice" }""".toFactPayload(),
             createdAt = Instant.now(),
             metadata = emptyMap(),
             tags = mapOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("eu"))
@@ -398,7 +398,7 @@ class FactStoreTest {
                 id = "BOB",
             ),
             type = "USER_CREATED".toFactType(),
-            payload = """{ "username": "Bob" }""".toByteArray(),
+            payload = """{ "username": "Bob" }""".toFactPayload(),
             createdAt = Instant.now(),
             metadata = emptyMap(),
             tags = mapOf(TagKey("role") to TagValue("user"), TagKey("region") to TagValue("us"))
@@ -411,7 +411,7 @@ class FactStoreTest {
                 id = "CHARLIE",
             ),
             type = "USER_CREATED".toFactType(),
-            payload = """{ "username": "Charlie" }""".toByteArray(),
+            payload = """{ "username": "Charlie" }""".toFactPayload(),
             createdAt = Instant.now(),
             metadata = emptyMap(),
             tags = mapOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("us"))
@@ -473,7 +473,7 @@ class FactStoreTest {
                     id = "ALICE",
                 ),
                 type = "USER_CREATED".toFactType(),
-                payload = """{ "username": "Alice" }""".toByteArray(),
+                payload = """{ "username": "Alice" }""".toFactPayload(),
                 createdAt = Instant.now(),
                 metadata = emptyMap(),
                 tags = mapOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("eu"))
@@ -486,7 +486,7 @@ class FactStoreTest {
                     id = "BOB",
                 ),
                 type = "USER_CREATED".toFactType(),
-                payload = """{ "username": "Bob" }""".toByteArray(),
+                payload = """{ "username": "Bob" }""".toFactPayload(),
                 createdAt = Instant.now(),
                 metadata = emptyMap(),
                 tags = mapOf(TagKey("role") to TagValue("user"), TagKey("region") to TagValue("us"))
@@ -499,7 +499,7 @@ class FactStoreTest {
                     id = "CHARLIE",
                 ),
                 type = "USER_CREATED".toFactType(),
-                payload = """{ "username": "Charlie" }""".toByteArray(),
+                payload = """{ "username": "Charlie" }""".toFactPayload(),
                 createdAt = Instant.now(),
                 metadata = emptyMap(),
                 tags = mapOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("us"))
@@ -542,7 +542,7 @@ class FactStoreTest {
                 id = "ALICE",
             ),
             type = "USER_CREATED".toFactType(),
-            payload = """{ "username": "Alice" }""".toByteArray(),
+            payload = """{ "username": "Alice" }""".toFactPayload(),
             createdAt = Instant.now(),
             metadata = emptyMap(),
             tags = mapOf(TagKey("username") to TagValue("alice"), TagKey("region") to TagValue("eu"))
@@ -555,7 +555,7 @@ class FactStoreTest {
                 id = "BOB",
             ),
             type = "USER_CREATED".toFactType(),
-            payload = """{ "username": "Bob" }""".toByteArray(),
+            payload = """{ "username": "Bob" }""".toFactPayload(),
             createdAt = Instant.now(),
             metadata = emptyMap(),
             tags = mapOf(TagKey("username") to TagValue("bob"), TagKey("region") to TagValue("us"))
@@ -568,7 +568,7 @@ class FactStoreTest {
                 id = "CHARLIE",
             ),
             type = "USER_CREATED".toFactType(),
-            payload = """{ "username": "Charlie" }""".toByteArray(),
+            payload = """{ "username": "Charlie" }""".toFactPayload(),
             createdAt = Instant.now(),
             metadata = emptyMap(),
             tags = mapOf(TagKey("username") to TagValue("charlie"), TagKey("region") to TagValue("us"))
@@ -703,7 +703,7 @@ class FactStoreTest {
             id = FactId.generate(),
             subjectRef = SubjectRef(type = "USER", id = "ALICE"),
             type = "USER_CREATED".toFactType(),
-            payload = """{ "username": "Alice" }""".toByteArray(),
+            payload = """{ "username": "Alice" }""".toFactPayload(),
             createdAt = Instant.now(),
             metadata = emptyMap(),
             tags = mapOf(TagKey("username") to TagValue("alice"), TagKey("region") to TagValue("eu"))
@@ -713,7 +713,7 @@ class FactStoreTest {
             id = FactId.generate(),
             subjectRef = SubjectRef(type = "USER", id = "BOB"),
             type = "USER_UPDATED".toFactType(),
-            payload = """{ "username": "Bob" }""".toByteArray(),
+            payload = """{ "username": "Bob" }""".toFactPayload(),
             createdAt = Instant.now(),
             metadata = emptyMap(),
             tags = mapOf(TagKey("username") to TagValue("bob"), TagKey("region") to TagValue("us"))
@@ -723,7 +723,7 @@ class FactStoreTest {
             id = FactId.generate(),
             subjectRef = SubjectRef(type = "USER", id = "CHARLIE"),
             type = "USER_CREATED".toFactType(),
-            payload = """{ "username": "Charlie" }""".toByteArray(),
+            payload = """{ "username": "Charlie" }""".toFactPayload(),
             createdAt = Instant.now(),
             metadata = emptyMap(),
             tags = mapOf(TagKey("username") to TagValue("charlie"), TagKey("region") to TagValue("us"))
@@ -754,7 +754,7 @@ class FactStoreTest {
             id = FactId.generate(),
             subjectRef = SubjectRef(type = "USER", id = "ALICE"),
             type = "USER_CREATED".toFactType(),
-            payload = """{ "username": "Alice" }""".toByteArray(),
+            payload = """{ "username": "Alice" }""".toFactPayload(),
             createdAt = Instant.now(),
             metadata = emptyMap(),
             tags = mapOf(TagKey("username") to TagValue("alice"), TagKey("region") to TagValue("eu"))
@@ -764,7 +764,7 @@ class FactStoreTest {
             id = FactId.generate(),
             subjectRef = SubjectRef(type = "USER", id = "BOB"),
             type = "USER_UPDATED".toFactType(),
-            payload = """{ "username": "Bob" }""".toByteArray(),
+            payload = """{ "username": "Bob" }""".toFactPayload(),
             createdAt = Instant.now(),
             metadata = emptyMap(),
             tags = mapOf(TagKey("username") to TagValue("bob"), TagKey("region") to TagValue("us"))
@@ -774,7 +774,7 @@ class FactStoreTest {
             id = FactId.generate(),
             subjectRef = SubjectRef(type = "USER", id = "CHARLIE"),
             type = "USER_CREATED".toFactType(),
-            payload = """{ "username": "Charlie" }""".toByteArray(),
+            payload = """{ "username": "Charlie" }""".toFactPayload(),
             createdAt = Instant.now(),
             metadata = emptyMap(),
             tags = mapOf(TagKey("username") to TagValue("charlie"), TagKey("region") to TagValue("us"))
@@ -810,7 +810,7 @@ class FactStoreTest {
             id = FactId.generate(),
             subjectRef = SubjectRef(type = "USER", id = "ALICE"),
             type = "USER_CREATED".toFactType(),
-            payload = """{ "username": "Alice" }""".toByteArray(),
+            payload = """{ "username": "Alice" }""".toFactPayload(),
             createdAt = Instant.now(),
             metadata = emptyMap(),
             tags = mapOf(TagKey("username") to TagValue("alice"), TagKey("region") to TagValue("eu"))
@@ -820,7 +820,7 @@ class FactStoreTest {
             id = FactId.generate(),
             subjectRef = SubjectRef(type = "USER", id = "BOB"),
             type = "USER_UPDATED".toFactType(),
-            payload = """{ "username": "Bob" }""".toByteArray(),
+            payload = """{ "username": "Bob" }""".toFactPayload(),
             createdAt = Instant.now(),
             metadata = emptyMap(),
             tags = mapOf(TagKey("username") to TagValue("bob"), TagKey("region") to TagValue("us"))
@@ -830,7 +830,7 @@ class FactStoreTest {
             id = FactId.generate(),
             subjectRef = SubjectRef(type = "USER", id = "CHARLIE"),
             type = "USER_CREATED".toFactType(),
-            payload = """{ "username": "Charlie" }""".toByteArray(),
+            payload = """{ "username": "Charlie" }""".toFactPayload(),
             createdAt = Instant.now(),
             metadata = emptyMap(),
             tags = mapOf(TagKey("username") to TagValue("charlie"), TagKey("region") to TagValue("us"))
@@ -866,7 +866,7 @@ class FactStoreTest {
             id = FactId.generate(),
             subjectRef = SubjectRef(type = "USER", id = "ALICE"),
             type = "USER_CREATED".toFactType(),
-            payload = """{ "username": "Alice" }""".toByteArray(),
+            payload = """{ "username": "Alice" }""".toFactPayload(),
             createdAt = Instant.now(),
             metadata = emptyMap(),
             tags = mapOf(TagKey("username") to TagValue("alice"), TagKey("region") to TagValue("eu"))
@@ -904,7 +904,7 @@ class FactStoreTest {
                     id = "user-$index"
                 ),
                 type = "USER_CREATED".toFactType(),
-                payload = """{ "username": "user$index" }""".toByteArray(),
+                payload = """{ "username": "user$index" }""".toFactPayload(),
                 createdAt = Instant.now(),
                 metadata = emptyMap(),
                 tags = mapOf(
@@ -928,7 +928,7 @@ class FactStoreTest {
                     id = "user-${FactId.generate()}"
                 ),
                 type = "USER_CREATED".toFactType(),
-                payload = """{ "username": "user" }""".toByteArray(),
+                payload = """{ "username": "user" }""".toFactPayload(),
                 createdAt = Instant.now(),
                 metadata = emptyMap(),
                 tags = mapOf(
@@ -993,7 +993,7 @@ class FactStoreTest {
                 id = "ALICE",
             ),
             type = "USER_CREATED".toFactType(),
-            payload = """{ "username": "Alice" }""".toByteArray(),
+            payload = """{ "username": "Alice" }""".toFactPayload(),
             createdAt = Instant.now(),
             tags = mapOf(
                 TagKey("user") to TagValue("ALICE"),
@@ -1030,7 +1030,7 @@ class FactStoreTest {
                 id = "ALICE",
             ),
             type = "USER_LOCKED".toFactType(),
-            payload = """{ "username": "ALICE" }""".toByteArray(),
+            payload = """{ "username": "ALICE" }""".toFactPayload(),
             createdAt = Instant.now(),
             tags = mapOf(
                 TagKey("user") to TagValue("ALICE"),
@@ -1071,7 +1071,7 @@ class FactStoreTest {
                 id = "BOB",
             ),
             type = "USER_CREATED".toFactType(),
-            payload = """{ "username": "BOB" }""".toByteArray(),
+            payload = """{ "username": "BOB" }""".toFactPayload(),
             createdAt = Instant.now(),
             tags = mapOf(
                 TagKey("user") to TagValue("BOB"),
@@ -1106,7 +1106,7 @@ class FactStoreTest {
                 id = "BOB",
             ),
             type = "USER_LOCKED".toFactType(),
-            payload = """{ "username": "BOB" }""".toByteArray(),
+            payload = """{ "username": "BOB" }""".toFactPayload(),
             createdAt = Instant.now(),
             tags = mapOf(
                 TagKey("user") to TagValue("BOB"),
@@ -1149,7 +1149,7 @@ class FactStoreTest {
                 id = "BOB",
             ),
             type = "USER_LOCKED".toFactType(),
-            payload = """{ "username": "BOB" }""".toByteArray(),
+            payload = """{ "username": "BOB" }""".toFactPayload(),
             createdAt = Instant.now(),
             tags = emptyMap()
         )
@@ -1161,7 +1161,7 @@ class FactStoreTest {
                 id = "ALICE",
             ),
             type = "USER_LOCKED".toFactType(),
-            payload = """{ "username": "ALICE" }""".toByteArray(),
+            payload = """{ "username": "ALICE" }""".toFactPayload(),
             createdAt = Instant.now(),
             tags = emptyMap()
         )
@@ -1192,7 +1192,7 @@ class FactStoreTest {
                 id = "DOMI",
             ),
             type = "USER_LOCKED".toFactType(),
-            payload = """{ "username": "DOMI" }""".toByteArray(),
+            payload = """{ "username": "DOMI" }""".toFactPayload(),
             createdAt = Instant.now(),
             tags = emptyMap()
         )
@@ -1233,7 +1233,7 @@ class FactStoreTest {
                 id = "TEST_ID",
             ),
             type = "TEST_FACT_TYPE".toFactType(),
-            payload = """DATA""".toByteArray(),
+            payload = """DATA""".toFactPayload(),
             createdAt = Instant.now(),
             tags = emptyMap()
         )

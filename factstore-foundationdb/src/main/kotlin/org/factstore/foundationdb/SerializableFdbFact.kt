@@ -15,37 +15,32 @@ data class SerializableFdbFact(
     val timeNanos: Int,
     val metadata: Map<String, String> = emptyMap(),
     val tags: Map<String, String> = emptyMap(),
-    val payload: ByteArray,
+    val payload: SerializableFactPayload,
+)
+
+@Serializable
+data class SerializableFactPayload(
+    val data: ByteArray,
+    val format: String?,
+    val schema: String?,
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (javaClass != other?.javaClass) return false
 
-        other as SerializableFdbFact
+        other as SerializableFactPayload
 
-        if (id != other.id) return false
-        if (type != other.type) return false
-        if (subjectType != other.subjectType) return false
-        if (subjectId != other.subjectId) return false
-        if (timeEpochSeconds != other.timeEpochSeconds) return false
-        if (timeNanos != other.timeNanos) return false
-        if (metadata != other.metadata) return false
-        if (tags != other.tags) return false
-        if (!payload.contentEquals(other.payload)) return false
+        if (!data.contentEquals(other.data)) return false
+        if (format != other.format) return false
+        if (schema != other.schema) return false
 
         return true
     }
 
     override fun hashCode(): Int {
-        var result = id.hashCode()
-        result = 31 * result + type.hashCode()
-        result = 31 * result + subjectType.hashCode()
-        result = 31 * result + subjectId.hashCode()
-        result = 31 * result + timeEpochSeconds.hashCode()
-        result = 31 * result + timeNanos.hashCode()
-        result = 31 * result + metadata.hashCode()
-        result = 31 * result + tags.hashCode()
-        result = 31 * result + payload.contentHashCode()
+        var result = data.contentHashCode()
+        result = 31 * result + format.hashCode()
+        result = 31 * result + schema.hashCode()
         return result
     }
 }

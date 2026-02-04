@@ -6,12 +6,23 @@ import java.util.*
 /**
  * Represents an immutable fact stored in the FactStore.
  *
- * A fact captures something that happened at a specific point in time and is
+ * A [Fact] captures something that happened at a specific point in time and is
  * identified by a globally unique [FactId]. Facts are append-only and must not
  * be modified after they have been stored.
  *
- * The payload is treated as opaque binary data by the FactStore. Interpretation
- * and schema validation are the responsibility of the client.
+ * A fact consists of:
+ * - **Identity** ([id]) for uniqueness and idempotency
+ * - **Classification** ([type]) describing what kind of fact occurred
+ * - **Payload** ([payload]) containing the event data and its transport metadata
+ * - **Subject association** ([subjectRef]) defining the entity or context
+ *   the fact belongs to
+ * - **Temporal information** ([createdAt]) indicating when the fact occurred
+ * - **Metadata** ([metadata]) for auxiliary, non-indexed information
+ * - **Tags** ([tags]) for classification, filtering, and efficient querying
+ *
+ * FactStore treats facts as opaque records. It is responsible for storing,
+ * indexing, transporting, and replaying facts, but does not interpret the
+ * semantic meaning of the payload, schema, or data format.
  *
  * @property id the globally unique identifier of the fact
  * @property type the logical type of the fact
@@ -26,38 +37,95 @@ import java.util.*
 data class Fact(
     val id: FactId,
     val type: FactType,
-    val payload: ByteArray,
+    val payload: FactPayload,
     val subjectRef: SubjectRef,
     val createdAt: Instant,
     val metadata: Map<String, String> = emptyMap(),
     val tags: Map<TagKey, TagValue> = emptyMap(),
+)
+
+/**
+ * Describes the payload of a [Fact] and how it should be interpreted.
+ *
+ * A [FactPayload] encapsulates the raw payload data together with optional
+ * descriptive metadata about its format and schema. This allows clients to
+ * understand how to deserialize and process the payload without requiring
+ * FactStore to interpret or validate it.
+ *
+ * The payload data itself is treated as opaque binary data.
+ * Interpretation, schema validation, and compatibility guarantees are the
+ * responsibility of producers and consumers.
+ *
+ * This structure intentionally separates payload concerns from the core
+ * [Fact] envelope, allowing payload-related metadata to evolve independently
+ * without impacting the stability of the fact model.
+ *
+ * @property data the raw serialized payload data
+ * @property format an optional identifier describing the payload data format
+ * (for example JSON, Avro, Protobuf, etc.)
+ * @property schema an optional reference to the schema used to serialize
+ * the payload data
+ *
+ * @author Domenic Cassisi
+ */
+data class FactPayload(
+    val data: ByteArray,
+    val format: PayloadFormat? = null,
+    val schema: PayloadSchemaRef? = null
 ) {
+
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (javaClass != other?.javaClass) return false
 
-        other as Fact
+        other as FactPayload
 
-        if (id != other.id) return false
-        if (type != other.type) return false
-        if (!payload.contentEquals(other.payload)) return false
-        if (subjectRef != other.subjectRef) return false
-        if (createdAt != other.createdAt) return false
-        if (metadata != other.metadata) return false
-        if (tags != other.tags) return false
+        if (!data.contentEquals(other.data)) return false
+        if (format != other.format) return false
+        if (schema != other.schema) return false
 
         return true
     }
 
     override fun hashCode(): Int {
-        var result = id.hashCode()
-        result = 31 * result + type.hashCode()
-        result = 31 * result + payload.contentHashCode()
-        result = 31 * result + subjectRef.hashCode()
-        result = 31 * result + createdAt.hashCode()
-        result = 31 * result + metadata.hashCode()
-        result = 31 * result + tags.hashCode()
+        var result = data.contentHashCode()
+        result = 31 * result + format.hashCode()
+        result = 31 * result + schema.hashCode()
         return result
+    }
+}
+
+/**
+ * Identifies the data format of a [FactPayload].
+ *
+ * A [PayloadFormat] describes how the payload bytes are encoded (for example
+ * JSON, Avro, or Protobuf). FactStore does not interpret or validate the format;
+ * it is provided solely for consumers.
+ *
+ * @property value the textual representation of the payload format
+ */
+@JvmInline
+value class PayloadFormat(val value: String) {
+    init {
+        require(value.isNotBlank()) { "Payload format must not be blank" }
+    }
+}
+
+/**
+ * References the schema used to serialize a [FactPayload].
+ *
+ * A [PayloadSchemaRef] is an opaque identifier that may point to a schema
+ * registry entry, a versioned schema name, or any other client-defined
+ * schema reference.
+ *
+ * FactStore does not resolve, validate, or enforce schemas.
+ *
+ * @property value the schema reference identifier
+ */
+@JvmInline
+value class PayloadSchemaRef(val value: String) {
+    init {
+        require(value.isNotBlank()) { "Schema ref must not be blank" }
     }
 }
 
@@ -168,3 +236,6 @@ fun UUID.toFactId() = FactId(this)
 fun String.toFactType() = FactType(this)
 fun String.toTagKey() = TagKey(this)
 fun String.toTagValue() = TagValue(this)
+fun String.toFactPayload() = FactPayload(this.toByteArray())
+fun String.toPayloadFormat() = PayloadFormat(this)
+fun String.toPayloadSchemaRef() = PayloadSchemaRef(this)

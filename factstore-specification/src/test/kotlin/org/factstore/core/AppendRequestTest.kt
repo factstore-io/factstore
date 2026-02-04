@@ -16,7 +16,7 @@ class AppendRequestTest {
                 id = "TEST_ID",
             ),
             type = FactType("TEST_FACT_TYPE"),
-            payload = """DATA""".toByteArray(),
+            payload = """DATA""".toFactPayload(),
             createdAt = Instant.now(),
             tags = emptyMap()
         )

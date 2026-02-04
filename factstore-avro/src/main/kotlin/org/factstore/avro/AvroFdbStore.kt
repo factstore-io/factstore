@@ -88,7 +88,7 @@ object FactRegistry {
     fun fromEnvelope(fact: Fact): Any {
         val descriptor = byType[fact.type.value] ?: error("Unknown fact type ${fact.type}")
         val serde = (descriptor as FactDescriptor<Any>).serializer
-        return serde.deserialize(fact.payload)
+        return serde.deserialize(fact.payload.data)
     }
 
     fun toEnvelope(fact: Any): Fact {
@@ -127,7 +127,7 @@ object FactRegistry {
         val fact = Fact(
             id = FactId.generate(),
             type = org.factstore.core.FactType(factType),
-            payload = factSerde.serialize(fact),
+            payload = FactPayload(factSerde.serialize(fact)),
             subjectRef = SubjectRef(
                 type = subjectType,
                 id = subjectId
