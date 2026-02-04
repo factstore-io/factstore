@@ -132,7 +132,7 @@ object FactRegistry {
                 type = subjectType,
                 id = subjectId
             ),
-            createdAt = Instant.now(),
+            appendedAt = Instant.now(),
             metadata = emptyMap(),
             tags = tags.entries.associate { it.key.toTagKey() to it.value.toTagValue() }
         )

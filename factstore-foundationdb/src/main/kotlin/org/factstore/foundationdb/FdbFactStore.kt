@@ -117,7 +117,7 @@ class FdbFactStore(
         mutate(SET_VERSIONSTAMPED_KEY, eventTypeIndexKey, EMPTY_BYTE_ARRAY)
 
         val createdAtIndexKey = createdAtIndexSubspace.packWithVersionstamp(
-            Tuple.from(fact.createdAt.epochSecond, fact.createdAt.nano, Versionstamp.incomplete(), index, factId)
+            Tuple.from(fact.appendedAt.epochSecond, fact.appendedAt.nano, Versionstamp.incomplete(), index, factId)
         )
         mutate(SET_VERSIONSTAMPED_KEY, createdAtIndexKey, EMPTY_BYTE_ARRAY)
 
@@ -188,8 +188,8 @@ internal fun Fact.toSerializableFdbFact() = SerializableFdbFact(
     type = type.value,
     subjectType = subjectRef.type,
     subjectId = subjectRef.id,
-    timeEpochSeconds = createdAt.epochSecond,
-    timeNanos = createdAt.nano,
+    timeEpochSeconds = appendedAt.epochSecond,
+    timeNanos = appendedAt.nano,
     metadata = metadata,
     tags = tags.entries.associate { it.key.value to it.value.value },
     payload = SerializableFactPayload(
@@ -215,7 +215,7 @@ internal fun SerializableFdbFact.toFact() = Fact(
         type = subjectType,
         id = subjectId
     ),
-    createdAt = Instant.ofEpochSecond(timeEpochSeconds, timeNanos.toLong()),
+    appendedAt = Instant.ofEpochSecond(timeEpochSeconds, timeNanos.toLong()),
     metadata = metadata,
     tags = tags.entries.associate { it.key.toTagKey() to it.value.toTagValue() }
 )

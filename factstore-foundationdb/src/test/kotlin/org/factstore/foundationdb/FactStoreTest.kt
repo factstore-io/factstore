@@ -77,7 +77,7 @@ class FactStoreTest {
             ),
             type = "USER_ONBOARDED".toFactType(),
             payload = payload,
-            createdAt = createdAt
+            appendedAt = createdAt
         )
 
         store.append(fact)
@@ -108,7 +108,7 @@ class FactStoreTest {
             ),
             type = "USER_CREATED".toFactType(),
             payload = """{ "username": "Alice" }""".toFactPayload(),
-            createdAt = now.minusSeconds(60) // 1 minute ago
+            appendedAt = now.minusSeconds(60) // 1 minute ago
         )
 
         val fact2 = Fact(
@@ -119,7 +119,7 @@ class FactStoreTest {
             ),
             type = "USER_UPDATED".toFactType(),
             payload = """{ "username": "Alice", "status": "active" }""".toFactPayload(),
-            createdAt = now
+            appendedAt = now
         )
 
         val fact3 = Fact(
@@ -130,7 +130,7 @@ class FactStoreTest {
             ),
             type = "USER_DELETED".toFactType(),
             payload = """{ "username": "Bob" }""".toFactPayload(),
-            createdAt = now.plusSeconds(60) // 1 minute in the future
+            appendedAt = now.plusSeconds(60) // 1 minute in the future
         )
 
         // Append all three
@@ -158,7 +158,7 @@ class FactStoreTest {
             ),
             type = "USER_CREATED".toFactType(),
             payload = """{ "username": "Alice" }""".toFactPayload(),
-            createdAt = Instant.now()
+            appendedAt = Instant.now()
         )
 
         // append fact1
@@ -189,7 +189,7 @@ class FactStoreTest {
             ),
             type = "USER_LOCKED".toFactType(),
             payload = """{ "username": "Alice" }""".toFactPayload(),
-            createdAt = Instant.now()
+            appendedAt = Instant.now()
         )
 
         val appendRequestWithFirstFactSubjectCondition = AppendRequest(
@@ -243,7 +243,7 @@ class FactStoreTest {
             ),
             type = "USER_CREATED".toFactType(),
             payload = """{ "username": "Alice" }""".toFactPayload(),
-            createdAt = Instant.now()
+            appendedAt = Instant.now()
         )
 
         val fact2 = Fact(
@@ -254,7 +254,7 @@ class FactStoreTest {
             ),
             type = "USER_CREATED".toFactType(),
             payload = """{ "username": "BOB" }""".toFactPayload(),
-            createdAt = Instant.now()
+            appendedAt = Instant.now()
         )
 
         val fact3 = Fact(
@@ -265,7 +265,7 @@ class FactStoreTest {
             ),
             type = "USER_LOCKED".toFactType(),
             payload = """{ "username": "Alice" }""".toFactPayload(),
-            createdAt = Instant.now()
+            appendedAt = Instant.now()
         )
 
         val appendRequest = AppendRequest(
@@ -300,7 +300,7 @@ class FactStoreTest {
             ),
             type = "USER_CREATED".toFactType(),
             payload = """{ "username": "Alice" }""".toFactPayload(),
-            createdAt = Instant.now()
+            appendedAt = Instant.now()
         )
 
         val fact2 = Fact(
@@ -311,7 +311,7 @@ class FactStoreTest {
             ),
             type = "USER_CREATED".toFactType(),
             payload = """{ "username": "BOB" }""".toFactPayload(),
-            createdAt = Instant.now()
+            appendedAt = Instant.now()
         )
 
         val fact3 = Fact(
@@ -322,7 +322,7 @@ class FactStoreTest {
             ),
             type = "USER_LOCKED".toFactType(),
             payload = """{ "username": "Alice" }""".toFactPayload(),
-            createdAt = Instant.now()
+            appendedAt = Instant.now()
         )
 
         val factsToAppend = listOf(fact1, fact2, fact3)
@@ -353,7 +353,7 @@ class FactStoreTest {
             ),
             type = "USER_CREATED".toFactType(),
             payload = """{ "username": "Alice" }""".toFactPayload(),
-            createdAt = Instant.now(),
+            appendedAt = Instant.now(),
             metadata = mapOf("test" to "123", "loc" to "world")
         )
 
@@ -365,7 +365,7 @@ class FactStoreTest {
             ),
             type = "USER_CREATED".toFactType(),
             payload = """{ "username": "BOB" }""".toFactPayload(),
-            createdAt = Instant.now()
+            appendedAt = Instant.now()
         )
 
         val factsToAppend = listOf(fact1, fact2)
@@ -386,7 +386,7 @@ class FactStoreTest {
             ),
             type = "USER_CREATED".toFactType(),
             payload = """{ "username": "Alice" }""".toFactPayload(),
-            createdAt = Instant.now(),
+            appendedAt = Instant.now(),
             metadata = emptyMap(),
             tags = mapOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("eu"))
         )
@@ -399,7 +399,7 @@ class FactStoreTest {
             ),
             type = "USER_CREATED".toFactType(),
             payload = """{ "username": "Bob" }""".toFactPayload(),
-            createdAt = Instant.now(),
+            appendedAt = Instant.now(),
             metadata = emptyMap(),
             tags = mapOf(TagKey("role") to TagValue("user"), TagKey("region") to TagValue("us"))
         )
@@ -412,7 +412,7 @@ class FactStoreTest {
             ),
             type = "USER_CREATED".toFactType(),
             payload = """{ "username": "Charlie" }""".toFactPayload(),
-            createdAt = Instant.now(),
+            appendedAt = Instant.now(),
             metadata = emptyMap(),
             tags = mapOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("us"))
         )
@@ -474,7 +474,7 @@ class FactStoreTest {
                 ),
                 type = "USER_CREATED".toFactType(),
                 payload = """{ "username": "Alice" }""".toFactPayload(),
-                createdAt = Instant.now(),
+                appendedAt = Instant.now(),
                 metadata = emptyMap(),
                 tags = mapOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("eu"))
             )
@@ -487,7 +487,7 @@ class FactStoreTest {
                 ),
                 type = "USER_CREATED".toFactType(),
                 payload = """{ "username": "Bob" }""".toFactPayload(),
-                createdAt = Instant.now(),
+                appendedAt = Instant.now(),
                 metadata = emptyMap(),
                 tags = mapOf(TagKey("role") to TagValue("user"), TagKey("region") to TagValue("us"))
             )
@@ -500,7 +500,7 @@ class FactStoreTest {
                 ),
                 type = "USER_CREATED".toFactType(),
                 payload = """{ "username": "Charlie" }""".toFactPayload(),
-                createdAt = Instant.now(),
+                appendedAt = Instant.now(),
                 metadata = emptyMap(),
                 tags = mapOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("us"))
             )
@@ -543,7 +543,7 @@ class FactStoreTest {
             ),
             type = "USER_CREATED".toFactType(),
             payload = """{ "username": "Alice" }""".toFactPayload(),
-            createdAt = Instant.now(),
+            appendedAt = Instant.now(),
             metadata = emptyMap(),
             tags = mapOf(TagKey("username") to TagValue("alice"), TagKey("region") to TagValue("eu"))
         )
@@ -556,7 +556,7 @@ class FactStoreTest {
             ),
             type = "USER_CREATED".toFactType(),
             payload = """{ "username": "Bob" }""".toFactPayload(),
-            createdAt = Instant.now(),
+            appendedAt = Instant.now(),
             metadata = emptyMap(),
             tags = mapOf(TagKey("username") to TagValue("bob"), TagKey("region") to TagValue("us"))
         )
@@ -569,7 +569,7 @@ class FactStoreTest {
             ),
             type = "USER_CREATED".toFactType(),
             payload = """{ "username": "Charlie" }""".toFactPayload(),
-            createdAt = Instant.now(),
+            appendedAt = Instant.now(),
             metadata = emptyMap(),
             tags = mapOf(TagKey("username") to TagValue("charlie"), TagKey("region") to TagValue("us"))
         )
@@ -704,7 +704,7 @@ class FactStoreTest {
             subjectRef = SubjectRef(type = "USER", id = "ALICE"),
             type = "USER_CREATED".toFactType(),
             payload = """{ "username": "Alice" }""".toFactPayload(),
-            createdAt = Instant.now(),
+            appendedAt = Instant.now(),
             metadata = emptyMap(),
             tags = mapOf(TagKey("username") to TagValue("alice"), TagKey("region") to TagValue("eu"))
         )
@@ -714,7 +714,7 @@ class FactStoreTest {
             subjectRef = SubjectRef(type = "USER", id = "BOB"),
             type = "USER_UPDATED".toFactType(),
             payload = """{ "username": "Bob" }""".toFactPayload(),
-            createdAt = Instant.now(),
+            appendedAt = Instant.now(),
             metadata = emptyMap(),
             tags = mapOf(TagKey("username") to TagValue("bob"), TagKey("region") to TagValue("us"))
         )
@@ -724,7 +724,7 @@ class FactStoreTest {
             subjectRef = SubjectRef(type = "USER", id = "CHARLIE"),
             type = "USER_CREATED".toFactType(),
             payload = """{ "username": "Charlie" }""".toFactPayload(),
-            createdAt = Instant.now(),
+            appendedAt = Instant.now(),
             metadata = emptyMap(),
             tags = mapOf(TagKey("username") to TagValue("charlie"), TagKey("region") to TagValue("us"))
         )
@@ -755,7 +755,7 @@ class FactStoreTest {
             subjectRef = SubjectRef(type = "USER", id = "ALICE"),
             type = "USER_CREATED".toFactType(),
             payload = """{ "username": "Alice" }""".toFactPayload(),
-            createdAt = Instant.now(),
+            appendedAt = Instant.now(),
             metadata = emptyMap(),
             tags = mapOf(TagKey("username") to TagValue("alice"), TagKey("region") to TagValue("eu"))
         )
@@ -765,7 +765,7 @@ class FactStoreTest {
             subjectRef = SubjectRef(type = "USER", id = "BOB"),
             type = "USER_UPDATED".toFactType(),
             payload = """{ "username": "Bob" }""".toFactPayload(),
-            createdAt = Instant.now(),
+            appendedAt = Instant.now(),
             metadata = emptyMap(),
             tags = mapOf(TagKey("username") to TagValue("bob"), TagKey("region") to TagValue("us"))
         )
@@ -775,7 +775,7 @@ class FactStoreTest {
             subjectRef = SubjectRef(type = "USER", id = "CHARLIE"),
             type = "USER_CREATED".toFactType(),
             payload = """{ "username": "Charlie" }""".toFactPayload(),
-            createdAt = Instant.now(),
+            appendedAt = Instant.now(),
             metadata = emptyMap(),
             tags = mapOf(TagKey("username") to TagValue("charlie"), TagKey("region") to TagValue("us"))
         )
@@ -811,7 +811,7 @@ class FactStoreTest {
             subjectRef = SubjectRef(type = "USER", id = "ALICE"),
             type = "USER_CREATED".toFactType(),
             payload = """{ "username": "Alice" }""".toFactPayload(),
-            createdAt = Instant.now(),
+            appendedAt = Instant.now(),
             metadata = emptyMap(),
             tags = mapOf(TagKey("username") to TagValue("alice"), TagKey("region") to TagValue("eu"))
         )
@@ -821,7 +821,7 @@ class FactStoreTest {
             subjectRef = SubjectRef(type = "USER", id = "BOB"),
             type = "USER_UPDATED".toFactType(),
             payload = """{ "username": "Bob" }""".toFactPayload(),
-            createdAt = Instant.now(),
+            appendedAt = Instant.now(),
             metadata = emptyMap(),
             tags = mapOf(TagKey("username") to TagValue("bob"), TagKey("region") to TagValue("us"))
         )
@@ -831,7 +831,7 @@ class FactStoreTest {
             subjectRef = SubjectRef(type = "USER", id = "CHARLIE"),
             type = "USER_CREATED".toFactType(),
             payload = """{ "username": "Charlie" }""".toFactPayload(),
-            createdAt = Instant.now(),
+            appendedAt = Instant.now(),
             metadata = emptyMap(),
             tags = mapOf(TagKey("username") to TagValue("charlie"), TagKey("region") to TagValue("us"))
         )
@@ -867,7 +867,7 @@ class FactStoreTest {
             subjectRef = SubjectRef(type = "USER", id = "ALICE"),
             type = "USER_CREATED".toFactType(),
             payload = """{ "username": "Alice" }""".toFactPayload(),
-            createdAt = Instant.now(),
+            appendedAt = Instant.now(),
             metadata = emptyMap(),
             tags = mapOf(TagKey("username") to TagValue("alice"), TagKey("region") to TagValue("eu"))
         )
@@ -905,7 +905,7 @@ class FactStoreTest {
                 ),
                 type = "USER_CREATED".toFactType(),
                 payload = """{ "username": "user$index" }""".toFactPayload(),
-                createdAt = Instant.now(),
+                appendedAt = Instant.now(),
                 metadata = emptyMap(),
                 tags = mapOf(
                     TagKey("role") to TagValue(tag),
@@ -929,7 +929,7 @@ class FactStoreTest {
                 ),
                 type = "USER_CREATED".toFactType(),
                 payload = """{ "username": "user" }""".toFactPayload(),
-                createdAt = Instant.now(),
+                appendedAt = Instant.now(),
                 metadata = emptyMap(),
                 tags = mapOf(
                     TagKey("role") to TagValue("custom"),
@@ -994,7 +994,7 @@ class FactStoreTest {
             ),
             type = "USER_CREATED".toFactType(),
             payload = """{ "username": "Alice" }""".toFactPayload(),
-            createdAt = Instant.now(),
+            appendedAt = Instant.now(),
             tags = mapOf(
                 TagKey("user") to TagValue("ALICE"),
             )
@@ -1031,7 +1031,7 @@ class FactStoreTest {
             ),
             type = "USER_LOCKED".toFactType(),
             payload = """{ "username": "ALICE" }""".toFactPayload(),
-            createdAt = Instant.now(),
+            appendedAt = Instant.now(),
             tags = mapOf(
                 TagKey("user") to TagValue("ALICE"),
             )
@@ -1072,7 +1072,7 @@ class FactStoreTest {
             ),
             type = "USER_CREATED".toFactType(),
             payload = """{ "username": "BOB" }""".toFactPayload(),
-            createdAt = Instant.now(),
+            appendedAt = Instant.now(),
             tags = mapOf(
                 TagKey("user") to TagValue("BOB"),
             )
@@ -1107,7 +1107,7 @@ class FactStoreTest {
             ),
             type = "USER_LOCKED".toFactType(),
             payload = """{ "username": "BOB" }""".toFactPayload(),
-            createdAt = Instant.now(),
+            appendedAt = Instant.now(),
             tags = mapOf(
                 TagKey("user") to TagValue("BOB"),
             )
@@ -1150,7 +1150,7 @@ class FactStoreTest {
             ),
             type = "USER_LOCKED".toFactType(),
             payload = """{ "username": "BOB" }""".toFactPayload(),
-            createdAt = Instant.now(),
+            appendedAt = Instant.now(),
             tags = emptyMap()
         )
 
@@ -1162,7 +1162,7 @@ class FactStoreTest {
             ),
             type = "USER_LOCKED".toFactType(),
             payload = """{ "username": "ALICE" }""".toFactPayload(),
-            createdAt = Instant.now(),
+            appendedAt = Instant.now(),
             tags = emptyMap()
         )
 
@@ -1193,7 +1193,7 @@ class FactStoreTest {
             ),
             type = "USER_LOCKED".toFactType(),
             payload = """{ "username": "DOMI" }""".toFactPayload(),
-            createdAt = Instant.now(),
+            appendedAt = Instant.now(),
             tags = emptyMap()
         )
         val idempotencyKey = IdempotencyKey(UUID.randomUUID())
@@ -1234,7 +1234,7 @@ class FactStoreTest {
             ),
             type = "TEST_FACT_TYPE".toFactType(),
             payload = """DATA""".toFactPayload(),
-            createdAt = Instant.now(),
+            appendedAt = Instant.now(),
             tags = emptyMap()
         )
 

@@ -17,7 +17,7 @@ class AppendRequestTest {
             ),
             type = FactType("TEST_FACT_TYPE"),
             payload = """DATA""".toFactPayload(),
-            createdAt = Instant.now(),
+            appendedAt = Instant.now(),
             tags = emptyMap()
         )
 
