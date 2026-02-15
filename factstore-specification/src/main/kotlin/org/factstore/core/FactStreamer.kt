@@ -64,7 +64,7 @@ interface FactStreamer {
  */
 data class StreamingOptionSet(
     val lastSeenId: FactId? = null,
-    val batchSize: Int = 128,
+    val batchSize: Int = 1024,
     val pollDelayMs: Long = 250L
 ) {
 

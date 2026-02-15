@@ -12,7 +12,7 @@ class StreamingOptionSetTest {
         val options = StreamingOptionSet()
 
         assertThat(options.lastSeenId).isNull()
-        assertThat(options.batchSize).isEqualTo(128)
+        assertThat(options.batchSize).isEqualTo(1024)
         assertThat(options.pollDelayMs).isEqualTo(250L)
     }
 

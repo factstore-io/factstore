@@ -1,15 +1,3 @@
-pluginManagement {
-    val quarkusPluginVersion: String by settings
-    val quarkusPluginId: String by settings
-    repositories {
-        mavenCentral()
-        gradlePluginPortal()
-        mavenLocal()
-    }
-    plugins {
-        id(quarkusPluginId) version quarkusPluginVersion
-    }
-}
 rootProject.name="factstore"
 
 include(
@@ -17,5 +5,6 @@ include(
     "factstore-foundationdb",
     "factstore-avro",
     "factstore-fmodel",
-    "fact-explorer"
+    "fact-explorer",
+    "factstore-server",
 )

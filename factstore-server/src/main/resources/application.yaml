@@ -1,0 +1,8 @@
+quarkus:
+  http:
+    root-path: "/api"
+
+factstore:
+  foundationdb:
+    cluster-file: /etc/foundationdb/fdb.cluster
+    api-version: 730
