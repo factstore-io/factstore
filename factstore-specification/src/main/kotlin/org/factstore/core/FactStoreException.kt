@@ -40,7 +40,7 @@ sealed class InvalidStreamingRequestException(message: String) :
 /**
  * Thrown when a streaming request references a [FactId] that does not exist.
  *
- * This exception is typically raised when [StreamingOptionSet.lastSeenId]
+ * This exception is typically raised when [StartPosition.After]
  * is set to a fact identifier that is unknown to the store.
  *
  * Streaming requires the last-seen fact to exist in order to resume
