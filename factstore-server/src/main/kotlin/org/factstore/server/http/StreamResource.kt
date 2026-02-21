@@ -9,7 +9,8 @@ import jakarta.ws.rs.core.MediaType.APPLICATION_JSON
 import jakarta.ws.rs.core.MediaType.SERVER_SENT_EVENTS
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
-import org.factstore.core.StreamingOptionSet
+import org.factstore.core.StartPosition
+import org.factstore.core.StreamingOptions
 import org.factstore.core.toFactId
 import org.factstore.server.FactStoreProvider
 import org.jboss.resteasy.reactive.RestStreamElementType
@@ -29,7 +30,12 @@ class StreamResource(
     ): Flow<FactHttp> =
         factStoreProvider
             .findByName(factStoreName)
-            .streamAll(StreamingOptionSet(lastSeenId = after?.toFactId()))
+            .stream(buildStreamingOptions(after))
             .map { it.toFactHttp() }
+
+    private fun buildStreamingOptions(after: UUID?): StreamingOptions {
+        val startPosition = after?.let { StartPosition.After(it.toFactId()) } ?: StartPosition.Beginning
+        return StreamingOptions(startPosition)
+    }
 
 }

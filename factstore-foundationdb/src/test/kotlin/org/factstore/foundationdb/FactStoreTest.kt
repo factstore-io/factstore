@@ -2,17 +2,12 @@ package org.factstore.foundationdb
 
 import com.apple.foundationdb.FDB
 import earth.adi.testcontainers.containers.FoundationDBContainer
-import kotlinx.coroutines.FlowPreview
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.take
-import kotlinx.coroutines.flow.timeout
 import kotlinx.coroutines.flow.toList
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
-import org.assertj.core.api.Assertions.assertThat
-import org.assertj.core.api.Assertions.assertThatThrownBy
-import org.assertj.core.api.Assertions.catchThrowable
+import org.assertj.core.api.Assertions.*
 import org.factstore.core.*
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.BeforeEach
@@ -25,7 +20,6 @@ import org.testcontainers.utility.DockerImageName
 import java.time.Instant
 import java.util.*
 import kotlin.system.measureTimeMillis
-import kotlin.time.Duration.Companion.seconds
 
 const val FDB_VERSION = "7.3.69"
 const val FDB_API_VERSION = 730
@@ -454,81 +448,131 @@ class FactStoreTest {
     @OptIn(FlowPreview::class)
     @Test
     fun testFactStreaming(): Unit = runBlocking {
-        // test global fact streaming
 
-        launch {
-            store.streamAll().timeout(5.seconds).collect {
-                println(it)
-            }
+        val collectedFacts = mutableListOf<Fact>()
+        val firstThreeReceived = CompletableDeferred<Unit>()
+
+        // Start streaming from beginning
+        val streamJob = launch {
+            store.stream()
+                .take(3)
+                .collect {
+                    collectedFacts += it
+                    if (collectedFacts.size == 3) {
+                        firstThreeReceived.complete(Unit)
+                    }
+                }
         }
 
+        // Create facts
+        val fact1 = createUserFact("ALICE", "Alice", "admin", "eu")
+        val fact2 = createUserFact("BOB", "Bob", "user", "us")
+        val fact3 = createUserFact("CHARLIE", "Charlie", "admin", "us")
 
-        println("launching...")
-        launch {
+        // Append
+        store.append(fact1)
+        store.append(fact2)
+        store.append(fact3)
 
-            val fact1 = Fact(
-                id = FactId.generate(),
-                subjectRef = SubjectRef(
-                    type = "USER",
-                    id = "ALICE",
-                ),
-                type = "USER_CREATED".toFactType(),
-                payload = """{ "username": "Alice" }""".toFactPayload(),
-                appendedAt = Instant.now(),
-                metadata = emptyMap(),
-                tags = mapOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("eu"))
-            )
+        // Wait deterministically until 3 facts are received
+        firstThreeReceived.await()
 
-            val fact2 = Fact(
-                id = FactId.generate(),
-                subjectRef = SubjectRef(
-                    type = "USER",
-                    id = "BOB",
-                ),
-                type = "USER_CREATED".toFactType(),
-                payload = """{ "username": "Bob" }""".toFactPayload(),
-                appendedAt = Instant.now(),
-                metadata = emptyMap(),
-                tags = mapOf(TagKey("role") to TagValue("user"), TagKey("region") to TagValue("us"))
-            )
+        assertThat(collectedFacts).containsExactly(fact1, fact2, fact3)
 
-            val fact3 = Fact(
-                id = FactId.generate(),
-                subjectRef = SubjectRef(
-                    type = "USER",
-                    id = "CHARLIE",
-                ),
-                type = "USER_CREATED".toFactType(),
-                payload = """{ "username": "Charlie" }""".toFactPayload(),
-                appendedAt = Instant.now(),
-                metadata = emptyMap(),
-                tags = mapOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("us"))
-            )
+        streamJob.cancelAndJoin()
 
-            println("appending...")
-            store.append(fact1)
-            delay(1000)
-            store.append(fact2)
-            store.append(fact3)
-            delay(1000)
+        // ---- Test StartPosition.After ----
 
-            // start another stream but start after fact1,
-            // so expect to read fact2 and fact3
-            val streamedEvents = store.streamAll(StreamingOptionSet(lastSeenId = fact1.id))
-                .take(2)
-                .toList()
+        val streamedEvents = store.stream(
+            StreamingOptions(startPosition = StartPosition.After(fact1.id))
+        )
+            .take(2)
+            .toList()
 
-            assertThat(streamedEvents).containsExactly(fact2, fact3)
+        assertThat(streamedEvents).containsExactly(fact2, fact3)
 
-            // request to stream from a fact that does not exist should throw an error
-            val nonExistingFactId = FactId.generate()
-            assertThatThrownBy {
-                runBlocking { store.streamAll(StreamingOptionSet(lastSeenId = nonExistingFactId)).collect() }
+        // ---- Test non-existing fact ----
+
+        val nonExistingFactId = FactId.generate()
+
+        assertThatThrownBy {
+            runBlocking {
+                store.stream(
+                    StreamingOptions(startPosition = StartPosition.After(nonExistingFactId))
+                ).collect()
             }
-                .isInstanceOf(FactIdNotFoundException::class.java)
-                .matches { (it as FactIdNotFoundException).factId == nonExistingFactId }
         }
+            .isInstanceOf(FactIdNotFoundException::class.java)
+            .matches { (it as FactIdNotFoundException).factId == nonExistingFactId }
     }
+
+    @OptIn(FlowPreview::class)
+    @Test
+    fun testFactStreaming_startPositionEnd() = runBlocking {
+
+        // Append initial facts BEFORE starting the stream
+        val initialFact1 = createUserFact("ALICE", "Alice", "admin", "eu")
+        val initialFact2 = createUserFact("BOB", "Bob", "user", "us")
+
+        store.append(initialFact1)
+        store.append(initialFact2)
+
+        val received = mutableListOf<Fact>()
+        val receivedLatch = CompletableDeferred<Unit>()
+        val streamStartedLatch = CompletableDeferred<Unit>()
+
+        // Start stream from END (should NOT see initialFact1/2)
+        val job = launch {
+            store.stream(
+                StreamingOptions(startPosition = StartPosition.End)
+            )
+                .take(2)
+                .onStart { streamStartedLatch.complete(Unit) }
+                .collect {
+                    received += it
+                    if (received.size == 2) {
+                        receivedLatch.complete(Unit)
+                    }
+                }
+        }
+
+        // wait for the streaming to start
+        streamStartedLatch.await()
+
+        // Append facts AFTER stream started
+        val newFact1 = createUserFact("CHARLIE", "Charlie", "admin", "us")
+        val newFact2 = createUserFact("DAVID", "David", "user", "eu")
+
+        store.append(newFact1)
+        store.append(newFact2)
+
+        // Wait deterministically until 2 facts received
+        receivedLatch.await()
+
+        assertThat(received)
+            .containsExactly(newFact1, newFact2)
+
+        job.cancelAndJoin()
+    }
+
+    private fun createUserFact(
+        subjectId: String,
+        username: String,
+        role: String,
+        region: String
+    ): Fact =
+        Fact(
+            id = FactId.generate(),
+            subjectRef = SubjectRef(type = "USER", id = subjectId),
+            type = "USER_CREATED".toFactType(),
+            payload = """{ "username": "$username" }""".toFactPayload(),
+            appendedAt = Instant.now(),
+            metadata = emptyMap(),
+            tags = mapOf(
+                TagKey("role") to TagValue(role),
+                TagKey("region") to TagValue(region)
+            )
+        )
 
     @Test
     fun testFindByTagQuery(): Unit = runBlocking {
