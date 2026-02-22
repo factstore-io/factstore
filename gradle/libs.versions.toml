@@ -10,7 +10,7 @@ avro4k = "2.10.0"
 testcontainers-junit-jupiter = "1.21.4"
 testcontainers-foundationdb = "1.1.0"
 fmodel = "3.7.0"
-quarkusPluginVersion = "3.32.0"
+quarkusPluginVersion = "3.31.4"
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
