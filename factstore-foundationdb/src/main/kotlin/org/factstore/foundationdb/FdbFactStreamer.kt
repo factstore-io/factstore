@@ -3,6 +3,7 @@ package org.factstore.foundationdb
 import com.apple.foundationdb.KeySelector
 import com.apple.foundationdb.Range
 import com.apple.foundationdb.ReadTransaction
+import com.apple.foundationdb.tuple.Tuple
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -14,7 +15,7 @@ import java.util.concurrent.CompletableFuture
 import kotlin.time.Duration.Companion.milliseconds
 
 val DEFAULT_POLL_DELAY = 250.milliseconds
-const val DEFAULT_BATCH_SIZE = 1024
+const val DEFAULT_BATCH_SIZE = 5000
 const val REVERSE_TRUE = true
 
 class FdbFactStreamer(
@@ -43,7 +44,7 @@ class FdbFactStreamer(
             }
 
             // we move the cursor
-            lastSeenKey = keyOf(batch.last())
+            lastSeenKey = batch.last().getFactPositionKey()
 
             for (fdbFact in batch) {
                 emit(fdbFact.fact)
@@ -77,36 +78,30 @@ class FdbFactStreamer(
 
         return tr.getRange(beginSelector, endSelector, DEFAULT_BATCH_SIZE)
             .asList()
-            .thenCompose { keyValues ->
+            .thenApply { keyValues ->
 
-                val futures = keyValues.mapNotNull { kv ->
-                    val factId = store.globalFactPositionSubspace
-                        .unpack(kv.key)
-                        .getLastAsFactId()
+                keyValues.map { kv ->
+                    val keyTuple = Tuple.fromBytes(kv.key)
+                    val factPosition = keyTuple.getLastAsFactPosition()
+                    val fact = kv.value.toSerializableFdbFact().toFact()
 
-                    tr.loadFact(factId)
+                    FdbFact(
+                        fact = fact,
+                        factPosition = factPosition
+                    )
                 }
-
-                CompletableFuture
-                    .allOf(*futures.toTypedArray())
-                    .thenApply {
-                        futures.mapNotNull { it.resultNow() }
-                    }
             }
     }
 
     private suspend fun getKeyForFactOrThrow(factId: FactId): ByteArray =
         store.db.readAsync { tr ->
-            tr.loadFact(factId).thenApply { internal ->
-                internal ?: throw FactIdNotFoundException(factId)
-                keyOf(internal)
+            tr.loadFact(factId).thenApply { fdbFact ->
+                fdbFact?.getFactPositionKey() ?: throw FactIdNotFoundException(factId)
             }
         }.await()
 
-    private fun keyOf(fdbFact: FdbFact): ByteArray =
-        store.globalFactPositionSubspace.pack(
-            fdbFact.positionTuple.add(fdbFact.fact.id.uuid)
-        )
+    private fun FdbFact.getFactPositionKey(): ByteArray =
+        store.globalFactPositionSubspace.pack(factPosition)
 
     private suspend fun getCurrentEndKey(globalRange: Range): ByteArray? =
         store.db.readAsync { tr ->
