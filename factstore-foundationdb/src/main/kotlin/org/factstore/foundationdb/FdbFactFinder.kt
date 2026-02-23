@@ -5,14 +5,13 @@ import com.apple.foundationdb.tuple.Tuple
 import kotlinx.coroutines.future.await
 import org.factstore.core.*
 import java.time.Instant
-import java.util.*
 import java.util.concurrent.CompletableFuture
 
 class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
 
     private val db = fdbFactStore.db
 
-    private val factsSubspace = fdbFactStore.factsSubspace
+    private val factPositionSubspace = fdbFactStore.factPositionsSubspace
 
     private val createdAtIndexSubspace = fdbFactStore.createdAtIndexSubspace
     private val subjectIndexSubspace = fdbFactStore.subjectIndexSubspace
@@ -37,13 +36,13 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
             tr.getRange(begin, endKey).asList().thenCompose { kvs ->
                 val factFutures: List<CompletableFuture<FdbFact?>> = kvs.map { kv ->
                     val tuple = createdAtIndexSubspace.unpack(kv.key)
-                    val factId = tuple.getLastAsFactId()
-                    tr.loadFact(factId)
+                    val factPosition = tuple.getLastAsFactPosition()
+                    tr.lookupFactFrom(factPosition)
                 }
 
                 // wait for all facts to complete
                 CompletableFuture.allOf(*factFutures.toTypedArray()).thenApply {
-                    factFutures.mapNotNull { it.getNow(null)?.fact }
+                    factFutures.mapNotNull { it.resultNow()?.fact }
                 }
             }
         }.await()
@@ -55,12 +54,12 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
             tr.getRange(subjectRange).asList().thenCompose { kvs ->
                 val factFutures: List<CompletableFuture<FdbFact?>> = kvs.map { kv ->
                     val tuple = subjectIndexSubspace.unpack(kv.key)
-                    val factId = tuple.getLastAsFactId()
-                    tr.loadFact(factId)
+                    val factPosition = tuple.getLastAsFactPosition()
+                    tr.lookupFactFrom(factPosition)
                 }
 
                 CompletableFuture.allOf(*factFutures.toTypedArray()).thenApply {
-                    factFutures.mapNotNull { it.getNow(null)?.fact }
+                    factFutures.mapNotNull { it.resultNow()?.fact }
                 }
             }
         }.await()
@@ -70,28 +69,28 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
         if (tags.isEmpty()) return emptyList()
         return db.readAsync { tr ->
             // For each (key, value) pair, get matching factIds
-            val tagFutures: List<CompletableFuture<Set<UUID>>> = tags.map { (key, value) ->
+            val tagFutures: List<CompletableFuture<Set<FactPosition>>> = tags.map { (key, value) ->
                 val range = tagsIndexSubspace.range(Tuple.from(key.value, value.value))
                 tr.getRange(range).asList().thenApply { kvs ->
                     kvs.mapTo(mutableSetOf()) { kv ->
                         val tuple = tagsIndexSubspace.unpack(kv.key)
-                        tuple.getUUID(tuple.size() - 1)
+                        tuple.getLastAsFactPosition()
                     }
                 }
             }
 
             // Once all tag lookups finish, union them and load facts
             CompletableFuture.allOf(*tagFutures.toTypedArray()).thenCompose {
-                val allFactIds: Set<UUID> = tagFutures
+                val allFactPositions: Set<FactPosition> = tagFutures
                     .flatMap { it.getNow(emptySet()) }
                     .toSet() // OR semantics = union
 
-                val loadFutures: List<CompletableFuture<FdbFact?>> = allFactIds.map { tr.loadFact(it.toFactId()) }
+                val loadFutures: List<CompletableFuture<FdbFact?>> = allFactPositions.map { tr.lookupFactFrom(it) }
 
                 CompletableFuture.allOf(*loadFutures.toTypedArray()).thenApply {
                     loadFutures
-                        .mapNotNull { it.getNow(null) }
-                        .sortedBy { it.positionTuple }
+                        .mapNotNull { it.resultNow() }
+                        .sortedBy { it.factPosition }
                         .map { it.fact }
                 }
             }
@@ -104,38 +103,38 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
             val queryItemFutures = query.queryItems
                 .map { queryItem ->
                     // map query item to list of fact IDs
-                    queryItem.resolveFactIds(snapshot)
+                    queryItem.resolveFactPositions(snapshot)
                 }
 
                 CompletableFuture.allOf(*queryItemFutures.toTypedArray()).thenCompose {
-                val allFactIds: Set<UUID> = queryItemFutures
+                val allFactPositions: Set<FactPosition> = queryItemFutures
                     .flatMap { it.getNow(emptySet()) }
                     .toSet() // OR semantics = union
 
-                val loadFutures: List<CompletableFuture<FdbFact?>> = allFactIds.map { snapshot.loadFact(it.toFactId()) }
+                val loadFutures: List<CompletableFuture<FdbFact?>> = allFactPositions.map { snapshot.lookupFactFrom(it) }
 
                 CompletableFuture.allOf(*loadFutures.toTypedArray()).thenApply {
                     loadFutures
                         .mapNotNull { it.getNow(null) }
-                        .sortedBy { it.positionTuple }
+                        .sortedBy { it.factPosition }
                         .map { it.fact }
                 }
             }
         }.await()
     }
 
-    private fun TagQueryItem.resolveFactIds(tr: ReadTransaction): CompletableFuture<Set<UUID>> = when(this) {
-        is TagTypeItem -> resolveFactIds(tr)
-        is TagOnlyQueryItem -> resolveFactIds(tr)
+    private fun TagQueryItem.resolveFactPositions(tr: ReadTransaction): CompletableFuture<Set<FactPosition>> = when(this) {
+        is TagTypeItem -> resolveFactPositions(tr)
+        is TagOnlyQueryItem -> resolveFactPositions(tr)
     }
 
-    private fun TagOnlyQueryItem.resolveFactIds(tr: ReadTransaction): CompletableFuture<Set<UUID>> {
-        val futures: List<CompletableFuture<Set<UUID>>> = tags.map { tag ->
+    private fun TagOnlyQueryItem.resolveFactPositions(tr: ReadTransaction): CompletableFuture<Set<FactPosition>> {
+        val futures: List<CompletableFuture<Set<FactPosition>>> = tags.map { tag ->
             val range = tagsIndexSubspace.range(Tuple.from(tag.first.value, tag.second.value))
             tr.getRange(range).asList().thenApply { keyValues ->
                 keyValues.map {
                     val tuple = tagsIndexSubspace.unpack(it.key)
-                    tuple.getUUID(tuple.size() - 1)
+                    tuple.getLastAsFactPosition()
                 }.toSet() // Convert to a Set to easily combine results
             }
         }
@@ -149,15 +148,15 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
         }
     }
 
-    private fun TagTypeItem.resolveFactIds(tr: ReadTransaction): CompletableFuture<Set<UUID>> {
+    private fun TagTypeItem.resolveFactPositions(tr: ReadTransaction): CompletableFuture<Set<FactPosition>> {
         // use composite "type+tag" index
-        val futures: List<CompletableFuture<Set<UUID>>> = types.map { type ->
+        val futures: List<CompletableFuture<Set<FactPosition>>> = types.map { type ->
             val tagFutures = tags.map { tag ->
                 val range = tagsTypeIndexSubspace.range(Tuple.from(type.value, tag.first.value, tag.second.value))
                 tr.getRange(range).asList().thenApply { keyValues ->
                     keyValues.map {
                         val tuple = tagsTypeIndexSubspace.unpack(it.key)
-                        tuple.getUUID(tuple.size() - 1)
+                        tuple.getLastAsFactPosition()
                     }.toSet()
                 }
             }
@@ -181,18 +180,19 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
     }
 
     private fun FactId.loadFact(tr: ReadTransaction): CompletableFuture<Fact?> {
-        val factIdKey = factsSubspace.pack(Tuple.from(this.uuid))
-        return tr[factIdKey].thenApply { it?.toSerializableFdbFact()?.toFact() }
+        return with(fdbFactStore) {
+            tr.loadFactById(this@loadFact).thenApply { it?.fact }
+        }
     }
 
     private fun FactId.existsById(tr: ReadTransaction): CompletableFuture<Boolean> {
-        val factIdKey = factsSubspace.pack(Tuple.from(this.uuid))
-        return tr[factIdKey].thenApply { it != null }
+        return tr[factPositionSubspace.pack(this.toTuple())].thenApply { it != null }
     }
 
-    private fun ReadTransaction.loadFact(factId: FactId): CompletableFuture<FdbFact?> =
-        with(fdbFactStore) {
-            this@loadFact.loadFactById(factId)
+    private fun ReadTransaction.lookupFactFrom(position: FactPosition): CompletableFuture<FdbFact?> {
+        return with(fdbFactStore) {
+            this@lookupFactFrom.loadFactByPosition(position)
         }
+    }
 
 }

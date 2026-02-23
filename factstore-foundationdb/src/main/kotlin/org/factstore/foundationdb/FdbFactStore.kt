@@ -13,7 +13,6 @@ import kotlinx.serialization.decodeFromByteArray
 import kotlinx.serialization.encodeToByteArray
 import org.factstore.core.*
 import java.time.Instant
-import java.util.*
 import java.util.concurrent.CompletableFuture
 
 const val FACT_STORE = "fact-store"
@@ -39,17 +38,18 @@ const val FACT_POSITIONS = 2
  * A simple event/fact store implementation based on FoundationDB.
  *
  * FACT SPACES:
- *  /fact-store/facts/{factId} = serialized fact
- *  /fact-store/fact-positions/{factId} = fact position tuple (versionstamp+index)
+ *  /fact-store/global/{versionstamp} = serialized fact
  *
  * INDEX SPACES
- *  /fact-store/global/{versionstamp}/{index}/{factId} = ∅
- *  /fact-store/type-index/{type}/{versionstamp}/{index}/{factId} = ∅
- *  /fact-store/created-at-index/{epochSecond}/{nano}/{vs}/{index}/{factId} = ∅
- *  /fact-store/subject-index/{subjectType}/{subjectId}/{versionstamp}/{index}/{factId} = ∅
- *  /fact-store/metadata-index/{key}/{value}/{versionstamp}/{index}/{factId} = ∅
- *  /fact-store/tags-index/{key}/{value}/{versionstamp}/{index}/{factId} = ∅
- *  /fact-store/tags-type-index/{type}/{key}/{value}/{versionstamp}/{index}/{factId} = ∅
+ * ```
+ *  /fact-store/fact-position-index/{factId} = fact position tuple (versionstamp)
+ *  /fact-store/type-index/{type}/{versionstamp} = (factId)
+ *  /fact-store/created-at-index/{epochSecond}/{nano}/{versionstamp} = (factId)
+ *  /fact-store/subject-index/{subjectType}/{subjectId}/{versionstamp} = (factId)
+ *  /fact-store/metadata-index/{key}/{value}/{versionstamp} = (factId)
+ *  /fact-store/tags-index/{key}/{value}/{versionstamp} = (factId)
+ *  /fact-store/tags-type-index/{type}/{key}/{value}/{versionstamp} = (factId)
+ *  ```
  *
  */
 class FdbFactStore(
@@ -62,11 +62,11 @@ class FdbFactStore(
     internal val root = DirectoryLayer.getDefault().createOrOpen(db, listOf(FACT_STORE, name)).get()
 
     // FACT SPACES
-    internal val factsSubspace = root.subspace(Tuple.from(FACTS))
+    //internal val factsSubspace = root.subspace(Tuple.from(FACTS))
+    internal val globalFactPositionSubspace = root.subspace(Tuple.from(GLOBAL_FACT_POSITION_INDEX))
     internal val factPositionsSubspace = root.subspace(Tuple.from(FACT_POSITIONS))
 
     // INDEX SPACES
-    internal val globalFactPositionSubspace = root.subspace(Tuple.from(GLOBAL_FACT_POSITION_INDEX))
     internal val eventTypeIndexSubspace = root.subspace(Tuple.from(EVENT_TYPE_INDEX))
     internal val createdAtIndexSubspace = root.subspace(Tuple.from(CREATED_AT_INDEX))
     internal val subjectIndexSubspace = root.subspace(Tuple.from(SUBJECT_INDEX))
@@ -91,87 +91,112 @@ class FdbFactStore(
 
     private fun Transaction.storeFact(fact: Fact, index: Int) {
         val factIdTuple = fact.id.toTuple()
+        val incompleteVersionstamp = Versionstamp.incomplete(index)
 
         // store fact itself
         val serializedFactBytes = fact.toSerializableFdbFact().encodeToByteArray()
-        this[factsSubspace.pack(factIdTuple)] = serializedFactBytes
+        val globalPositionKey = globalFactPositionSubspace.packWithVersionstamp(
+            Tuple.from(incompleteVersionstamp)
+        )
+        mutate(SET_VERSIONSTAMPED_KEY, globalPositionKey, serializedFactBytes)
 
-        // store fact position (we use versionstamp+custom index position for that)
+        // store fact position (we use versionstamp for that)
         val positionKey = factPositionsSubspace.pack(factIdTuple)
-        val positionValue = Tuple.from(Versionstamp.incomplete(), index).packWithVersionstamp()
+        val positionValue = Tuple.from(incompleteVersionstamp).packWithVersionstamp()
         mutate(SET_VERSIONSTAMPED_VALUE, positionKey, positionValue)
-
     }
 
     private fun Transaction.storeIndexes(fact: Fact, index: Int) {
-        val factId = fact.id.uuid
-
-        val globalPositionKey = globalFactPositionSubspace.packWithVersionstamp(
-            Tuple.from(Versionstamp.incomplete(), index, factId)
-        )
-        mutate(SET_VERSIONSTAMPED_KEY, globalPositionKey, EMPTY_BYTE_ARRAY)
+        val factIdTuple = fact.id.toTuple().pack()
+        val incompleteVersionstamp = Versionstamp.incomplete(index)
 
         val eventTypeIndexKey = eventTypeIndexSubspace.packWithVersionstamp(
-            Tuple.from(fact.type.value, Versionstamp.incomplete(), index, factId)
+            Tuple.from(fact.type.value, incompleteVersionstamp)
         )
-        mutate(SET_VERSIONSTAMPED_KEY, eventTypeIndexKey, EMPTY_BYTE_ARRAY)
+        mutate(SET_VERSIONSTAMPED_KEY, eventTypeIndexKey, factIdTuple)
 
         val createdAtIndexKey = createdAtIndexSubspace.packWithVersionstamp(
-            Tuple.from(fact.appendedAt.epochSecond, fact.appendedAt.nano, Versionstamp.incomplete(), index, factId)
+            Tuple.from(fact.appendedAt.epochSecond, fact.appendedAt.nano, incompleteVersionstamp)
         )
-        mutate(SET_VERSIONSTAMPED_KEY, createdAtIndexKey, EMPTY_BYTE_ARRAY)
+        mutate(SET_VERSIONSTAMPED_KEY, createdAtIndexKey, factIdTuple)
 
         val subjectIndex = subjectIndexSubspace.packWithVersionstamp(
-            Tuple.from(fact.subjectRef.type, fact.subjectRef.id, Versionstamp.incomplete(), index, factId)
+            Tuple.from(fact.subjectRef.type, fact.subjectRef.id, incompleteVersionstamp)
         )
-        mutate(SET_VERSIONSTAMPED_KEY, subjectIndex, EMPTY_BYTE_ARRAY)
+        mutate(SET_VERSIONSTAMPED_KEY, subjectIndex, factIdTuple)
 
         fact.metadata.forEach { (key, value) ->
             val metadataEntryIndex = metadataIndexSubspace.packWithVersionstamp(
-                Tuple.from(key, value, Versionstamp.incomplete(), index, factId)
+                Tuple.from(key, value, incompleteVersionstamp)
             )
-            mutate(SET_VERSIONSTAMPED_KEY, metadataEntryIndex, EMPTY_BYTE_ARRAY)
+            mutate(SET_VERSIONSTAMPED_KEY, metadataEntryIndex, factIdTuple)
         }
 
         fact.tags.forEach { (key, value) ->
             val tagsEntryIndex = tagsIndexSubspace.packWithVersionstamp(
-                Tuple.from(key.value, value.value, Versionstamp.incomplete(), index, factId)
+                Tuple.from(key.value, value.value, incompleteVersionstamp)
             )
-            mutate(SET_VERSIONSTAMPED_KEY, tagsEntryIndex, EMPTY_BYTE_ARRAY)
+            mutate(SET_VERSIONSTAMPED_KEY, tagsEntryIndex, factIdTuple)
 
             val tagTypeIndex = tagsTypeIndexSubspace.packWithVersionstamp(
-                Tuple.from(fact.type.value, key.value, value.value, Versionstamp.incomplete(), index, factId)
+                Tuple.from(fact.type.value, key.value, value.value, incompleteVersionstamp)
             )
-            mutate(SET_VERSIONSTAMPED_KEY, tagTypeIndex, EMPTY_BYTE_ARRAY)
+            mutate(SET_VERSIONSTAMPED_KEY, tagTypeIndex, factIdTuple)
         }
     }
 
+    internal fun ReadTransaction.loadFactByPosition(position: FactPosition): CompletableFuture<FdbFact?> {
+        val positionTuple = Tuple.from(position)
+        return this[globalFactPositionSubspace.pack(positionTuple)].thenApply { factBytes ->
+            if (factBytes == null) {
+                return@thenApply null
+            }
+
+            val fact = factBytes.toSerializableFdbFact().toFact()
+            FdbFact(
+                fact = fact,
+                factPosition = position
+            )
+        }
+    }
 
     internal fun ReadTransaction.loadFactById(factId: FactId): CompletableFuture<FdbFact?> {
         val factIdTuple = factId.toTuple()
-        val factKey = factsSubspace.pack(factIdTuple)
         val factPositionKey = factPositionsSubspace.pack(factIdTuple)
 
         // fetch fact data and position in parallel
-        val factFuture = this[factKey]
-        val factPositionFuture = this[factPositionKey]
+        val factPositionFuture = this[factPositionKey].thenCompose { factPosition ->
+            if (factPosition == null) {
+                return@thenCompose CompletableFuture.completedFuture(null)
+            }
 
-        // one data is available, build and return FdbFact, or return null if not found
-        return CompletableFuture.allOf(factFuture, factPositionFuture).thenApply {
-            val factBytes = factFuture.getNow(null) ?: return@thenApply null
-            val positionBytes = factPositionFuture.getNow(null) ?: return@thenApply null
-            FdbFact(
-                fact = factBytes.toSerializableFdbFact().toFact(),
-                positionTuple = Tuple.fromBytes(positionBytes)
-            )
+            val positionTuple = Tuple.fromBytes(factPosition)
+            val factPosition = positionTuple.getLastAsFactPosition()
+
+            // now that we have the position,
+            // we can look up the fact
+            val globalPositionKey = globalFactPositionSubspace.pack(positionTuple)
+
+            this[globalPositionKey].thenApply { factBytes ->
+                if (positionTuple == null) {
+                    return@thenApply null
+                }
+                FdbFact(
+                    fact = factBytes.toSerializableFdbFact().toFact(),
+                    factPosition = factPosition
+                )
+            }
+
         }
+
+        return factPositionFuture
     }
 
-    internal fun FactId.getPosition(transaction: ReadTransaction): CompletableFuture<Pair<Versionstamp, Long>> =
+    internal fun FactId.getPosition(transaction: ReadTransaction): CompletableFuture<FactPosition> =
         transaction[factPositionsSubspace.pack(Tuple.from(this.uuid))].thenApply {
             it?.let { bytes ->
                 val positionTuple = Tuple.fromBytes(bytes)
-                Pair(positionTuple.getVersionstamp(0), positionTuple.getLong(1))
+                positionTuple.getVersionstamp(0)
             } ?: throw RuntimeException("Fact does not exist!")
         }
 
@@ -179,9 +204,10 @@ class FdbFactStore(
 
 // utils
 
-internal fun Tuple.getLastAsUuid(): UUID = getUUID(size() - 1)
+typealias FactPosition = Versionstamp
 
-internal fun Tuple.getLastAsFactId(): FactId = getLastAsUuid().toFactId()
+internal fun Tuple.getFirstAsFactId(): FactId = getUUID(0).toFactId()
+internal fun Tuple.getLastAsFactPosition(): FactPosition = getVersionstamp(size() - 1)
 
 internal fun Fact.toSerializableFdbFact() = SerializableFdbFact(
     id = id.uuid,

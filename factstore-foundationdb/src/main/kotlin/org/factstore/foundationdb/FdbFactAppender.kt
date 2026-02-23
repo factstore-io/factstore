@@ -62,7 +62,7 @@ class FdbFactAppender(
 
     private fun AppendRequest.validate(transaction: Transaction): CompletableFuture<Unit> {
         val checks: List<CompletableFuture<FactId?>> = facts.map { fact ->
-            val factKey = store.factsSubspace.pack(fact.id.toTuple())
+            val factKey = store.factPositionsSubspace.pack(fact.id.toTuple())
             transaction.get(factKey).thenApply { existing ->
                 if (existing != null) fact.id else null
             }
@@ -119,7 +119,7 @@ class FdbFactAppender(
         val subjectRange = store.subjectIndexSubspace.range(subjectIndexKeyBegin)
         val latestFactKeyValue = tr.getRange(subjectRange, LIMIT_ONE, REVERSED).firstOrNull()
         return latestFactKeyValue?.let {
-            store.subjectIndexSubspace.unpack(it.key).getLastAsFactId()
+            Tuple.fromBytes(it.value).getFirstAsFactId()
         }
     }
 
@@ -142,7 +142,7 @@ class FdbFactAppender(
 
     private fun AppendCondition.TagQueryBased.queryItemsForPosition(
         tr: Transaction,
-        afterPosition: Pair<Versionstamp, Long>? = null
+        afterPosition: FactPosition? = null
     ): CompletableFuture<Boolean> {
         val queryItemFutures = failIfEventsMatch.queryItems.map { queryItem ->
             queryItem.resolveFactIds(tr, afterPosition)
@@ -159,25 +159,25 @@ class FdbFactAppender(
 
     private fun TagQueryItem.resolveFactIds(
         tr: ReadTransaction,
-        afterPosition: Pair<Versionstamp, Long>? = null
-    ): CompletableFuture<Set<UUID>> = when (this) {
+        afterPosition: FactPosition? = null
+    ): CompletableFuture<Set<FactId>> = when (this) {
         is TagOnlyQueryItem -> queryByTags(tr, afterPosition)
         is TagTypeItem -> queryByTypeAndTags(tr, afterPosition)
     }
 
     private fun TagOnlyQueryItem.queryByTags(
         tr: ReadTransaction,
-        afterPosition: Pair<Versionstamp, Long>?
-    ): CompletableFuture<Set<UUID>> {
+        afterPosition: FactPosition?
+    ): CompletableFuture<Set<FactId>> {
 
         // Helper function to create begin and end selectors for the range query
         fun createSelectors(
             tag: Pair<TagKey, TagValue>,
-            afterPosition: Pair<Versionstamp, Long>?
+            afterPosition: FactPosition?
         ): Pair<KeySelector, KeySelector> {
             val tuple = if (afterPosition != null) {
                 // If there's a afterPosition, include it in the tuple
-                Tuple.from(tag.first.value, tag.second.value, afterPosition.first, afterPosition.second)
+                Tuple.from(tag.first.value, tag.second.value, afterPosition)
             } else {
                 // If there's no afterPosition, just use the tag
                 Tuple.from(tag.first.value, tag.second.value)
@@ -197,14 +197,14 @@ class FdbFactAppender(
             return Pair(beginSelector, endSelector)
         }
 
-        val futures: List<CompletableFuture<Set<UUID>>> = tags.map { tag ->
+        val futures: List<CompletableFuture<Set<FactId>>> = tags.map { tag ->
             val (beginSelector, endSelector) = createSelectors(tag, afterPosition)
 
             tr.getRange(beginSelector, endSelector, LIMIT_ONE)
                 .asList()
                 .thenApply { keyValues ->
                     keyValues.map {
-                        Tuple.fromBytes(it.key).getLastAsUuid()
+                        Tuple.fromBytes(it.value).getFirstAsFactId()
                     }.toSet() // Convert to Set to easily combine results
                 }
         }
@@ -221,16 +221,16 @@ class FdbFactAppender(
 
     private fun TagTypeItem.queryByTypeAndTags(
         tr: ReadTransaction,
-        afterPosition: Pair<Versionstamp, Long>?
-    ): CompletableFuture<Set<UUID>> {
+        afterPosition: FactPosition?
+    ): CompletableFuture<Set<FactId>> {
         // Helper function to create start and end selectors
         fun createSelectors(
             type: FactType,
             tag: Pair<TagKey, TagValue>,
-            afterPosition: Pair<Versionstamp, Long>?
+            afterPosition: FactPosition?
         ): Pair<KeySelector, KeySelector> {
             val tuple = if (afterPosition != null) {
-                Tuple.from(type.value, tag.first.value, tag.second.value, afterPosition.first, afterPosition.second)
+                Tuple.from(type.value, tag.first.value, tag.second.value, afterPosition)
             } else {
                 Tuple.from(type.value, tag.first.value, tag.second.value)
             }
@@ -248,7 +248,7 @@ class FdbFactAppender(
         }
 
         // use composite "type+tag" index
-        val futures: List<CompletableFuture<Set<UUID>>> = types.map { type ->
+        val futures: List<CompletableFuture<Set<FactId>>> = types.map { type ->
             val tagFutures = tags.map { tag ->
                 // Create the start and end selectors
                 val (startKeySelector, endSelector) = createSelectors(type, tag, afterPosition)
@@ -257,7 +257,7 @@ class FdbFactAppender(
                     .asList()
                     .thenApply { keyValues ->
                         keyValues.map {
-                            Tuple.fromBytes(it.key).getLastAsUuid()
+                            Tuple.fromBytes(it.value).getFirstAsFactId()
                         }.toSet()
                     }
             }
