@@ -93,7 +93,7 @@ Add the spec module as a dependency and implement the interfaces if you want a c
 
 Add the FoundationDB-backed store to integrate a production-ready FactStore into your application.
 
-Please see [factstore.org](https://factstore.org) for more details.
+Please see [factstore.io](https://factstore.io) for more details.
 
 ## 🤝 Contributing
 
