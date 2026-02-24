@@ -27,11 +27,11 @@ class AvroFactStoreTest {
 
     companion object {
 
-        lateinit var store: io.factstore.core.FactStore
+        lateinit var store: FactStore
         lateinit var clusterFilePath: String
 
         @Container
-        val testFdbCluster = FoundationDBContainer(DockerImageName.parse("foundationdb/foundationdb:${_root_ide_package_.io.factstore.avro.FDB_VERSION}"))
+        val testFdbCluster = FoundationDBContainer(DockerImageName.parse("foundationdb/foundationdb:${FDB_VERSION}"))
 
         @JvmStatic
         @BeforeAll

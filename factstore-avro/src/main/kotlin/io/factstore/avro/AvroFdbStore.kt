@@ -13,20 +13,20 @@ import kotlin.reflect.KProperty1
 import kotlin.reflect.full.*
 
 class AvroFdbStore(
-    private val factStore: io.factstore.core.FactStore
+    private val factStore: FactStore
 ) {
 
     suspend fun <T : Any> append(fact: T) =
-        factStore.append(fact = _root_ide_package_.io.factstore.avro.FactRegistry.toEnvelope(fact))
+        factStore.append(fact = FactRegistry.toEnvelope(fact))
 
-    suspend fun <T : Any> append(facts: List<T>, condition: io.factstore.core.AppendCondition.TagQueryBased) =
+    suspend fun <T : Any> append(facts: List<T>, condition: AppendCondition.TagQueryBased) =
         facts
-            .map { _root_ide_package_.io.factstore.avro.FactRegistry.toEnvelope(it) }
+            .map { FactRegistry.toEnvelope(it) }
             .also {
                 factStore.append(
-                    _root_ide_package_.io.factstore.core.AppendRequest(
+                    AppendRequest(
                         facts = it,
-                        idempotencyKey = _root_ide_package_.io.factstore.core.IdempotencyKey(),
+                        idempotencyKey = IdempotencyKey(),
                         condition = condition
                     )
                 )
@@ -35,13 +35,13 @@ class AvroFdbStore(
 
     suspend fun readSubject(type: String, id: String): List<Any> =
         factStore
-            .findBySubject(_root_ide_package_.io.factstore.core.SubjectRef(type, id))
-            .map { _root_ide_package_.io.factstore.avro.FactRegistry.fromEnvelope(it) }
+            .findBySubject(SubjectRef(type, id))
+            .map { FactRegistry.fromEnvelope(it) }
 
-    suspend fun readFromTagQuery(tagQuery: io.factstore.core.TagQuery): List<Pair<io.factstore.core.FactId, Any>> =
+    suspend fun readFromTagQuery(tagQuery: TagQuery): List<Pair<FactId, Any>> =
         factStore
             .findByTagQuery(tagQuery)
-            .map { Pair(it.id, _root_ide_package_.io.factstore.avro.FactRegistry.fromEnvelope(it)) }
+            .map { Pair(it.id, FactRegistry.fromEnvelope(it)) }
 }
 
 @Retention(RUNTIME)
@@ -64,59 +64,59 @@ data class FactDescriptor<T : Any>(
     val type: String,
     val version: Int = 1,
     val clazz: KClass<T>,
-    val serializer: io.factstore.avro.FactSerde<T>
+    val serializer: FactSerde<T>
 )
 
-inline fun <reified T : Any> createAvroFactDescriptor(type: String, version: Int = 1): io.factstore.avro.FactDescriptor<T> =
-    _root_ide_package_.io.factstore.avro.FactDescriptor(
+inline fun <reified T : Any> createAvroFactDescriptor(type: String, version: Int = 1): FactDescriptor<T> =
+    FactDescriptor(
         type = type,
         version = version,
         clazz = T::class,
-        serializer = _root_ide_package_.io.factstore.avro.FactAvroSerde.create<T>()
+        serializer = FactAvroSerde.create<T>()
     )
 
 object FactRegistry {
 
-    private val byType = mutableMapOf<String, io.factstore.avro.FactDescriptor<*>>()
-    private val byClass = mutableMapOf<KClass<*>, io.factstore.avro.FactDescriptor<*>>()
+    private val byType = mutableMapOf<String, FactDescriptor<*>>()
+    private val byClass = mutableMapOf<KClass<*>, FactDescriptor<*>>()
 
-    fun <T : Any> register(descriptor: io.factstore.avro.FactDescriptor<T>) {
+    fun <T : Any> register(descriptor: FactDescriptor<T>) {
         byType[descriptor.type] = descriptor
         byClass[descriptor.clazz] = descriptor
 
         // TODO: validate (check for missing annotations etc.)
     }
 
-    fun fromEnvelope(fact: io.factstore.core.Fact): Any {
+    fun fromEnvelope(fact: Fact): Any {
         val descriptor = byType[fact.type.value] ?: error("Unknown fact type ${fact.type}")
-        val serde = (descriptor as io.factstore.avro.FactDescriptor<Any>).serializer
+        val serde = (descriptor as FactDescriptor<Any>).serializer
         return serde.deserialize(fact.payload.data)
     }
 
-    fun toEnvelope(fact: Any): io.factstore.core.Fact {
+    fun toEnvelope(fact: Any): Fact {
         return toFact(fact)
     }
 
-    private fun toFact(fact: Any): io.factstore.core.Fact {
+    private fun toFact(fact: Any): Fact {
         val factDescriptor = byClass[fact::class] ?: error("No FactDescriptor found for class ${fact::class}")
-        val factSerde = (factDescriptor as io.factstore.avro.FactDescriptor<Any>).serializer
+        val factSerde = (factDescriptor as FactDescriptor<Any>).serializer
 
         val classType = fact::class
-        val factType = classType.findAnnotation<io.factstore.avro.FactType>()?.name ?: classType.simpleName
+        val factType = classType.findAnnotation<FactType>()?.name ?: classType.simpleName
         ?: throw IllegalArgumentException("Cannot extract simple name")
         val subjectType =
-            classType.findAnnotation<io.factstore.avro.SubjectType>()?.value ?: throw IllegalArgumentException("Missing SubjectType")
+            classType.findAnnotation<SubjectType>()?.value ?: throw IllegalArgumentException("Missing SubjectType")
         println(subjectType)
 
         val subjectId = classType
             .memberProperties
-            .first { it.hasAnnotation<io.factstore.avro.SubjectId>() }
+            .first { it.hasAnnotation<SubjectId>() }
             .let { (it as KProperty1<Any, *>).get(fact) }
             .toString()
 
         val tags = classType.memberProperties
             .mapNotNull {
-                val key = it.findAnnotation<io.factstore.avro.Tag>()?.name
+                val key = it.findAnnotation<Tag>()?.name
                 if (key != null) {
                     val value = (it as KProperty1<Any, *>).get(fact).toString()
                     Pair(key, value)
@@ -126,11 +126,11 @@ object FactRegistry {
             }
             .toMap()
 
-        val fact = _root_ide_package_.io.factstore.core.Fact(
-            id = _root_ide_package_.io.factstore.core.FactId.generate(),
+        val fact = Fact(
+            id = FactId.generate(),
             type = _root_ide_package_.io.factstore.core.FactType(factType),
-            payload = _root_ide_package_.io.factstore.core.FactPayload(factSerde.serialize(fact)),
-            subjectRef = _root_ide_package_.io.factstore.core.SubjectRef(
+            payload = FactPayload(factSerde.serialize(fact)),
+            subjectRef = SubjectRef(
                 type = subjectType,
                 id = subjectId
             ),
@@ -151,7 +151,7 @@ interface FactSerde<T> {
 
 }
 
-class FactAvroSerde<T>(val serializer: KSerializer<T>) : io.factstore.avro.FactSerde<T> {
+class FactAvroSerde<T>(val serializer: KSerializer<T>) : FactSerde<T> {
 
     override fun serialize(fact: T): ByteArray =
         Avro.encodeToByteArray(serializer, fact)
