@@ -46,7 +46,7 @@ class DcbTest {
         fun setupFDB() {
             FDB.selectAPIVersion(FDB_API_VERSION)
             clusterFilePath = testFdbCluster.clusterFilePath
-            val db = FDB.instance().open(clusterFilePath)
+            FDB.instance().open(clusterFilePath)
             store = buildFdbFactStore(
                 clusterFilePath = testFdbCluster.clusterFilePath,
                 name = "integration-test"

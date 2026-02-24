@@ -18,7 +18,6 @@ import java.util.concurrent.CompletableFuture
 const val FACT_STORE = "fact-store"
 const val DEFAULT_FACT_STORE_NAME = "default"
 
-const val GLOBAL_FACT_POSITION_INDEX = 100
 const val CREATED_AT_INDEX = 101
 const val EVENT_TYPE_INDEX = 102
 const val SUBJECT_INDEX = 103
@@ -62,11 +61,10 @@ class FdbFactStore(
     internal val root = DirectoryLayer.getDefault().createOrOpen(db, listOf(FACT_STORE, name)).get()
 
     // FACT SPACES
-    //internal val factsSubspace = root.subspace(Tuple.from(FACTS))
-    internal val globalFactPositionSubspace = root.subspace(Tuple.from(GLOBAL_FACT_POSITION_INDEX))
-    internal val factPositionsSubspace = root.subspace(Tuple.from(FACT_POSITIONS))
+    internal val globalFactPositionSubspace = root.subspace(Tuple.from(FACTS))
 
     // INDEX SPACES
+    internal val factPositionsSubspace = root.subspace(Tuple.from(FACT_POSITIONS))
     internal val eventTypeIndexSubspace = root.subspace(Tuple.from(EVENT_TYPE_INDEX))
     internal val createdAtIndexSubspace = root.subspace(Tuple.from(CREATED_AT_INDEX))
     internal val subjectIndexSubspace = root.subspace(Tuple.from(SUBJECT_INDEX))

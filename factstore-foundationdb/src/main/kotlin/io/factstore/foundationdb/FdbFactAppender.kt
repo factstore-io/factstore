@@ -4,12 +4,9 @@ import com.apple.foundationdb.KeySelector
 import com.apple.foundationdb.ReadTransaction
 import com.apple.foundationdb.Transaction
 import com.apple.foundationdb.tuple.Tuple
-import com.apple.foundationdb.tuple.Versionstamp
-import kotlinx.coroutines.future.await
 import io.factstore.core.*
-import java.util.UUID
+import kotlinx.coroutines.future.await
 import java.util.concurrent.CompletableFuture
-import kotlin.collections.orEmpty
 
 const val REVERSED = true
 const val LIMIT_ONE = 1
