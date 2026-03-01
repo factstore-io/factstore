@@ -10,12 +10,12 @@ avro4k = "2.10.0"
 testcontainers-junit-jupiter = "1.21.4"
 testcontainers-foundationdb = "1.1.0"
 fmodel = "3.7.0"
-quarkusPluginVersion = "3.32.1"
+quarkusVersion = "3.32.1"
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
-quarkus = { id = "io.quarkus", version.ref = "quarkusPluginVersion" }
+quarkus = { id = "io.quarkus", version.ref = "quarkusVersion" }
 allopen = { id = "org.jetbrains.kotlin.plugin.allopen", version.ref = "kotlin" }
 
 [libraries]
@@ -32,3 +32,4 @@ org-testcontainers-junit-jupiter = { module = "org.testcontainers:junit-jupiter"
 earth-adi-testcontainers-foundationdb = { module = "earth.adi:testcontainers-foundationdb", version.ref = "testcontainers-foundationdb"}
 com-fraktalio-fmodel-domain = { module = "com.fraktalio.fmodel:domain", version.ref = "fmodel" }
 com-fraktalio-fmodel-application-vanilla = { module = "com.fraktalio.fmodel:application-vanilla", version.ref = "fmodel" }
+io-quarkus-platform-quarkus-bom = { module = "io.quarkus.platform:quarkus-bom", version.ref = "quarkusVersion" }
