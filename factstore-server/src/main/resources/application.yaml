@@ -1,6 +1,8 @@
 quarkus:
   http:
     root-path: "/api"
+  banner:
+    path: factstore-banner.txt
 
 factstore:
   foundationdb:
