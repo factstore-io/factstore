@@ -23,7 +23,7 @@ class FdbFactStreamer(
 ) : FactStreamer {
 
     override fun stream(streamingOptions: StreamingOptions): Flow<Fact> = flow {
-        val globalRange = store.globalFactPositionSubspace.range()
+        val globalRange = store.context.globalFactPositionSubspace.range()
 
         var lastSeenKey: ByteArray? =
             resolveInitialCursor(streamingOptions.startPosition, globalRange)
@@ -101,7 +101,7 @@ class FdbFactStreamer(
         }.await()
 
     private fun FdbFact.getFactPositionKey(): ByteArray =
-        store.globalFactPositionSubspace.pack(factPosition)
+        store.context.globalFactPositionSubspace.pack(factPosition)
 
     private suspend fun getCurrentEndKey(globalRange: Range): ByteArray? =
         store.db.readAsync { tr ->

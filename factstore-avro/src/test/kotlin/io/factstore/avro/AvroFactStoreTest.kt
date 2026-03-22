@@ -35,7 +35,7 @@ class AvroFactStoreTest {
 
         @JvmStatic
         @BeforeAll
-        fun setupFDB() {
+        fun setupFDB() = runBlocking {
             FDB.selectAPIVersion(FDB_API_VERSION)
             clusterFilePath = testFdbCluster.clusterFilePath
             store = buildFdbFactStore(

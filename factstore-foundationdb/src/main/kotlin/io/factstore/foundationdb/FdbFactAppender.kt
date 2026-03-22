@@ -17,11 +17,6 @@ class FdbFactAppender(
     private val store: FdbFactStore,
 ) : FactAppender {
 
-    private val db = store.db
-    private val idempotencySubspace = store.idempotencySubspace
-    private val tagsIndexSubspace = store.tagsIndexSubspace
-    private val tagsTypeIndexSubspace = store.tagsTypeIndexSubspace
-
     override suspend fun append(fact: Fact) {
         append(
             AppendRequest(
@@ -43,7 +38,7 @@ class FdbFactAppender(
     }
 
     override suspend fun append(request: AppendRequest): AppendResult =
-        db.runAsync { tr ->
+        store.db.runAsync { tr ->
             val key = request.idempotencyKeyBytes()
 
             tr.get(key).thenCompose { existing ->
@@ -59,7 +54,7 @@ class FdbFactAppender(
 
     private fun AppendRequest.validate(transaction: Transaction): CompletableFuture<Unit> {
         val checks: List<CompletableFuture<FactId?>> = facts.map { fact ->
-            val factKey = store.factPositionsSubspace.pack(fact.id.toTuple())
+            val factKey = store.context.factPositionsSubspace.pack(fact.id.toTuple())
             transaction.get(factKey).thenApply { existing ->
                 if (existing != null) fact.id else null
             }
@@ -113,7 +108,7 @@ class FdbFactAppender(
 
     private fun SubjectRef.getLastFactId(tr: Transaction): FactId? {
         val subjectIndexKeyBegin = Tuple.from(type, id)
-        val subjectRange = store.subjectIndexSubspace.range(subjectIndexKeyBegin)
+        val subjectRange = store.context.subjectIndexSubspace.range(subjectIndexKeyBegin)
         val latestFactKeyValue = tr.getRange(subjectRange, LIMIT_ONE, REVERSED).firstOrNull()
         return latestFactKeyValue?.let {
             Tuple.fromBytes(it.value).getFirstAsFactId()
@@ -121,7 +116,7 @@ class FdbFactAppender(
     }
 
     private fun AppendRequest.idempotencyKeyBytes(): ByteArray =
-        idempotencySubspace.pack(Tuple.from(idempotencyKey.value))
+        store.context.idempotencySubspace.pack(Tuple.from(idempotencyKey.value))
 
     private fun List<Fact>.store(transaction: Transaction) = with(store) {
         this@store.store(transaction)
@@ -182,13 +177,13 @@ class FdbFactAppender(
 
             // Create the beginSelector (first greater than if afterPosition is provided)
             val beginSelector = if (afterPosition != null) {
-                KeySelector.firstGreaterThan(tagsIndexSubspace.pack(tuple))
+                KeySelector.firstGreaterThan(store.context.tagsIndexSubspace.pack(tuple))
             } else {
-                KeySelector(tagsIndexSubspace.pack(tuple), OR_EQUAL, ZERO_OFFSET)
+                KeySelector(store.context.tagsIndexSubspace.pack(tuple), OR_EQUAL, ZERO_OFFSET)
             }
 
             // Create the end selector based on the tag range
-            val range = tagsIndexSubspace.range(Tuple.from(tag.first.value, tag.second.value))
+            val range = store.context.tagsIndexSubspace.range(Tuple.from(tag.first.value, tag.second.value))
             val endSelector = KeySelector.lastLessOrEqual(range.end)
 
             return Pair(beginSelector, endSelector)
@@ -233,12 +228,12 @@ class FdbFactAppender(
             }
 
             val startKeySelector = if (afterPosition != null) {
-                KeySelector.firstGreaterThan(tagsTypeIndexSubspace.pack(tuple))
+                KeySelector.firstGreaterThan(store.context.tagsTypeIndexSubspace.pack(tuple))
             } else {
-                KeySelector(tagsTypeIndexSubspace.pack(tuple), OR_EQUAL, ZERO_OFFSET)
+                KeySelector(store.context.tagsTypeIndexSubspace.pack(tuple), OR_EQUAL, ZERO_OFFSET)
             }
 
-            val range = tagsTypeIndexSubspace.subspace(Tuple.from(type.value, tag.first.value, tag.second.value)).range()
+            val range = store.context.tagsTypeIndexSubspace.subspace(Tuple.from(type.value, tag.first.value, tag.second.value)).range()
             val endSelector = KeySelector.lastLessOrEqual(range.end)
 
             return Pair(startKeySelector, endSelector)

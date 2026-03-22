@@ -11,12 +11,12 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
 
     private val db = fdbFactStore.db
 
-    private val factPositionSubspace = fdbFactStore.factPositionsSubspace
+    private val factPositionSubspace = fdbFactStore.context.factPositionsSubspace
 
-    private val createdAtIndexSubspace = fdbFactStore.createdAtIndexSubspace
-    private val subjectIndexSubspace = fdbFactStore.subjectIndexSubspace
-    private val tagsIndexSubspace = fdbFactStore.tagsIndexSubspace
-    private val tagsTypeIndexSubspace = fdbFactStore.tagsTypeIndexSubspace
+    private val createdAtIndexSubspace = fdbFactStore.context.createdAtIndexSubspace
+    private val subjectIndexSubspace = fdbFactStore.context.subjectIndexSubspace
+    private val tagsIndexSubspace = fdbFactStore.context.tagsIndexSubspace
+    private val tagsTypeIndexSubspace = fdbFactStore.context.tagsTypeIndexSubspace
 
     override suspend fun findById(factId: FactId): Fact? =
         db.readAsync { tr -> factId.loadFact(tr) }.await()

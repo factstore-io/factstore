@@ -39,7 +39,7 @@ class FactStoreTest {
 
         @JvmStatic
         @BeforeAll
-        fun setupFDB() {
+        fun setupFDB() = runBlocking {
             FDB.selectAPIVersion(FDB_API_VERSION)
             clusterFilePath = testFdbCluster.clusterFilePath
             val db = FDB.instance().open(clusterFilePath)

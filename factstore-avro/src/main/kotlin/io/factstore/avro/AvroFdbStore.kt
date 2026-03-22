@@ -128,7 +128,7 @@ object FactRegistry {
 
         val fact = Fact(
             id = FactId.generate(),
-            type = _root_ide_package_.io.factstore.core.FactType(factType),
+            type = io.factstore.core.FactType(factType),
             payload = FactPayload(factSerde.serialize(fact)),
             subjectRef = SubjectRef(
                 type = subjectType,

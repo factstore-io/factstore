@@ -4,6 +4,7 @@ import jakarta.enterprise.context.ApplicationScoped
 import io.factstore.core.FactStore
 import io.factstore.foundationdb.FoundationDBFactStoreContext
 import io.factstore.foundationdb.buildFdbFactStore
+import kotlinx.coroutines.runBlocking
 
 @ApplicationScoped
 class FactStoreProvider(
@@ -16,13 +17,13 @@ class FactStoreProvider(
     fun findByName(factStoreName: String): FactStore =
         factStores[factStoreName] ?: createFactStore(factStoreName)
 
-    private fun createFactStore(factStoreName: String): FactStore {
+    private fun createFactStore(factStoreName: String): FactStore = runBlocking {
         val factStore = buildFdbFactStore(
             context = foundationDbContext,
             name = factStoreName
         )
         factStores[factStoreName] = factStore
-        return factStore
+        factStore
     }
 
 }
