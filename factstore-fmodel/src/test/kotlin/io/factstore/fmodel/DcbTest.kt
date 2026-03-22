@@ -43,7 +43,7 @@ class DcbTest {
 
         @JvmStatic
         @BeforeAll
-        fun setupFDB() {
+        fun setupFDB() = runBlocking {
             FDB.selectAPIVersion(FDB_API_VERSION)
             clusterFilePath = testFdbCluster.clusterFilePath
             FDB.instance().open(clusterFilePath)
