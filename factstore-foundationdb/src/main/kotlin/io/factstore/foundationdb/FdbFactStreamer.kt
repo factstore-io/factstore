@@ -5,16 +5,13 @@ import com.apple.foundationdb.Range
 import com.apple.foundationdb.ReadTransaction
 import com.apple.foundationdb.tuple.Tuple
 import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.future.await
 import kotlinx.coroutines.isActive
 import io.factstore.core.*
 import java.util.concurrent.CompletableFuture
-import kotlin.time.Duration.Companion.milliseconds
 
-val DEFAULT_POLL_DELAY = 250.milliseconds
 const val DEFAULT_BATCH_SIZE = 5000
 
 class FdbFactStreamer(
@@ -29,24 +26,25 @@ class FdbFactStreamer(
 
         while (currentCoroutineContext().isActive) {
 
-            val batch = store.db.readAsync { tr ->
-                readNextBatch(
-                    lastSeenKey = lastSeenKey,
-                    globalRange = globalRange,
-                    tr = tr
-                )
+            val readResult = store.db.runAsync { tr ->
+                readNextBatch(lastSeenKey, globalRange, tr).thenApply { batch ->
+                    if (batch.isEmpty()) {
+                        val watchFuture = tr.watch(store.context.headSubspace.pack())
+                        ReadResult.WatchResult(watchFuture)
+                    } else {
+                        ReadResult.BatchResult(batch)
+                    }
+                }
             }.await()
 
-            if (batch.isEmpty()) {
-                delay(DEFAULT_POLL_DELAY)
-                continue
-            }
-
-            // we move the cursor
-            lastSeenKey = batch.last().getFactPositionKey()
-
-            for (fdbFact in batch) {
-                emit(fdbFact.fact)
+            when (readResult) {
+                is ReadResult.BatchResult -> {
+                    lastSeenKey = readResult.batch.last().getFactPositionKey()
+                    for (fdbFact in readResult.batch) {
+                        emit(fdbFact.fact)
+                    }
+                }
+                is ReadResult.WatchResult -> readResult.watch.await()
             }
         }
     }
@@ -114,4 +112,10 @@ class FdbFactStreamer(
     private fun ReadTransaction.loadFact(factId: FactId): CompletableFuture<FdbFact?> = with(store) {
         this@loadFact.loadFactById(factId)
     }
+
+    private sealed interface ReadResult {
+        data class BatchResult(val batch: List<FdbFact>) : ReadResult
+        data class WatchResult(val watch: CompletableFuture<Void>) : ReadResult
+    }
+
 }
