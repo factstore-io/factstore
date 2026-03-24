@@ -16,7 +16,6 @@ import kotlin.time.Duration.Companion.milliseconds
 
 val DEFAULT_POLL_DELAY = 250.milliseconds
 const val DEFAULT_BATCH_SIZE = 5000
-const val REVERSE_TRUE = true
 
 class FdbFactStreamer(
     private val store: FdbFactStore
@@ -26,7 +25,7 @@ class FdbFactStreamer(
         val globalRange = store.context.globalFactPositionSubspace.range()
 
         var lastSeenKey: ByteArray? =
-            resolveInitialCursor(streamingOptions.startPosition, globalRange)
+            resolveInitialCursor(streamingOptions.startPosition)
 
         while (currentCoroutineContext().isActive) {
 
@@ -54,11 +53,10 @@ class FdbFactStreamer(
 
     private suspend fun resolveInitialCursor(
         startPosition: StartPosition,
-        globalRange: Range
     ): ByteArray? =
         when (startPosition) {
             StartPosition.Beginning -> null
-            StartPosition.End -> getCurrentEndKey(globalRange)
+            StartPosition.End -> getCurrentEndKey()
             is StartPosition.After -> getKeyForFactOrThrow(startPosition.factId)
         }
 
@@ -101,16 +99,16 @@ class FdbFactStreamer(
         }.await()
 
     private fun FdbFact.getFactPositionKey(): ByteArray =
-        store.context.globalFactPositionSubspace.pack(factPosition)
+        factPosition.getFactPositionKey()
 
-    private suspend fun getCurrentEndKey(globalRange: Range): ByteArray? =
+    private fun FactPosition.getFactPositionKey(): ByteArray =
+        store.context.globalFactPositionSubspace.pack(this)
+
+    private suspend fun getCurrentEndKey(): ByteArray? =
         store.db.readAsync { tr ->
-            tr.getRange(
-                KeySelector.lastLessThan(globalRange.end),
-                KeySelector.firstGreaterOrEqual(globalRange.end),
-                LIMIT_ONE,
-                REVERSE_TRUE
-            ).asList().thenApply { it.firstOrNull()?.key }
+            store.getHead(tr).thenApply { factPosition ->
+                factPosition?.getFactPositionKey()
+            }
         }.await()
 
     private fun ReadTransaction.loadFact(factId: FactId): CompletableFuture<FdbFact?> = with(store) {

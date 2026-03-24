@@ -8,6 +8,7 @@ import kotlinx.coroutines.future.await
 
 data class FdbFactStoreContext(
     val globalFactPositionSubspace: Subspace,
+    val headSubspace: Subspace,
     val factPositionsSubspace: Subspace,
     val eventTypeIndexSubspace: Subspace,
     val createdAtIndexSubspace: Subspace,
@@ -28,6 +29,7 @@ data class FdbFactStoreContext(
 
             return FdbFactStoreContext(
                 globalFactPositionSubspace = root.subspace(Tuple.from(FACTS)),
+                headSubspace = root.subspace(Tuple.from(HEAD_INDEX)),
                 factPositionsSubspace = root.subspace(Tuple.from(FACT_POSITIONS)),
                 eventTypeIndexSubspace = root.subspace(Tuple.from(EVENT_TYPE_INDEX)),
                 createdAtIndexSubspace = root.subspace(Tuple.from(CREATED_AT_INDEX)),

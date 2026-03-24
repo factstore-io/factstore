@@ -5,7 +5,6 @@ import com.apple.foundationdb.MutationType.SET_VERSIONSTAMPED_KEY
 import com.apple.foundationdb.MutationType.SET_VERSIONSTAMPED_VALUE
 import com.apple.foundationdb.ReadTransaction
 import com.apple.foundationdb.Transaction
-import com.apple.foundationdb.directory.DirectoryLayer
 import com.apple.foundationdb.tuple.Tuple
 import com.apple.foundationdb.tuple.Versionstamp
 import com.github.avrokotlin.avro4k.Avro
@@ -18,6 +17,7 @@ import java.util.concurrent.CompletableFuture
 const val FACT_STORE = "fact-store"
 const val DEFAULT_FACT_STORE_NAME = "default"
 
+const val HEAD_INDEX = 100
 const val CREATED_AT_INDEX = 101
 const val EVENT_TYPE_INDEX = 102
 const val SUBJECT_INDEX = 103
@@ -41,6 +41,7 @@ const val FACT_POSITIONS = 2
  *
  * INDEX SPACES
  * ```
+ *  /fact-store/head = {vs}
  *  /fact-store/fact-position-index/{factId} = fact position tuple (versionstamp)
  *  /fact-store/type-index/{type}/{versionstamp} = (factId)
  *  /fact-store/created-at-index/{epochSecond}/{nano}/{versionstamp} = (factId)
@@ -87,6 +88,10 @@ data class FdbFactStore(
     private fun Transaction.storeIndexes(fact: Fact, index: Int) {
         val factIdTuple = fact.id.toTuple().pack()
         val incompleteVersionstamp = Versionstamp.incomplete(index)
+
+        val headKey = context.headSubspace.pack()
+        val positionValue = Tuple.from(incompleteVersionstamp).packWithVersionstamp()
+        mutate(SET_VERSIONSTAMPED_VALUE, headKey, positionValue)
 
         val eventTypeIndexKey = context.eventTypeIndexSubspace.packWithVersionstamp(
             Tuple.from(fact.type.value, incompleteVersionstamp)
@@ -174,6 +179,14 @@ data class FdbFactStore(
         transaction[context.factPositionsSubspace.pack(Tuple.from(this.uuid))].thenApply {
             it?.let { bytes ->
                 val positionTuple = Tuple.fromBytes(bytes)
+                positionTuple.getVersionstamp(0)
+            }
+        }
+
+    fun getHead(transaction: ReadTransaction): CompletableFuture<FactPosition?> =
+        transaction[context.headSubspace.pack()].thenApply { bytes ->
+            bytes?.let {
+                val positionTuple = Tuple.fromBytes(it)
                 positionTuple.getVersionstamp(0)
             }
         }
