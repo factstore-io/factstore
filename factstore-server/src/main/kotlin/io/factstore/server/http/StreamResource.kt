@@ -14,6 +14,7 @@ import io.factstore.core.StreamingOptions
 import io.factstore.core.toFactId
 import io.factstore.server.FactStoreProvider
 import org.jboss.resteasy.reactive.RestStreamElementType
+import java.util.Locale
 import java.util.UUID
 
 @Path("/v1/stores/{factStoreName}/facts/stream")
@@ -27,14 +28,19 @@ class StreamResource(
     suspend fun streamFacts(
         @PathParam("factStoreName") factStoreName: String,
         @QueryParam("after") after: UUID?,
+        @QueryParam("from") from: String?,
     ): Flow<FactHttp> =
         factStoreProvider
             .findByName(factStoreName)
-            .stream(buildStreamingOptions(after))
+            .stream(buildStreamingOptions(after, from?.lowercase(Locale.ENGLISH)))
             .map { it.toFactHttp() }
 
-    private fun buildStreamingOptions(after: UUID?): StreamingOptions {
-        val startPosition = after?.let { StartPosition.After(it.toFactId()) } ?: StartPosition.Beginning
+    private fun buildStreamingOptions(after: UUID?, from: String?): StreamingOptions {
+        val startPosition = when (from) {
+            "beginning" -> StartPosition.Beginning
+            "end" -> StartPosition.End
+            else -> after?.let { StartPosition.After(it.toFactId()) } ?: StartPosition.Beginning
+        }
         return StreamingOptions(startPosition)
     }
 
