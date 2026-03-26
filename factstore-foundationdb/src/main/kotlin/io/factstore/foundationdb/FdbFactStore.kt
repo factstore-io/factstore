@@ -12,6 +12,7 @@ import kotlinx.serialization.decodeFromByteArray
 import kotlinx.serialization.encodeToByteArray
 import io.factstore.core.*
 import java.time.Instant
+import java.util.UUID
 import java.util.concurrent.CompletableFuture
 
 const val FACT_STORE = "fact-store"
@@ -199,6 +200,7 @@ typealias FactPosition = Versionstamp
 
 fun Tuple.getFirstAsFactId(): FactId = getUUID(0).toFactId()
 fun Tuple.getLastAsFactPosition(): FactPosition = getVersionstamp(size() - 1)
+fun Tuple.getLastAsUuid(): UUID = getUUID(size() - 1)
 
 fun Fact.toSerializableFdbFact() = SerializableFdbFact(
     id = id.uuid,
