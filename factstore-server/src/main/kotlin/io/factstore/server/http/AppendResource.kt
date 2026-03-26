@@ -6,7 +6,7 @@ import jakarta.ws.rs.core.MediaType.APPLICATION_JSON
 import jakarta.ws.rs.core.Response
 import io.factstore.server.FactStoreProvider
 
-@Path("/v1/stores/{factStoreName}/facts/append")
+@Path("/v1/stores/{factStoreName}/facts")
 class AppendResource(
     private val factStoreProvider: FactStoreProvider
 ) {

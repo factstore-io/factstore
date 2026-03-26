@@ -16,7 +16,7 @@ export let options = {
 };
 
 export default function() {
-    const url = 'http://localhost:8080/api/v1/stores/my-fact-store/facts/append';
+    const url = 'http://localhost:8080/api/v1/stores/my-fact-store/facts';
 
     const userId = uuidv4();
 

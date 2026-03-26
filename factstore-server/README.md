@@ -78,7 +78,7 @@ baseUrl       = http://localhost:8080
 Append one or more facts to a store 
 
 ```bash
-curl -X POST http://localhost:8080/v1/stores/default/facts/append \
+curl -X POST http://localhost:8080/v1/stores/default/facts \
   -H "Content-Type: application/json" \
   -d '{
     "facts": [
