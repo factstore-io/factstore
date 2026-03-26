@@ -102,3 +102,15 @@ data class SubjectRefHttp(
     val type: String,
     val id: String
 )
+
+// FactStoreFactory HTTP Models
+
+data class CreateFactStoreHttpRequest(
+    val name: String
+)
+
+data class FactStoreMetadataHttp(
+    val name: String,
+    val id: String, // UUID as string
+    val createdAt: Long
+)

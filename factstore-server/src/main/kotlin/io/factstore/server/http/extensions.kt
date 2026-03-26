@@ -18,6 +18,7 @@ import io.factstore.core.toFactType
 import io.factstore.core.toTagKey
 import io.factstore.core.toTagValue
 import java.time.Instant
+import io.factstore.core.FactStoreMetadata
 
 
 fun AppendResult.toResponse(): Response {
@@ -120,3 +121,14 @@ fun SubjectRef.toSubjectRefHttp() = SubjectRefHttp(
 fun FactPayload.toFactPayloadHttp() = FactPayloadHttp(
     data = data
 )
+
+// FactStoreFactory conversion extensions
+
+fun FactStoreMetadata.toFactStoreMetadataHttp() = FactStoreMetadataHttp(
+    name = name,
+    id = id.toString(),
+    createdAt = createdAt
+)
+
+fun List<FactStoreMetadata>.toFactStoreMetadataHttpList() =
+    map { it.toFactStoreMetadataHttp() }
