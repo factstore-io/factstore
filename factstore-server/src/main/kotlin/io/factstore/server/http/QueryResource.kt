@@ -60,12 +60,12 @@ class QueryResource(
     @Path("/facts")
     suspend fun findFacts(
         @PathParam("factStoreName") factStoreName: String,
-        @QueryParam("from") from: Instant,
-        @QueryParam("to") to: Instant?,
+        @QueryParam("from") from: Instant? = null,
+        @QueryParam("to") to: Instant? = null,
     ): Response =
         factStoreProvider
             .findByName(factStoreName)
-            .findInTimeRange(from, to ?: Instant.now())
+            .findInTimeRange(from ?: Instant.MIN, to ?: Instant.now())
             .toResponse()
 
 }

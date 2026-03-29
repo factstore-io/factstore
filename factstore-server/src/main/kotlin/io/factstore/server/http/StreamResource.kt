@@ -27,8 +27,8 @@ class StreamResource(
     @Produces(SERVER_SENT_EVENTS)
     suspend fun streamFacts(
         @PathParam("factStoreName") factStoreName: String,
-        @QueryParam("after") after: UUID?,
-        @QueryParam("from") from: String?,
+        @QueryParam("after") after: UUID? = null,
+        @QueryParam("from") from: String? = null,
     ): Flow<FactHttp> =
         factStoreProvider
             .findByName(factStoreName)
