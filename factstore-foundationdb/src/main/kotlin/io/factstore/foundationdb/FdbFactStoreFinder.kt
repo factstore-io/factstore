@@ -8,6 +8,7 @@ import io.factstore.core.FactStoreMetadata
 import io.factstore.core.FactStoreName
 import kotlinx.coroutines.future.await
 import java.time.Instant
+import java.util.concurrent.CompletableFuture
 
 class FdbFactStoreFinder(
     context: FoundationDBFactStoreContext
@@ -59,6 +60,31 @@ class FdbFactStoreFinder(
             val nameToIdIndexKey = byNameSubspace.pack(Tuple.from(name.value))
             tr[nameToIdIndexKey].thenApply { valueBytes ->
                 valueBytes != null
+            }
+        }.await()
+    }
+
+    override suspend fun findByName(name: FactStoreName): FactStoreMetadata? {
+        return database.readAsync { tr ->
+            val nameToIdIndexKey = byNameSubspace.pack(Tuple.from(name.value))
+            tr[nameToIdIndexKey].thenCompose { valueBytes ->
+                valueBytes?.let {
+                    val id = Tuple.fromBytes(it).getUUID(0)
+                    val idKey = byIdSubspace.pack(Tuple.from(id))
+                    tr[idKey].thenApply { metadataBytes ->
+                        metadataBytes?.let {
+                            val valueTuple = Tuple.fromBytes(it)
+                            val name = valueTuple.getString(0)
+                            val createdAtEpochSecond = valueTuple.getLong(1)
+
+                            FactStoreMetadata(
+                                id = FactStoreId(id),
+                                name = FactStoreName(name),
+                                createdAt = Instant.ofEpochSecond(createdAtEpochSecond)
+                            )
+                        }
+                    }
+                } ?: CompletableFuture.completedFuture(null)
             }
         }.await()
     }

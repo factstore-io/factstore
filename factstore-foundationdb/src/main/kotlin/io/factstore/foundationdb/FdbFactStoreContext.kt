@@ -1,12 +1,21 @@
 package io.factstore.foundationdb
 
-import com.apple.foundationdb.Database
-import com.apple.foundationdb.directory.DirectoryLayer
+import com.apple.foundationdb.ReadTransaction
+import com.apple.foundationdb.Transaction
 import com.apple.foundationdb.subspace.Subspace
 import com.apple.foundationdb.tuple.Tuple
-import kotlinx.coroutines.future.await
+import com.github.avrokotlin.avro4k.Avro
+import io.factstore.core.FactId
+import io.factstore.core.FactStoreId
+import io.factstore.core.FactStoreMetadata
+import io.factstore.core.FactStoreName
+import kotlinx.serialization.decodeFromByteArray
+import kotlinx.serialization.encodeToByteArray
+import java.util.concurrent.CompletableFuture
 
 data class FdbFactStoreContext(
+    val storeSubspace: Subspace,
+    val storeNameToIdIndex: Subspace,
     val globalFactPositionSubspace: Subspace,
     val headSubspace: Subspace,
     val factPositionsSubspace: Subspace,
@@ -21,13 +30,11 @@ data class FdbFactStoreContext(
 
     companion object {
 
-        suspend fun create(db: Database, name: String): FdbFactStoreContext {
-            val root = DirectoryLayer
-                .getDefault()
-                .createOrOpen(db, listOf(FACT_STORE, name))
-                .await()
-
+        fun create(rootDirectory: FactStoreRootDirectory): FdbFactStoreContext {
+            val root = rootDirectory.rootDirectorySubspace
             return FdbFactStoreContext(
+                storeSubspace = root.subspace(Tuple.from(STORES)),
+                storeNameToIdIndex = root.subspace(Tuple.from(STORE_INDEX)),
                 globalFactPositionSubspace = root.subspace(Tuple.from(FACTS)),
                 headSubspace = root.subspace(Tuple.from(HEAD_INDEX)),
                 factPositionsSubspace = root.subspace(Tuple.from(FACT_POSITIONS)),
@@ -42,4 +49,42 @@ data class FdbFactStoreContext(
         }
 
     }
+}
+
+fun FdbFactStoreContext.getMetadata(factStoreId: FactStoreId, tr: ReadTransaction): CompletableFuture<FdbFactStoreMetadata?> =
+    tr[storeSubspace.pack(Tuple.from(factStoreId.uuid))].thenApply { valueBytes ->
+        valueBytes?.let { Avro.decodeFromByteArray(it) }
+    }
+
+fun FdbFactStoreContext.saveMetadata(metadata: FactStoreMetadata, tr: Transaction) {
+    tr[storeSubspace.pack(Tuple.from(metadata.id.uuid))] = Avro.encodeToByteArray(metadata)
+    tr[storeNameToIdIndex.pack(Tuple.from(metadata.name))] = Tuple.from(metadata.id.uuid).pack()
+}
+
+fun FdbFactStoreContext.lookUpFactstoreIdByName(name: FactStoreName, tr: ReadTransaction): CompletableFuture<FactStoreId?> =
+    tr[storeNameToIdIndex.pack(Tuple.from(name.value))].thenApply { valueBytes ->
+        valueBytes?.let { FactStoreId(Tuple.fromBytes(it).getUUID(0)) }
+    }
+
+@JvmInline
+value class HeadSubspace(val subspace: Subspace) {
+
+    context(tr: ReadTransaction)
+    fun head(factstoreId: FactStoreId): CompletableFuture<FactPosition?> =
+        tr[subspace.pack(Tuple.from(factstoreId.uuid))].thenApply { valueBytes ->
+            valueBytes?.let { Tuple.fromBytes(it).getVersionstamp(0) }
+        }
+
+}
+
+@JvmInline
+value class FactPositionSubspace(val subspace: Subspace) {
+
+    context(tr: ReadTransaction)
+    fun exists(factstoreId: FactStoreId, factId: FactId): CompletableFuture<Boolean> {
+        return tr[subspace.pack(Tuple.from(factstoreId.uuid, factId.uuid))].thenApply {
+            it != null
+        }
+    }
+
 }

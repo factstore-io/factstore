@@ -1,4 +1,3 @@
-!#/bin/sh
 curl -X 'POST' \
   'http://localhost:8080/api/v1/stores/test/facts' \
   -H 'accept: application/json' \

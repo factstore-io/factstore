@@ -19,7 +19,7 @@ interface FactFinder {
      * @param factId the identifier of the fact
      * @return the fact if it exists, or `null` otherwise
      */
-    suspend fun findById(factId: FactId): Fact?
+    suspend fun findById(factStoreId: FactStoreId, factId: FactId): Fact?
 
     /**
      * Checks whether a fact with the given identifier exists.
@@ -27,7 +27,7 @@ interface FactFinder {
      * @param factId the identifier of the fact
      * @return `true` if a fact with the given identifier exists, `false` otherwise
      */
-    suspend fun existsById(factId: FactId): Boolean
+    suspend fun existsById(factStoreId: FactStoreId, factId: FactId): Boolean
 
     /**
      * Finds all facts created within the given time range.
@@ -38,7 +38,7 @@ interface FactFinder {
      * @param end the end of the time range (defaults to the current time)
      * @return the list of facts created within the specified time range
      */
-    suspend fun findInTimeRange(start: Instant, end: Instant = Instant.now()): List<Fact>
+    suspend fun findInTimeRange(factStoreId: FactStoreId, start: Instant, end: Instant = Instant.now()): List<Fact>
 
     /**
      * Finds all facts associated with the given subject.
@@ -46,7 +46,7 @@ interface FactFinder {
      * @param subjectRef the subject reference
      * @return the list of facts associated with the subject
      */
-    suspend fun findBySubject(subjectRef: SubjectRef): List<Fact>
+    suspend fun findBySubject(factStoreId: FactStoreId, subjectRef: SubjectRef): List<Fact>
 
     /**
      * Finds all facts that match the given set of tags.
@@ -56,7 +56,7 @@ interface FactFinder {
      * @param tags the list of tag key-value pairs
      * @return the list of facts matching the specified tags
      */
-    suspend fun findByTags(tags: List<Pair<TagKey, TagValue>>): List<Fact>
+    suspend fun findByTags(factStoreId: FactStoreId, tags: List<Pair<TagKey, TagValue>>): List<Fact>
 
     /**
      * Finds all facts that match the given tag query.
@@ -67,6 +67,6 @@ interface FactFinder {
      * @param query the tag query
      * @return the list of facts matching the query
      */
-    suspend fun findByTagQuery(query: TagQuery): List<Fact>
+    suspend fun findByTagQuery(factStoreId: FactStoreId, query: TagQuery): List<Fact>
 
 }

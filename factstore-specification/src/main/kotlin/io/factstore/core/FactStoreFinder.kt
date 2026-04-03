@@ -6,4 +6,6 @@ interface FactStoreFinder {
 
     suspend fun existsByName(name: FactStoreName): Boolean
 
+    suspend fun findByName(name: FactStoreName): FactStoreMetadata?
+
 }

@@ -2,16 +2,19 @@ package io.factstore.foundationdb
 
 import com.apple.foundationdb.Database
 import com.apple.foundationdb.FDB
+import com.apple.foundationdb.directory.DirectoryLayer
 import io.factstore.core.FactStore
+import kotlinx.coroutines.future.await
 
 suspend fun buildFdbFactStore(
     clusterFilePath: String = "/etc/foundationdb/fdb.cluster",
-    name: String = DEFAULT_FACT_STORE_NAME,
     apiVersion: Int = 730
 ): FactStore {
     FDB.selectAPIVersion(apiVersion)
     val db = FDB.instance().open(clusterFilePath)
-    val context = FdbFactStoreContext.create(db, name)
+    val rootDir = DirectoryLayer.getDefault().createOrOpen(db, listOf("factstore")).await()
+    val rootDirectory = FactStoreRootDirectory(rootDir)
+    val context = FdbFactStoreContext.create(rootDirectory)
     val fdbFactStore = FdbFactStore(db, context)
     return FactStore(
         factAppender = FdbFactAppender(fdbFactStore),
@@ -32,18 +35,3 @@ fun initDatabase(
 data class FoundationDBFactStoreContext(
     val database: Database,
 )
-
-suspend fun buildFdbFactStore(
-    context: FoundationDBFactStoreContext,
-    name: String
-): FactStore {
-    val fdbFactStore = FdbFactStore(
-        context.database,
-        FdbFactStoreContext.create(context.database, name))
-
-    return FactStore(
-        factAppender = FdbFactAppender(fdbFactStore),
-        factFinder = FdbFactFinder(fdbFactStore),
-        factStreamer = FdbFactStreamer(fdbFactStore),
-    )
-}
