@@ -18,18 +18,18 @@ class FdbFactStreamer(
     private val store: FdbFactStore
 ) : FactStreamer {
 
-    override fun stream(streamingOptions: StreamingOptions): Flow<Fact> = flow {
-        val globalRange = store.context.globalFactPositionSubspace.range()
+    override fun stream(factStoreId: FactStoreId, streamingOptions: StreamingOptions): Flow<Fact> = flow {
+        val globalRange = store.context.globalFactPositionSubspace.range(Tuple.from(factStoreId.uuid))
 
         var lastSeenKey: ByteArray? =
-            resolveInitialCursor(streamingOptions.startPosition)
+            factStoreId.run { resolveInitialCursor(streamingOptions.startPosition) }
 
         while (currentCoroutineContext().isActive) {
 
             val readResult = store.db.runAsync { tr ->
                 readNextBatch(lastSeenKey, globalRange, tr).thenApply { batch ->
                     if (batch.isEmpty()) {
-                        val watchFuture = tr.watch(store.context.headSubspace.pack())
+                        val watchFuture = tr.watch(store.context.headSubspace.pack(factStoreId.uuid))
                         ReadResult.WatchResult(watchFuture)
                     } else {
                         ReadResult.BatchResult(batch)
@@ -39,7 +39,8 @@ class FdbFactStreamer(
 
             when (readResult) {
                 is ReadResult.BatchResult -> {
-                    lastSeenKey = readResult.batch.last().getFactPositionKey()
+                    val lastFact = readResult.batch.last()
+                    lastSeenKey = with(factStoreId) { lastFact.getFactPositionKey() }
                     for (fdbFact in readResult.batch) {
                         emit(fdbFact.fact)
                     }
@@ -49,6 +50,7 @@ class FdbFactStreamer(
         }
     }
 
+    context(factStoreId: FactStoreId)
     private suspend fun resolveInitialCursor(
         startPosition: StartPosition,
     ): ByteArray? =
@@ -89,28 +91,34 @@ class FdbFactStreamer(
             }
     }
 
+    context(factStoreId: FactStoreId)
     private suspend fun getKeyForFactOrThrow(factId: FactId): ByteArray =
-        store.db.readAsync { tr ->
-            tr.loadFact(factId).thenApply { fdbFact ->
+        store.db.readAsync { tr -> with(tr) {
+            factId.loadFact().thenApply { fdbFact ->
                 fdbFact?.getFactPositionKey() ?: throw FactIdNotFoundException(factId)
             }
+        }
         }.await()
 
+    context(factStoreId: FactStoreId)
     private fun FdbFact.getFactPositionKey(): ByteArray =
         factPosition.getFactPositionKey()
 
+    context(factStoreId: FactStoreId)
     private fun FactPosition.getFactPositionKey(): ByteArray =
-        store.context.globalFactPositionSubspace.pack(this)
+        store.context.globalFactPositionSubspace.pack(Tuple.from(factStoreId.uuid, this))
 
+    context(factStoreId: FactStoreId)
     private suspend fun getCurrentEndKey(): ByteArray? =
         store.db.readAsync { tr ->
-            store.getHead(tr).thenApply { factPosition ->
+            store.getHead(factStoreId, tr).thenApply { factPosition ->
                 factPosition?.getFactPositionKey()
             }
         }.await()
 
-    private fun ReadTransaction.loadFact(factId: FactId): CompletableFuture<FdbFact?> = with(store) {
-        this@loadFact.loadFactById(factId)
+    context(transaction: ReadTransaction, factStoreId: FactStoreId)
+    private fun FactId.loadFact(): CompletableFuture<FdbFact?> = with(store) {
+        this@loadFact.loadFactById()
     }
 
     private sealed interface ReadResult {

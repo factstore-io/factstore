@@ -1,5 +1,7 @@
 package io.factstore.server.http
 
+import io.factstore.core.FactStore
+import io.factstore.core.FactStoreFinder
 import jakarta.ws.rs.GET
 import jakarta.ws.rs.Path
 import jakarta.ws.rs.PathParam
@@ -12,14 +14,14 @@ import kotlinx.coroutines.flow.map
 import io.factstore.core.StartPosition
 import io.factstore.core.StreamingOptions
 import io.factstore.core.toFactId
-import io.factstore.server.FactStoreProvider
 import org.jboss.resteasy.reactive.RestStreamElementType
 import java.util.Locale
 import java.util.UUID
 
 @Path("/v1/stores/{factStoreName}/facts/stream")
 class StreamResource(
-    private val factStoreProvider: FactStoreProvider
+    private val finder: FactStoreFinder,
+    private val factStore: FactStore,
 ) {
 
     @GET
@@ -30,10 +32,13 @@ class StreamResource(
         @QueryParam("after") after: UUID? = null,
         @QueryParam("from") from: String? = null,
     ): Flow<FactHttp> =
-        factStoreProvider
-            .findByName(factStoreName)
-            .stream(buildStreamingOptions(after, from?.lowercase(Locale.ENGLISH)))
-            .map { it.toFactHttp() }
+        finder
+            .resolveStoreOrThrow(factStoreName)
+            .let { metadata ->
+                factStore.stream(metadata.id, buildStreamingOptions(after, from?.lowercase(Locale.ENGLISH)))
+                .map { it.toFactHttp() }
+            }
+
 
     private fun buildStreamingOptions(after: UUID?, from: String?): StreamingOptions {
         val startPosition = when (from) {

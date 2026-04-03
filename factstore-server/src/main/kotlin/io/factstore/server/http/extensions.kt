@@ -7,6 +7,7 @@ import io.factstore.core.AppendResult
 import io.factstore.core.Fact
 import io.factstore.core.FactId
 import io.factstore.core.FactPayload
+import io.factstore.core.FactStoreId
 import io.factstore.core.IdempotencyKey
 import io.factstore.core.SubjectRef
 import io.factstore.core.TagOnlyQueryItem
@@ -24,7 +25,8 @@ fun AppendResult.toResponse(): Response {
     return Response.ok(this::class.qualifiedName).build()
 }
 
-fun AppendHttpRequest.toAppendRequest(): AppendRequest = AppendRequest(
+fun AppendHttpRequest.toAppendRequest(factStoreId: FactStoreId): AppendRequest = AppendRequest(
+    factStoreId = factStoreId,
     facts = facts.toFacts(),
     idempotencyKey = idempotencyKey?.let { IdempotencyKey(it) } ?: IdempotencyKey(),
     condition = condition?.toAppendCondition() ?: AppendCondition.None

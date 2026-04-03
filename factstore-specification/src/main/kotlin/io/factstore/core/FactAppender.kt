@@ -22,7 +22,7 @@ interface FactAppender {
      * @throws FactStoreException if the fact violates store invariants or
      *         the request is invalid
      */
-    suspend fun append(fact: Fact)
+    suspend fun append(factStoreId: FactStoreId, fact: Fact): AppendResult
 
     /**
      * Appends multiple facts to the store atomically.
@@ -33,7 +33,7 @@ interface FactAppender {
      * @throws FactStoreException if any fact violates store invariants or
      *         the request is invalid
      */
-    suspend fun append(facts: List<Fact>)
+    suspend fun append(factStoreId: FactStoreId, facts: List<Fact>): AppendResult
 
     /**
      * Appends facts using an explicit append request.

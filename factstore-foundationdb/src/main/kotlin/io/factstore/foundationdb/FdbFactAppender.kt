@@ -17,44 +17,48 @@ class FdbFactAppender(
     private val store: FdbFactStore,
 ) : FactAppender {
 
-    override suspend fun append(fact: Fact) {
-        append(
-            AppendRequest(
-                facts = listOf(fact),
-                idempotencyKey = IdempotencyKey(),
-                condition = AppendCondition.None
-            )
-        )
-    }
+    override suspend fun append(factStoreId: FactStoreId, fact: Fact): AppendResult =
+        append(factStoreId, listOf(fact))
 
-    override suspend fun append(facts: List<Fact>) {
+    override suspend fun append(factStoreId: FactStoreId, facts: List<Fact>): AppendResult =
         append(
             AppendRequest(
+                factStoreId = factStoreId,
                 facts = facts,
                 idempotencyKey = IdempotencyKey(),
                 condition = AppendCondition.None
             )
         )
-    }
 
     override suspend fun append(request: AppendRequest): AppendResult =
         store.db.runAsync { tr ->
-            val key = request.idempotencyKeyBytes()
 
-            tr.get(key).thenCompose { existing ->
-                if (existing != null) {
-                    CompletableFuture.completedFuture(AppendResult.AlreadyApplied)
+            // check fact store exists
+            store.context.getMetadata(request.factStoreId, tr).thenCompose { metadata ->
+                if (metadata == null) {
+                    return@thenCompose CompletableFuture.completedFuture(AppendResult.FactStoreNotFound)
                 } else {
-                    request.validate(tr).thenCompose {
-                        appendNew(request, tr, key)
+                    val key = request.idempotencyKeyBytes()
+
+                    tr.get(key).thenCompose { existing ->
+                        if (existing != null) {
+                            CompletableFuture.completedFuture(AppendResult.AlreadyApplied)
+                        } else {
+                            with(tr) {
+                                request.validate().thenCompose {
+                                    request.appendNew(key)
+                                }
+                            }
+                        }
                     }
                 }
             }
         }.await()
 
-    private fun AppendRequest.validate(transaction: Transaction): CompletableFuture<Unit> {
+    context(transaction: Transaction)
+    private fun AppendRequest.validate(): CompletableFuture<Unit> {
         val checks: List<CompletableFuture<FactId?>> = facts.map { fact ->
-            val factKey = store.context.factPositionsSubspace.pack(fact.id.toTuple())
+            val factKey = store.context.factPositionsSubspace.pack(Tuple.from(factStoreId.uuid, fact.id.uuid))
             transaction.get(factKey).thenApply { existing ->
                 if (existing != null) fact.id else null
             }
@@ -70,44 +74,47 @@ class FdbFactAppender(
             }
     }
 
-    private fun appendNew(
-        request: AppendRequest,
-        tr: Transaction,
+    context(tr: Transaction)
+    private fun AppendRequest.appendNew(
         idempotencyKeyBytes: ByteArray
     ): CompletableFuture<AppendResult> {
 
-        return request.condition.isSatisfied(tr).thenApply { satisfied ->
+        return this.condition.isSatisfied().thenApply { satisfied ->
             if (!satisfied) {
                 AppendResult.AppendConditionViolated
             } else {
-                request.facts.store(tr)
+                this.facts.store()
                 tr.set(idempotencyKeyBytes, EMPTY_BYTE_ARRAY)
                 AppendResult.Appended
             }
         }
     }
 
-    private fun AppendCondition.isSatisfied(tr: Transaction): CompletableFuture<Boolean> =
+    context(tr: Transaction, appendRequest: AppendRequest)
+    private fun AppendCondition.isSatisfied(): CompletableFuture<Boolean> =
         when (this) {
             AppendCondition.None -> CompletableFuture.completedFuture(true)
-            is AppendCondition.ExpectedLastFact -> isSatisfied(tr)
-            is AppendCondition.TagQueryBased -> isSatisfied(tr)
-            is AppendCondition.ExpectedMultiSubjectLastFact -> isSatisfied(tr)
+            is AppendCondition.ExpectedLastFact -> isSatisfied()
+            is AppendCondition.TagQueryBased -> isSatisfied()
+            is AppendCondition.ExpectedMultiSubjectLastFact -> isSatisfied()
         }
 
-    private fun AppendCondition.ExpectedLastFact.isSatisfied(tr: Transaction): CompletableFuture<Boolean> {
-        val actualLastFactId = subjectRef.getLastFactId(tr)
+    context(tr: Transaction, appendRequest: AppendRequest)
+    private fun AppendCondition.ExpectedLastFact.isSatisfied(): CompletableFuture<Boolean> {
+        val actualLastFactId = subjectRef.getLastFactId()
         val isConditionSatisfied = actualLastFactId == expectedLastFactId
         return CompletableFuture.completedFuture(isConditionSatisfied)
     }
 
-    private fun AppendCondition.ExpectedMultiSubjectLastFact.isSatisfied(tr: Transaction): CompletableFuture<Boolean> {
-        val isSatisfied = expectations.all { it.key.getLastFactId(tr) == it.value }
+    context(tr: Transaction, appendRequest: AppendRequest)
+    private fun AppendCondition.ExpectedMultiSubjectLastFact.isSatisfied(): CompletableFuture<Boolean> {
+        val isSatisfied = expectations.all { it.key.getLastFactId() == it.value }
         return CompletableFuture.completedFuture(isSatisfied)
     }
 
-    private fun SubjectRef.getLastFactId(tr: Transaction): FactId? {
-        val subjectIndexKeyBegin = Tuple.from(type, id)
+    context(tr: Transaction, appendRequest: AppendRequest)
+    private fun SubjectRef.getLastFactId(): FactId? {
+        val subjectIndexKeyBegin = Tuple.from(appendRequest.factStoreId.uuid, type, id)
         val subjectRange = store.context.subjectIndexSubspace.range(subjectIndexKeyBegin)
         val latestFactKeyValue = tr.getRange(subjectRange, LIMIT_ONE, REVERSED).firstOrNull()
         return latestFactKeyValue?.let {
@@ -118,26 +125,29 @@ class FdbFactAppender(
     private fun AppendRequest.idempotencyKeyBytes(): ByteArray =
         store.context.idempotencySubspace.pack(Tuple.from(idempotencyKey.value))
 
-    private fun List<Fact>.store(transaction: Transaction) = with(store) {
-        this@store.store(transaction)
+    context(tr: Transaction, appendRequest: AppendRequest)
+    private fun List<Fact>.store() = with(store) {
+        appendRequest.factStoreId.apply { this@store.store() }
     }
 
-    private fun AppendCondition.TagQueryBased.isSatisfied(tr: Transaction): CompletableFuture<Boolean> {
-        return after?.getPosition(tr)?.thenCompose { position ->
-            queryItemsForPosition(tr, position)
-        } ?: queryItemsForPosition(tr)
+    context(tr: Transaction, appendRequest: AppendRequest)
+    private fun AppendCondition.TagQueryBased.isSatisfied(): CompletableFuture<Boolean> {
+        return after?.getPosition()?.thenCompose { position ->
+            queryItemsForPosition(position)
+        } ?: queryItemsForPosition()
     }
 
-    private fun FactId.getPosition(transaction: ReadTransaction) = with(store) {
-        this@getPosition.getPosition(transaction)
+    context(tr: Transaction, appendRequest: AppendRequest)
+    private fun FactId.getPosition() = with(store) {
+        this@getPosition.getPosition(appendRequest.factStoreId, tr)
     }
 
+    context(tr: Transaction, appendRequest: AppendRequest)
     private fun AppendCondition.TagQueryBased.queryItemsForPosition(
-        tr: Transaction,
         afterPosition: FactPosition? = null
     ): CompletableFuture<Boolean> {
         val queryItemFutures = failIfEventsMatch.queryItems.map { queryItem ->
-            queryItem.resolveFactIds(tr, afterPosition)
+            queryItem.resolveFactIds(afterPosition)
         }
 
         return CompletableFuture.allOf(*queryItemFutures.toTypedArray()).thenApply {
@@ -149,16 +159,16 @@ class FdbFactAppender(
         }
     }
 
+    context(tr: Transaction, appendRequest: AppendRequest)
     private fun TagQueryItem.resolveFactIds(
-        tr: ReadTransaction,
         afterPosition: FactPosition? = null
     ): CompletableFuture<Set<FactId>> = when (this) {
-        is TagOnlyQueryItem -> queryByTags(tr, afterPosition)
-        is TagTypeItem -> queryByTypeAndTags(tr, afterPosition)
+        is TagOnlyQueryItem -> queryByTags(afterPosition)
+        is TagTypeItem -> queryByTypeAndTags(afterPosition)
     }
 
+    context(tr: Transaction, appendRequest: AppendRequest)
     private fun TagOnlyQueryItem.queryByTags(
-        tr: ReadTransaction,
         afterPosition: FactPosition?
     ): CompletableFuture<Set<FactId>> {
 
@@ -169,10 +179,10 @@ class FdbFactAppender(
         ): Pair<KeySelector, KeySelector> {
             val tuple = if (afterPosition != null) {
                 // If there's a afterPosition, include it in the tuple
-                Tuple.from(tag.first.value, tag.second.value, afterPosition)
+                Tuple.from(appendRequest.factStoreId.uuid, tag.first.value, tag.second.value, afterPosition)
             } else {
                 // If there's no afterPosition, just use the tag
-                Tuple.from(tag.first.value, tag.second.value)
+                Tuple.from(appendRequest.factStoreId.uuid, tag.first.value, tag.second.value)
             }
 
             // Create the beginSelector (first greater than if afterPosition is provided)
@@ -183,7 +193,7 @@ class FdbFactAppender(
             }
 
             // Create the end selector based on the tag range
-            val range = store.context.tagsIndexSubspace.range(Tuple.from(tag.first.value, tag.second.value))
+            val range = store.context.tagsIndexSubspace.range(Tuple.from(appendRequest.factStoreId.uuid, tag.first.value, tag.second.value))
             val endSelector = KeySelector.lastLessOrEqual(range.end)
 
             return Pair(beginSelector, endSelector)
@@ -211,8 +221,8 @@ class FdbFactAppender(
         }
     }
 
+    context(tr: Transaction, appendRequest: AppendRequest)
     private fun TagTypeItem.queryByTypeAndTags(
-        tr: ReadTransaction,
         afterPosition: FactPosition?
     ): CompletableFuture<Set<FactId>> {
         // Helper function to create start and end selectors
@@ -222,9 +232,9 @@ class FdbFactAppender(
             afterPosition: FactPosition?
         ): Pair<KeySelector, KeySelector> {
             val tuple = if (afterPosition != null) {
-                Tuple.from(type.value, tag.first.value, tag.second.value, afterPosition)
+                Tuple.from(appendRequest.factStoreId.uuid, type.value, tag.first.value, tag.second.value, afterPosition)
             } else {
-                Tuple.from(type.value, tag.first.value, tag.second.value)
+                Tuple.from(appendRequest.factStoreId.uuid, type.value, tag.first.value, tag.second.value)
             }
 
             val startKeySelector = if (afterPosition != null) {
@@ -233,7 +243,7 @@ class FdbFactAppender(
                 KeySelector(store.context.tagsTypeIndexSubspace.pack(tuple), OR_EQUAL, ZERO_OFFSET)
             }
 
-            val range = store.context.tagsTypeIndexSubspace.subspace(Tuple.from(type.value, tag.first.value, tag.second.value)).range()
+            val range = store.context.tagsTypeIndexSubspace.subspace(Tuple.from(appendRequest.factStoreId.uuid, type.value, tag.first.value, tag.second.value)).range()
             val endSelector = KeySelector.lastLessOrEqual(range.end)
 
             return Pair(startKeySelector, endSelector)

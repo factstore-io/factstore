@@ -6,15 +6,15 @@ import jakarta.ws.rs.core.MediaType.APPLICATION_JSON
 import jakarta.ws.rs.core.Response
 import jakarta.ws.rs.core.Response.Status.NOT_FOUND
 import io.factstore.core.Fact
+import io.factstore.core.FactStore
 import io.factstore.core.SubjectRef
 import io.factstore.core.toFactId
-import io.factstore.server.FactStoreProvider
 import java.time.Instant
 import java.util.*
 
 @Path("/v1/stores/{factStoreName}")
 class QueryResource(
-    private val factStoreProvider: FactStoreProvider
+    private val store: FactStore
 ) {
 
     @GET
@@ -24,9 +24,9 @@ class QueryResource(
         @PathParam("factStoreName") factStoreName: String,
         @PathParam("factId") factId: UUID,
     ): Response =
-        factStoreProvider
-            .findByName(factStoreName)
-            .findById(factId.toFactId())
+        store
+            .resolveStoreOrThrow(factStoreName)
+            .let { store.findById(it.id, factId.toFactId()) }
             .toResponse()
 
     @POST
@@ -37,10 +37,12 @@ class QueryResource(
         @PathParam("factStoreName") factStoreName: String,
         @Valid factQueryHttp: FactQueryHttp
     ): Response =
-        factStoreProvider
-            .findByName(factStoreName)
-            .findByTagQuery(factQueryHttp.toTagQuery())
-            .toResponse()
+        store
+            .resolveStoreOrThrow(factStoreName)
+            .let { metadata ->
+                store.findByTagQuery(metadata.id, factQueryHttp.toTagQuery())
+                    .toResponse()
+            }
 
     @GET
     @Produces(APPLICATION_JSON)
@@ -50,9 +52,11 @@ class QueryResource(
         @PathParam("subjectType") subjectType: String,
         @PathParam("subjectId") subjectId: String,
     ): Response =
-        factStoreProvider
-            .findByName(factStoreName)
-            .findBySubject(SubjectRef(subjectType, subjectId))
+        store
+            .resolveStoreOrThrow(factStoreName)
+            .let { metadata ->
+                store.findBySubject(metadata.id, SubjectRef(subjectType, subjectId))
+            }
             .toResponse()
 
     @GET
@@ -63,9 +67,15 @@ class QueryResource(
         @QueryParam("from") from: Instant? = null,
         @QueryParam("to") to: Instant? = null,
     ): Response =
-        factStoreProvider
-            .findByName(factStoreName)
-            .findInTimeRange(from ?: Instant.MIN, to ?: Instant.now())
+        store
+            .resolveStoreOrThrow(factStoreName)
+            .let { metadata ->
+                store.findInTimeRange(
+                    factStoreId = metadata.id,
+                    start = from ?: Instant.MIN,
+                    end = to ?: Instant.now()
+                )
+            }
             .toResponse()
 
 }
