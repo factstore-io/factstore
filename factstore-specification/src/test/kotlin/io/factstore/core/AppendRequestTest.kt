@@ -25,6 +25,7 @@ class AppendRequestTest {
 
         assertThatThrownBy {
             AppendRequest(
+                factStoreId = FactStoreId.generate(),
                 facts = listOf(fact1, fact2),
                 idempotencyKey = IdempotencyKey(),
                 condition = AppendCondition.None
@@ -33,6 +34,7 @@ class AppendRequestTest {
 
         val fact3 = fact1.copy(id = FactId.generate())
         AppendRequest(
+            factStoreId = FactStoreId.generate(),
             facts = listOf(fact1, fact3), // no duplicated fact id
             idempotencyKey = IdempotencyKey(),
             condition = AppendCondition.None

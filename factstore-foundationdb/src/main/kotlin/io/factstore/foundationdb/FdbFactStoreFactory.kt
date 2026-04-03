@@ -1,60 +1,29 @@
 package io.factstore.foundationdb
 
-import com.apple.foundationdb.directory.DirectoryLayer
-import com.apple.foundationdb.tuple.Tuple
-import io.factstore.core.CreateFactStoreRequest
-import io.factstore.core.CreateFactStoreResult
-import io.factstore.core.FactStoreFactory
-import io.factstore.core.FactStoreId
+import io.factstore.core.*
 import kotlinx.coroutines.future.await
 import java.time.Instant
-import java.time.temporal.ChronoUnit.SECONDS
 
 class FdbFactStoreFactory(
-    private val context: FoundationDBFactStoreContext
+    private val store: FdbFactStore
 ) : FactStoreFactory {
 
-    companion object {
-        const val FACTSTORE_METADATA_NAME = "factstore-metadata"
-        const val BY_ID = "by-id"
-        const val BY_NAME = "by-name"
-    }
-
-    private val factStoreDirectory = DirectoryLayer
-        .getDefault()
-        .createOrOpen(context.database, listOf(FACTSTORE_METADATA_NAME))
-        .get()
-
-    private val byIdSubspace =
-        factStoreDirectory.subspace(Tuple.from(BY_ID))
-
-    private val byNameSubspace =
-        factStoreDirectory.subspace(Tuple.from(BY_NAME))
-
     override suspend fun handle(request: CreateFactStoreRequest): CreateFactStoreResult {
-        val factStoreId = FactStoreId.generate()
-        val createdAt = Instant.now().truncatedTo(SECONDS)
-
         // create...
-        return context.database.runAsync { tr ->
+        return store.db.runAsync { tr ->
             // check if name is already taken
-            val nameKey = byNameSubspace.pack(Tuple.from(request.factStoreName.value))
-            tr.get(nameKey).thenApply { valueBytes ->
-                if (valueBytes != null) {
-                    // value bytes are not null, hence name is already taken
+            store.context.lookUpFactstoreIdByName(request.factStoreName, tr).thenApply { id ->
+                if (id != null) {
                     return@thenApply CreateFactStoreResult.NameAlreadyExists(request.factStoreName)
                 } else {
-                    // name is available
-                    // go ahead and create the fact store
-
-                    // write name to Id lookup index
-                    tr[nameKey] = Tuple.from(factStoreId.uuid).pack()
-
-                    // write id to metadata
-                    val idKey = byIdSubspace.pack(Tuple.from(factStoreId.uuid))
-                    tr[idKey] = Tuple.from(request.factStoreName.value, createdAt.epochSecond).pack()
-
-                    CreateFactStoreResult.Created(factStoreId)
+                    val id = FactStoreId.generate()
+                    val metadata = FdbFactStoreMetadata(
+                        storeId = id.uuid,
+                        name = request.factStoreName.value,
+                        createdAtEpochSeconds = Instant.now().epochSecond
+                    )
+                    store.context.saveMetadata(metadata, tr)
+                    CreateFactStoreResult.Created(id)
                 }
             }
         }.await()

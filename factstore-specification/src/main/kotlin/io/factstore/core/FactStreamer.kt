@@ -32,7 +32,7 @@ interface FactStreamer {
      * @throws InvalidStreamingRequestException if the streaming request
      * cannot be satisfied
      */
-    fun stream(streamingOptions: StreamingOptions): Flow<Fact>
+    fun stream(factStoreId: FactStoreId, streamingOptions: StreamingOptions): Flow<Fact>
 
     /**
      * Streams all facts from the beginning of the store.
@@ -42,7 +42,7 @@ interface FactStreamer {
      *
      * @return a cold [Flow] emitting all facts in order
      */
-    fun stream() = stream(StreamingOptions())
+    fun stream(factStoreId: FactStoreId) = stream(factStoreId, StreamingOptions())
 
 }
 

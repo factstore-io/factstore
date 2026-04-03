@@ -2,24 +2,16 @@ package io.factstore.server.http
 
 import io.factstore.core.CreateFactStoreRequest
 import io.factstore.core.CreateFactStoreResult
-import io.factstore.core.FactStoreFactory
-import io.factstore.core.FactStoreFinder
+import io.factstore.core.FactStore
 import io.factstore.core.FactStoreName
 import jakarta.validation.Valid
-import jakarta.ws.rs.Consumes
-import jakarta.ws.rs.GET
-import jakarta.ws.rs.HEAD
-import jakarta.ws.rs.POST
-import jakarta.ws.rs.Path
-import jakarta.ws.rs.PathParam
-import jakarta.ws.rs.Produces
+import jakarta.ws.rs.*
 import jakarta.ws.rs.core.MediaType.APPLICATION_JSON
 import jakarta.ws.rs.core.Response
 
 @Path("/v1/stores")
 class FactStoreResource(
-    private val factory: FactStoreFactory,
-    private val finder: FactStoreFinder
+    private val store: FactStore,
 ) {
 
     @POST
@@ -27,7 +19,7 @@ class FactStoreResource(
     @Produces(APPLICATION_JSON)
     suspend fun createFactStore(
         @Valid request: CreateFactStoreHttpRequest
-    ): Response = factory
+    ): Response = store
         .handle(CreateFactStoreRequest(FactStoreName(request.name)))
         .toResponse()
 
@@ -49,7 +41,7 @@ class FactStoreResource(
     suspend fun factStoreExists(
         @PathParam("name") name: String
     ): Response {
-        finder.existsByName(FactStoreName(name)).let { exists ->
+        store.existsByName(FactStoreName(name)).let { exists ->
             return if (exists) {
                 Response.ok().build()
             } else {
@@ -61,7 +53,7 @@ class FactStoreResource(
     @GET
     @Produces(APPLICATION_JSON)
     suspend fun listFactStores(): Response {
-        finder.listAll().let { factStores ->
+        store.listAll().let { factStores ->
             val response = factStores.map { factStore ->
                 FactStoreMetadataHttp(
                     id = factStore.id.uuid,
