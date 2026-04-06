@@ -9,10 +9,16 @@ import io.smallrye.config.ConfigMapping.NamingStrategy.KEBAB_CASE
 )
 interface FactStoreConfig {
 
+    fun storage(): StorageConfig
+
     fun foundationdb(): FoundationDbConfig
 
+    interface StorageConfig {
+        fun type(): String
+    }
+
     interface FoundationDbConfig {
-        fun clusterFile(): String
+        fun clusterFilePath(): String
         fun apiVersion(): Int
     }
 }

@@ -1,0 +1,3 @@
+factstore:
+  storage:
+    type: memory
