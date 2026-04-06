@@ -15,6 +15,7 @@ dependencies {
     implementation(libs.com.github.avro.kotlin.avro4k.avro4k.core)
 
     // test
+    testImplementation(project(":factstore-testing"))
     testImplementation(libs.org.assertj.assertj.core)
     testImplementation(libs.earth.adi.testcontainers.foundationdb)
     testImplementation(libs.org.testcontainers.junit.jupiter)
