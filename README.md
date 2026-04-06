@@ -2,6 +2,9 @@
 
 A lightweight, Kotlin-first event store designed for clarity, correctness, and extensibility — built on a clean specification and powered by FoundationDB. 🚀
 
+> [!WARNING]  
+> FactStore is still under development and should not be used in production!
+
 ## 📚 Overview
 
 FactStore is a modular event-sourcing system with two main parts:
