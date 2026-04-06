@@ -5,6 +5,8 @@ quarkus:
     path: factstore-banner.txt
 
 factstore:
+  storage:
+    type: foundationdb
   foundationdb:
-    cluster-file: /etc/foundationdb/fdb.cluster
+    cluster-file-path: /etc/foundationdb/fdb.cluster
     api-version: 730

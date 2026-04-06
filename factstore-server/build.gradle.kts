@@ -18,9 +18,11 @@ dependencies {
     // factstore libs
     implementation(project(":factstore-specification"))
     implementation(project(":factstore-foundationdb"))
+    implementation(project(":factstore-memory"))
 
     testImplementation("io.quarkus:quarkus-junit")
     testImplementation("io.rest-assured:rest-assured")
+    testImplementation(libs.org.assertj.assertj.core)
 }
 
 java {
