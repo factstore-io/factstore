@@ -1,68 +1,42 @@
-package io.factstore.foundationdb
+package io.factstore.testing
 
-import com.apple.foundationdb.FDB
-import earth.adi.testcontainers.containers.FoundationDBContainer
-import kotlinx.coroutines.*
+import io.factstore.core.*
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import org.assertj.core.api.Assertions.*
-import io.factstore.core.*
-import org.junit.jupiter.api.BeforeAll
-import org.junit.jupiter.api.BeforeEach
-import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.TestInstance
-import org.junit.jupiter.api.TestInstance.Lifecycle.PER_CLASS
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
-import org.testcontainers.utility.DockerImageName
+import org.junit.jupiter.api.*
 import java.time.Instant
-import java.util.*
+import java.util.UUID
 import kotlin.system.measureTimeMillis
 
-const val FDB_VERSION = "7.3.69"
-const val FDB_API_VERSION = 730
+abstract class AbstractFactStoreTest {
 
-@TestInstance(PER_CLASS)
-@Testcontainers
-class FactStoreTest {
+    private var factStoreId: FactStoreId = FactStoreId.generate()
+    private lateinit var store: FactStore
 
-    var factStoreId: FactStoreId = FactStoreId.generate()
+    abstract fun reset()
 
+    abstract fun initializeFactStore(): FactStore
 
-    companion object {
-
-        lateinit var store: FactStore
-        lateinit var resetHelper: FdbFactStoreResetHelper
-        lateinit var clusterFilePath: String
-
-        @Container
-        val testFdbCluster = FoundationDBContainer(DockerImageName.parse("foundationdb/foundationdb:$FDB_VERSION"))
-
-        @JvmStatic
-        @BeforeAll
-        fun setupFDB() = runBlocking {
-            FDB.selectAPIVersion(FDB_API_VERSION)
-            clusterFilePath = testFdbCluster.clusterFilePath
-            val db = FDB.instance().open(clusterFilePath)
-            store = buildFdbFactStore(
-                clusterFilePath = testFdbCluster.clusterFilePath,
-            )
-            resetHelper = FdbFactStoreResetHelper(db)
-        }
-
-    }
 
     @BeforeEach
     fun clearEventStore() = runBlocking {
-        resetHelper.reset()
-        val result = store.handle(CreateFactStoreRequest(factStoreName = FactStoreName("test-factstore")))
+        store = initializeFactStore()
+        reset()
+        val createFactStoreRequest = CreateFactStoreRequest(factStoreName = FactStoreName("test-factstore"))
+        val result = store.handle(createFactStoreRequest)
 
         assertThat(result).isInstanceOf(CreateFactStoreResult.Created::class.java)
         factStoreId = (result as CreateFactStoreResult.Created).id
-
     }
+
 
     @Test
     fun testCreateFactStore(): Unit = runBlocking {
@@ -474,7 +448,10 @@ class FactStoreTest {
         assertThat(usFacts).containsExactly(fact2, fact3)
 
         // --- Query 3: Find all role=admin OR region=eu (OR semantics → fact1 + fact3)
-        val adminOrEuFacts = store.findByTags(factStoreId, listOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("eu")))
+        val adminOrEuFacts = store.findByTags(
+            factStoreId,
+            listOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("eu"))
+        )
         assertThat(adminOrEuFacts).containsExactly(fact1, fact3)
 
         // --- Query 4: Non-existent tag → empty
@@ -1074,9 +1051,14 @@ class FactStoreTest {
 
         // Step 3: Verify that the result only contains facts with the expected tags
         // The number of events matching "role=user" and "region=us" should be around half of 10,000 (i.e., ~5000).
-        val expectedCount = events.count { it.tags[TagKey("role")] == TagValue("user") && it.tags[TagKey("region")] == TagValue("us") }
+        val expectedCount =
+            events.count { it.tags[TagKey("role")] == TagValue("user") && it.tags[TagKey("region")] == TagValue("us") }
         assertThat(result).hasSize(expectedCount) // Ensure the correct number of matching events
-        assertThat(result).allMatch { it.tags[TagKey("role")] == TagValue("user") && it.tags[TagKey("region")] == TagValue("us") } // Ensure correct tags
+        assertThat(result).allMatch {
+            it.tags[TagKey("role")] == TagValue("user") && it.tags[TagKey("region")] == TagValue(
+                "us"
+            )
+        } // Ensure correct tags
 
         // Step 4: Optionally, print out some details to confirm the query works (only if needed)
         println("Found ${result.size} events with 'role=user' and 'region=us'.")
@@ -1243,8 +1225,10 @@ class FactStoreTest {
         // two fact store instances should be treated as two logical database instances
         // even if they share underlying infrastructure, like the same FoundationDB cluster
 
-        val factstoreId1 = store.handle(CreateFactStoreRequest(FactStoreName("store-1"))).let { it as CreateFactStoreResult.Created }.id
-        val factstoreId2 = store.handle(CreateFactStoreRequest(FactStoreName("store-2"))).let { it as CreateFactStoreResult.Created }.id
+        val factstoreId1 = store.handle(CreateFactStoreRequest(FactStoreName("store-1")))
+            .let { it as CreateFactStoreResult.Created }.id
+        val factstoreId2 = store.handle(CreateFactStoreRequest(FactStoreName("store-2")))
+            .let { it as CreateFactStoreResult.Created }.id
 
         val fact1 = Fact(
             id = FactId.generate(),
