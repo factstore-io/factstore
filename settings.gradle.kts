@@ -5,5 +5,6 @@ include(
     "factstore-testing",
     "factstore-foundationdb",
     "factstore-explorer",
+    "factstore-memory",
     "factstore-server",
 )
