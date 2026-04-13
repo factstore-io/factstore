@@ -102,13 +102,22 @@ abstract class AbstractFactStoreTest {
 
         // find fact by ID
         val findResult = store.findById(factStoreId, id)
-        assertThat(findResult).isNotNull().isEqualTo(fact)
+        assertThat(findResult).isInstanceOf(FindByIdResult.Found::class.java)
+        val foundFact = (findResult as FindByIdResult.Found).fact
+        assertThat(foundFact).isEqualTo(fact)
     }
 
     @Test
     fun testExists(): Unit = runBlocking {
         val nonExistingFactId = FactId.generate()
         assertThat(store.existsById(factStoreId, nonExistingFactId)).isFalse()
+    }
+
+    @Test
+    fun testFindByIdWithNonExistingFactStore(): Unit = runBlocking {
+        val nonExistingFactstore = FactStoreId.generate()
+        val result = store.findById(nonExistingFactstore, FactId.generate())
+        assertThat(result).isInstanceOf(FindByIdResult.FactstoreNotFound::class.java)
     }
 
     @Test
@@ -392,8 +401,10 @@ abstract class AbstractFactStoreTest {
 
         store.append(factStoreId, factsToAppend)
 
-        assertThat(store.findById(factStoreId, fact1Id)).isEqualTo(fact1)
-        assertThat(store.findById(factStoreId, fact2Id)).isEqualTo(fact2)
+        assertThat(store.findById(factStoreId, fact1Id)).isInstanceOf(FindByIdResult.Found::class.java)
+        assertThat((store.findById(factStoreId, fact1Id) as FindByIdResult.Found).fact).isEqualTo(fact1)
+        assertThat(store.findById(factStoreId, fact2Id)).isInstanceOf(FindByIdResult.Found::class.java)
+        assertThat((store.findById(factStoreId, fact2Id) as FindByIdResult.Found).fact).isEqualTo(fact2)
     }
 
     @Test
@@ -461,6 +472,7 @@ abstract class AbstractFactStoreTest {
         // --- Query 5: Union of all queries (just to validate coverage)
 
         val fact1Loaded = store.findById(factStoreId, fact1.id)
+        assertThat(fact1Loaded).isInstanceOf(FindByIdResult.Found::class.java)
         println(fact1Loaded)
 
         val allFacts = store.findByTags(

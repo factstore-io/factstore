@@ -1,14 +1,15 @@
 package io.factstore.server.http
 
+import io.factstore.core.Fact
+import io.factstore.core.FactStore
+import io.factstore.core.FindByIdResult
+import io.factstore.core.SubjectRef
+import io.factstore.core.toFactId
 import jakarta.validation.Valid
 import jakarta.ws.rs.*
 import jakarta.ws.rs.core.MediaType.APPLICATION_JSON
 import jakarta.ws.rs.core.Response
 import jakarta.ws.rs.core.Response.Status.NOT_FOUND
-import io.factstore.core.Fact
-import io.factstore.core.FactStore
-import io.factstore.core.SubjectRef
-import io.factstore.core.toFactId
 import java.time.Instant
 import java.util.*
 
@@ -80,10 +81,12 @@ class QueryResource(
 
 }
 
-private fun Fact?.toResponse(): Response {
-    return this?.let {
-        Response.ok(toFactHttp()).build()
-    } ?: Response.status(NOT_FOUND).build()
+private fun FindByIdResult.toResponse(): Response {
+    return when (this) {
+        is FindByIdResult.Found -> Response.ok(fact.toFactHttp()).build()
+        is FindByIdResult.NotFound -> Response.status(NOT_FOUND).build()
+        is FindByIdResult.FactstoreNotFound -> Response.status(NOT_FOUND).build()
+    }
 }
 
 private fun List<Fact>.toResponse(): Response =

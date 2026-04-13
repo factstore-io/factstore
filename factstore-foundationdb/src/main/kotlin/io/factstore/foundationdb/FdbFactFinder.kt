@@ -18,10 +18,18 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
     private val tagsIndexSubspace = fdbFactStore.context.tagsIndexSubspace
     private val tagsTypeIndexSubspace = fdbFactStore.context.tagsTypeIndexSubspace
 
-    override suspend fun findById(factStoreId: FactStoreId, factId: FactId): Fact? =
+    override suspend fun findById(factStoreId: FactStoreId, factId: FactId): FindByIdResult =
         db.readAsync { tr ->
             with(tr) {
-                factId.loadFact(factStoreId)
+                factId.loadFact(factStoreId).thenCompose { fact ->
+                    if (fact != null) {
+                        CompletableFuture.completedFuture(FindByIdResult.Found(fact))
+                    } else {
+                        fdbFactStore.context.getMetadata(factStoreId, tr).thenApply { metadata ->
+                            if (metadata == null) FindByIdResult.FactstoreNotFound else FindByIdResult.NotFound(factId)
+                        }
+                    }
+                }
             }
         }.await()
 
