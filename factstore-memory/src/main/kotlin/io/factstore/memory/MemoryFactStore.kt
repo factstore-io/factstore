@@ -125,8 +125,13 @@ class MemoryFactStore : FactStore {
 
     // ===== FactFinder Implementation =====
 
-    override suspend fun findById(factStoreId: FactStoreId, factId: FactId): Fact? = lock.withLock {
-        facts[factStoreId.uuid]?.find { it.id == factId }
+    override suspend fun findById(factStoreId: FactStoreId, factId: FactId): FindByIdResult = lock.withLock {
+        if (!stores.containsKey(factStoreId.uuid)) {
+            FindByIdResult.FactstoreNotFound
+        } else {
+            val fact = facts[factStoreId.uuid]?.find { it.id == factId }
+            fact?.let { FindByIdResult.Found(it) } ?: FindByIdResult.NotFound(factId)
+        }
     }
 
     override suspend fun existsById(factStoreId: FactStoreId, factId: FactId): Boolean = lock.withLock {

@@ -19,7 +19,7 @@ interface FactFinder {
      * @param factId the identifier of the fact
      * @return the fact if it exists, or `null` otherwise
      */
-    suspend fun findById(factStoreId: FactStoreId, factId: FactId): Fact?
+    suspend fun findById(factStoreId: FactStoreId, factId: FactId): FindByIdResult
 
     /**
      * Checks whether a fact with the given identifier exists.
