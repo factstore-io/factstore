@@ -3,6 +3,7 @@ package io.factstore.server.http
 import io.factstore.core.Fact
 import io.factstore.core.FactStore
 import io.factstore.core.FindByIdResult
+import io.factstore.core.FindInTimeRangeResult
 import io.factstore.core.SubjectRef
 import io.factstore.core.toFactId
 import jakarta.validation.Valid
@@ -86,6 +87,13 @@ private fun FindByIdResult.toResponse(): Response {
         is FindByIdResult.Found -> Response.ok(fact.toFactHttp()).build()
         is FindByIdResult.NotFound -> Response.status(NOT_FOUND).build()
         is FindByIdResult.FactstoreNotFound -> Response.status(NOT_FOUND).build()
+    }
+}
+
+private fun FindInTimeRangeResult.toResponse(): Response {
+    return when (this) {
+        is FindInTimeRangeResult.Found -> Response.ok(facts.map { it.toFactHttp() }).build()
+        is FindInTimeRangeResult.FactstoreNotFound -> Response.status(NOT_FOUND).build()
     }
 }
 
