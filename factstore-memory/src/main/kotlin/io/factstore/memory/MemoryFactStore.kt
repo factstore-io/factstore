@@ -134,8 +134,13 @@ class MemoryFactStore : FactStore {
         }
     }
 
-    override suspend fun existsById(factStoreId: FactStoreId, factId: FactId): Boolean = lock.withLock {
-        facts[factStoreId.uuid]?.any { it.id == factId } ?: false
+    override suspend fun existsById(factStoreId: FactStoreId, factId: FactId): ExistsByIdResult = lock.withLock {
+        if (!stores.containsKey(factStoreId.uuid)) {
+            ExistsByIdResult.FactstoreNotFound
+        } else {
+            val exists = facts[factStoreId.uuid]?.any { it.id == factId } ?: false
+            if (exists) ExistsByIdResult.Exists else ExistsByIdResult.DoesNotExist
+        }
     }
 
     override suspend fun findInTimeRange(factStoreId: FactStoreId, start: Instant, end: Instant): List<Fact> = lock.withLock {
