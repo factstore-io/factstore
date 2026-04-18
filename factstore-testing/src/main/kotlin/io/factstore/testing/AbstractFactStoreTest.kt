@@ -174,8 +174,10 @@ abstract class AbstractFactStoreTest {
         // Query range covering fact1 + fact2, but excluding fact3
         val result = store.findInTimeRange(
             factStoreId = factStoreId,
-            start = now.minusSeconds(120),
-            end = now.plusSeconds(10)
+            TimeRange(
+                start = now.minusSeconds(120),
+                end = now.plusSeconds(10)
+            )
         )
 
         assertThat(result).isInstanceOf(FindInTimeRangeResult.Found::class.java)
@@ -188,8 +190,10 @@ abstract class AbstractFactStoreTest {
     fun testFindInTimeRangeForNonExistingStore(): Unit = runBlocking {
         val result = store.findInTimeRange(
             factStoreId = FactStoreId.generate(),
-            start = Instant.now().minusSeconds(120),
-            end = Instant.now().plusSeconds(10)
+            TimeRange(
+                start = Instant.now().minusSeconds(120),
+                end = Instant.now().plusSeconds(10)
+            )
         )
 
         assertThat(result).isInstanceOf(FindInTimeRangeResult.FactstoreNotFound::class.java)

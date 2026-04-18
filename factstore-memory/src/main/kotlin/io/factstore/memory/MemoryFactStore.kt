@@ -143,10 +143,12 @@ class MemoryFactStore : FactStore {
         }
     }
 
-    override suspend fun findInTimeRange(factStoreId: FactStoreId, start: Instant, end: Instant): FindInTimeRangeResult = lock.withLock {
+    override suspend fun findInTimeRange(factStoreId: FactStoreId, timeRange: TimeRange): FindInTimeRangeResult = lock.withLock {
         if (!stores.containsKey(factStoreId.uuid)) {
             FindInTimeRangeResult.FactstoreNotFound
         } else {
+            val start = timeRange.start
+            val end = timeRange.end
             val foundFacts = facts[factStoreId.uuid]
                 ?.filter { fact -> fact.appendedAt in start..end }
                 ?: emptyList()

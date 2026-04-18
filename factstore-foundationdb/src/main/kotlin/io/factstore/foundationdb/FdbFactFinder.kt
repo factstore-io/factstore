@@ -2,9 +2,8 @@ package io.factstore.foundationdb
 
 import com.apple.foundationdb.ReadTransaction
 import com.apple.foundationdb.tuple.Tuple
-import kotlinx.coroutines.future.await
 import io.factstore.core.*
-import java.time.Instant
+import kotlinx.coroutines.future.await
 import java.util.concurrent.CompletableFuture
 
 class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
@@ -49,7 +48,9 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
             }
         }.await()
 
-    override suspend fun findInTimeRange(factStoreId: FactStoreId, start: Instant, end: Instant): FindInTimeRangeResult {
+    override suspend fun findInTimeRange(factStoreId: FactStoreId, timeRange: TimeRange): FindInTimeRangeResult {
+        val start = timeRange.start
+        val end = timeRange.end
         val startTuple = Tuple.from(factStoreId.uuid, start.epochSecond, start.nano)
         val endTuple = Tuple.from(factStoreId.uuid, end.epochSecond, end.nano)
 

@@ -7,6 +7,7 @@ import io.factstore.core.FindBySubjectResult
 import io.factstore.core.FindByTagQueryResult
 import io.factstore.core.FindInTimeRangeResult
 import io.factstore.core.SubjectRef
+import io.factstore.core.TimeRange
 import io.factstore.core.toFactId
 import jakarta.validation.Valid
 import jakarta.ws.rs.*
@@ -76,8 +77,10 @@ class QueryResource(
             .let { metadata ->
                 store.findInTimeRange(
                     factStoreId = metadata.id,
-                    start = from ?: Instant.MIN,
-                    end = to ?: Instant.now()
+                    TimeRange(
+                        start = from ?: Instant.MIN,
+                        end = to ?: Instant.now()
+                    )
                 )
             }
             .toResponse()
