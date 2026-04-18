@@ -1,7 +1,7 @@
 package io.factstore.memory
 
 import io.factstore.core.*
-import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -23,16 +23,16 @@ class MemoryFactStore : FactStore {
 
     // Store metadata: FactStoreId -> FactStoreMetadata
     private val stores = mutableMapOf<UUID, FactStoreMetadata>()
-    
+
     // Store name -> FactStoreId index
     private val nameIndex = mutableMapOf<String, UUID>()
-    
+
     // Store facts: FactStoreId -> list of facts
     private val facts = mutableMapOf<UUID, MutableList<Fact>>()
-    
+
     // Store idempotency tracking: FactStoreId -> (IdempotencyKey -> exists flag)
     private val idempotencyKeys = mutableMapOf<UUID, MutableSet<UUID>>()
-    
+
     private val lock = Mutex()
 
     // ===== FactStoreFactory Implementation =====
@@ -116,7 +116,7 @@ class MemoryFactStore : FactStore {
 
         // Append facts
         factStore.addAll(request.facts)
-        
+
         // Mark idempotency key as used
         idempotencySet.add(request.idempotencyKey.value)
 
@@ -213,8 +213,12 @@ class MemoryFactStore : FactStore {
 
     // ===== FactStreamer Implementation =====
 
-    override fun stream(factStoreId: FactStoreId, streamingOptions: StreamingOptions): Flow<Fact> = flow {
-        var startIndex = when (val position = streamingOptions.startPosition) {
+    override suspend fun stream(factStoreId: FactStoreId, streamingOptions: StreamingOptions): StreamResult {
+        if (!stores.containsKey(factStoreId.uuid)) {
+            return StreamResult.FactStoreNotFound
+        }
+
+        val startIndex = when (val position = streamingOptions.startPosition) {
             StartPosition.Beginning -> 0
             StartPosition.End -> {
                 lock.withLock {
@@ -223,29 +227,36 @@ class MemoryFactStore : FactStore {
             }
             is StartPosition.After -> {
                 lock.withLock {
-                    val factStore = facts[factStoreId.uuid] ?: return@flow
+                    val factStore = facts[factStoreId.uuid] ?: return StreamResult.FactStoreNotFound
                     val index = factStore.indexOfFirst { it.id == position.factId }
                     if (index == -1) {
-                        throw FactIdNotFoundException(position.factId)
+                        return StreamResult.InvalidStartPosition(position.factId)
                     }
                     index + 1
                 }
             }
         }
 
+        return StreamResult.Success(
+            stream = streamFacts(factStoreId, startIndex)
+        )
+    }
+
+    private fun streamFacts(factStoreId: FactStoreId, startIndex: Int) = flow {
+        var currentIndex = startIndex
         while (true) {
             lock.withLock {
                 val factStore = facts[factStoreId.uuid]
-                if (factStore != null && startIndex < factStore.size) {
-                    val fact = factStore[startIndex]
+                if (factStore != null && currentIndex < factStore.size) {
+                    val fact = factStore[currentIndex]
                     emit(fact)
-                    startIndex++
+                    currentIndex++
                 }
             }
 
             // If no more facts, wait a bit and try again (simulating watch behavior)
-            if (startIndex >= (facts[factStoreId.uuid]?.size ?: 0)) {
-                kotlinx.coroutines.delay(100)
+            if (currentIndex >= (facts[factStoreId.uuid]?.size ?: 0)) {
+                delay(100)
             }
         }
     }
