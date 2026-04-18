@@ -54,9 +54,9 @@ interface FactFinder {
      * The provided tags are interpreted as an OR match requirement.
      *
      * @param tags the list of tag key-value pairs
-     * @return the list of facts matching the specified tags
+     * @return the list of facts matching the specified tags, or an error if the factstore doesn't exist
      */
-    suspend fun findByTags(factStoreId: FactStoreId, tags: List<Pair<TagKey, TagValue>>): List<Fact>
+    suspend fun findByTags(factStoreId: FactStoreId, tags: List<Pair<TagKey, TagValue>>): FindByTagsResult
 
     /**
      * Finds all facts that match the given tag query.
@@ -65,8 +65,7 @@ interface FactFinder {
      * key-value pairs.
      *
      * @param query the tag query
-     * @return the list of facts matching the query
+     * @return the list of facts matching the query, or an error if the factstore doesn't exist
      */
-    suspend fun findByTagQuery(factStoreId: FactStoreId, query: TagQuery): List<Fact>
-
+    suspend fun findByTagQuery(factStoreId: FactStoreId, query: TagQuery): FindByTagQueryResult
 }
