@@ -3,6 +3,7 @@ package io.factstore.server.http
 import io.factstore.core.Fact
 import io.factstore.core.FactStore
 import io.factstore.core.FindByIdResult
+import io.factstore.core.FindBySubjectResult
 import io.factstore.core.FindInTimeRangeResult
 import io.factstore.core.SubjectRef
 import io.factstore.core.toFactId
@@ -94,6 +95,13 @@ private fun FindInTimeRangeResult.toResponse(): Response {
     return when (this) {
         is FindInTimeRangeResult.Found -> Response.ok(facts.map { it.toFactHttp() }).build()
         is FindInTimeRangeResult.FactstoreNotFound -> Response.status(NOT_FOUND).build()
+    }
+}
+
+private fun FindBySubjectResult.toResponse(): Response {
+    return when (this) {
+        is FindBySubjectResult.Found -> Response.ok(facts.map { it.toFactHttp() }).build()
+        is FindBySubjectResult.FactstoreNotFound -> Response.status(NOT_FOUND).build()
     }
 }
 

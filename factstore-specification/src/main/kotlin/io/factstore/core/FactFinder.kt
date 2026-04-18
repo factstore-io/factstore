@@ -44,9 +44,9 @@ interface FactFinder {
      * Finds all facts associated with the given subject.
      *
      * @param subjectRef the subject reference
-     * @return the list of facts associated with the subject
+     * @return the list of facts associated with the subject, or an error if the factstore doesn't exist
      */
-    suspend fun findBySubject(factStoreId: FactStoreId, subjectRef: SubjectRef): List<Fact>
+    suspend fun findBySubject(factStoreId: FactStoreId, subjectRef: SubjectRef): FindBySubjectResult
 
     /**
      * Finds all facts that match the given set of tags.
