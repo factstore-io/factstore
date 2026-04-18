@@ -34,10 +34,18 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
         }.await()
 
 
-    override suspend fun existsById(factStoreId: FactStoreId, factId: FactId): Boolean =
+    override suspend fun existsById(factStoreId: FactStoreId, factId: FactId): ExistsByIdResult =
         db.readAsync { tr ->
             with(tr) {
-                factId.existsById(factStoreId)
+                factId.existsById(factStoreId).thenCompose { exists ->
+                    if (exists) {
+                        CompletableFuture.completedFuture(ExistsByIdResult.Exists)
+                    } else {
+                        fdbFactStore.context.getMetadata(factStoreId, tr).thenApply { metadata ->
+                            if (metadata == null) ExistsByIdResult.FactstoreNotFound else ExistsByIdResult.DoesNotExist
+                        }
+                    }
+                }
             }
         }.await()
 

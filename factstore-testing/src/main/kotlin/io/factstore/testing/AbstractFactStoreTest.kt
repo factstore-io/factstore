@@ -98,7 +98,7 @@ abstract class AbstractFactStoreTest {
         }
 
         // validate existence of fact
-        assertThat(store.existsById(factStoreId, id)).isTrue()
+        assertThat(store.existsById(factStoreId, id)).isEqualTo(ExistsByIdResult.Exists)
 
         // find fact by ID
         val findResult = store.findById(factStoreId, id)
@@ -110,7 +110,13 @@ abstract class AbstractFactStoreTest {
     @Test
     fun testExists(): Unit = runBlocking {
         val nonExistingFactId = FactId.generate()
-        assertThat(store.existsById(factStoreId, nonExistingFactId)).isFalse()
+        assertThat(store.existsById(factStoreId, nonExistingFactId)).isEqualTo(ExistsByIdResult.DoesNotExist)
+    }
+
+    @Test
+    fun testExistsForNonExistingFactstore(): Unit = runBlocking {
+        val nonExistingFactstore = FactStoreId.generate()
+        assertThat(store.existsById(nonExistingFactstore, FactId.generate())).isEqualTo(ExistsByIdResult.FactstoreNotFound)
     }
 
     @Test
@@ -1269,11 +1275,11 @@ abstract class AbstractFactStoreTest {
         store.append(factstoreId1, fact1)
         store.append(factstoreId2, fact2)
 
-        assertThat(store.existsById(factstoreId1, fact1.id)).isTrue()
-        assertThat(store.existsById(factstoreId1, fact2.id)).isFalse()
+        assertThat(store.existsById(factstoreId1, fact1.id)).isEqualTo(ExistsByIdResult.Exists)
+        assertThat(store.existsById(factstoreId1, fact2.id)).isEqualTo(ExistsByIdResult.DoesNotExist)
 
-        assertThat(store.existsById(factstoreId2, fact1.id)).isFalse()
-        assertThat(store.existsById(factstoreId2, fact2.id)).isTrue()
+        assertThat(store.existsById(factstoreId2, fact1.id)).isEqualTo(ExistsByIdResult.DoesNotExist)
+        assertThat(store.existsById(factstoreId2, fact2.id)).isEqualTo(ExistsByIdResult.Exists)
     }
 
     @Test

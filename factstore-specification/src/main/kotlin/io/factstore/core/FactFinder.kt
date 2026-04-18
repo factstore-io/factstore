@@ -27,7 +27,7 @@ interface FactFinder {
      * @param factId the identifier of the fact
      * @return `true` if a fact with the given identifier exists, `false` otherwise
      */
-    suspend fun existsById(factStoreId: FactStoreId, factId: FactId): Boolean
+    suspend fun existsById(factStoreId: FactStoreId, factId: FactId): ExistsByIdResult
 
     /**
      * Finds all facts created within the given time range.
