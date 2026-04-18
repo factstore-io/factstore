@@ -377,14 +377,29 @@ abstract class AbstractFactStoreTest {
 
         store.append(factStoreId, factsToAppend)
 
-        assertThat(store.findBySubject(factStoreId, SubjectRef("USER", "ALICE")))
+        val aliceResult = store.findBySubject(factStoreId, SubjectRef("USER", "ALICE"))
+        assertThat(aliceResult).isInstanceOf(FindBySubjectResult.Found::class.java)
+        assertThat((aliceResult as FindBySubjectResult.Found).facts)
             .containsExactly(fact1, fact3)
 
-        assertThat(store.findBySubject(factStoreId, SubjectRef("USER", "BOB")))
+        val bobResult = store.findBySubject(factStoreId, SubjectRef("USER", "BOB"))
+        assertThat(bobResult).isInstanceOf(FindBySubjectResult.Found::class.java)
+        assertThat((bobResult as FindBySubjectResult.Found).facts)
             .containsExactly(fact2)
 
-        assertThat(store.findBySubject(factStoreId, SubjectRef("USER", "PETER"))).isEmpty()
-        assertThat(store.findBySubject(factStoreId, SubjectRef("UNKNOWN", "UNKNOWN"))).isEmpty()
+        val peterResult = store.findBySubject(factStoreId, SubjectRef("USER", "PETER"))
+        assertThat(peterResult).isInstanceOf(FindBySubjectResult.Found::class.java)
+        assertThat((peterResult as FindBySubjectResult.Found).facts).isEmpty()
+
+        val unknownResult = store.findBySubject(factStoreId, SubjectRef("UNKNOWN", "UNKNOWN"))
+        assertThat(unknownResult).isInstanceOf(FindBySubjectResult.Found::class.java)
+        assertThat((unknownResult as FindBySubjectResult.Found).facts).isEmpty()
+    }
+
+    @Test
+    fun findBySubjectForNonExistingFactstore(): Unit = runBlocking {
+        val result = store.findBySubject(FactStoreId.generate(), SubjectRef("SOME_TYPE", "SOME_ID"))
+        assertThat(result).isInstanceOf(FindBySubjectResult.FactstoreNotFound::class.java)
     }
 
     @Test

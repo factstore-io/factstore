@@ -154,10 +154,15 @@ class MemoryFactStore : FactStore {
         }
     }
 
-    override suspend fun findBySubject(factStoreId: FactStoreId, subjectRef: SubjectRef): List<Fact> = lock.withLock {
-        facts[factStoreId.uuid]
-            ?.filter { fact -> fact.subjectRef == subjectRef }
-            ?: emptyList()
+    override suspend fun findBySubject(factStoreId: FactStoreId, subjectRef: SubjectRef): FindBySubjectResult = lock.withLock {
+        if (!stores.containsKey(factStoreId.uuid)) {
+            FindBySubjectResult.FactstoreNotFound
+        } else {
+            val foundFacts = facts[factStoreId.uuid]
+                ?.filter { fact -> fact.subjectRef == subjectRef }
+                ?: emptyList()
+            FindBySubjectResult.Found(foundFacts)
+        }
     }
 
     override suspend fun findByTags(factStoreId: FactStoreId, tags: List<Pair<TagKey, TagValue>>): List<Fact> = lock.withLock {

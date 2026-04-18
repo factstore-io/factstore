@@ -79,18 +79,25 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
         }.await()
     }
 
-    override suspend fun findBySubject(factStoreId: FactStoreId, subjectRef: SubjectRef): List<Fact> {
+    override suspend fun findBySubject(factStoreId: FactStoreId, subjectRef: SubjectRef): FindBySubjectResult {
         return db.readAsync { tr ->
-            val subjectRange = subjectIndexSubspace.range(Tuple.from(factStoreId.uuid, subjectRef.type, subjectRef.id))
-            tr.getRange(subjectRange).asList().thenCompose { kvs ->
-                val factFutures: List<CompletableFuture<FdbFact?>> = kvs.map { kv ->
-                    val tuple = subjectIndexSubspace.unpack(kv.key)
-                    val factPosition = tuple.getLastAsFactPosition()
-                    tr.run { factPosition.lookupFact(factStoreId) }
-                }
+            fdbFactStore.context.getMetadata(factStoreId, tr).thenCompose { metadata ->
+                if (metadata == null) {
+                    CompletableFuture.completedFuture(FindBySubjectResult.FactstoreNotFound)
+                } else {
+                    val subjectRange = subjectIndexSubspace.range(Tuple.from(factStoreId.uuid, subjectRef.type, subjectRef.id))
+                    tr.getRange(subjectRange).asList().thenCompose { kvs ->
+                        val factFutures: List<CompletableFuture<FdbFact?>> = kvs.map { kv ->
+                            val tuple = subjectIndexSubspace.unpack(kv.key)
+                            val factPosition = tuple.getLastAsFactPosition()
+                            tr.run { factPosition.lookupFact(factStoreId) }
+                        }
 
-                CompletableFuture.allOf(*factFutures.toTypedArray()).thenApply {
-                    factFutures.mapNotNull { it.resultNow()?.fact }
+                        CompletableFuture.allOf(*factFutures.toTypedArray()).thenApply {
+                            val facts = factFutures.mapNotNull { it.resultNow()?.fact }
+                            FindBySubjectResult.Found(facts)
+                        }
+                    }
                 }
             }
         }.await()
