@@ -49,24 +49,31 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
             }
         }.await()
 
-    override suspend fun findInTimeRange(factStoreId: FactStoreId, start: Instant, end: Instant): List<Fact> {
+    override suspend fun findInTimeRange(factStoreId: FactStoreId, start: Instant, end: Instant): FindInTimeRangeResult {
         val startTuple = Tuple.from(factStoreId.uuid, start.epochSecond, start.nano)
         val endTuple = Tuple.from(factStoreId.uuid, end.epochSecond, end.nano)
 
         return db.readAsync { tr ->
-            val begin = createdAtIndexSubspace.pack(startTuple)
-            val endKey = createdAtIndexSubspace.pack(endTuple)
+            fdbFactStore.context.getMetadata(factStoreId, tr).thenCompose { metadata ->
+                if (metadata == null) {
+                    CompletableFuture.completedFuture(FindInTimeRangeResult.FactstoreNotFound)
+                } else {
+                    val begin = createdAtIndexSubspace.pack(startTuple)
+                    val endKey = createdAtIndexSubspace.pack(endTuple)
 
-            tr.getRange(begin, endKey).asList().thenCompose { kvs ->
-                val factFutures: List<CompletableFuture<FdbFact?>> = kvs.map { kv ->
-                    val tuple = createdAtIndexSubspace.unpack(kv.key)
-                    val factPosition = tuple.getLastAsFactPosition()
-                    tr.run { factPosition.lookupFact(factStoreId) }
-                }
+                    tr.getRange(begin, endKey).asList().thenCompose { kvs ->
+                        val factFutures: List<CompletableFuture<FdbFact?>> = kvs.map { kv ->
+                            val tuple = createdAtIndexSubspace.unpack(kv.key)
+                            val factPosition = tuple.getLastAsFactPosition()
+                            tr.run { factPosition.lookupFact(factStoreId) }
+                        }
 
-                // wait for all facts to complete
-                CompletableFuture.allOf(*factFutures.toTypedArray()).thenApply {
-                    factFutures.mapNotNull { it.resultNow()?.fact }
+                        // wait for all facts to complete
+                        CompletableFuture.allOf(*factFutures.toTypedArray()).thenApply {
+                            val facts = factFutures.mapNotNull { it.resultNow()?.fact }
+                            FindInTimeRangeResult.Found(facts)
+                        }
+                    }
                 }
             }
         }.await()

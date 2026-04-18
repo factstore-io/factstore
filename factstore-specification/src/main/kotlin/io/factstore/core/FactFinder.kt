@@ -36,9 +36,9 @@ interface FactFinder {
      *
      * @param start the start of the time range
      * @param end the end of the time range (defaults to the current time)
-     * @return the list of facts created within the specified time range
+     * @return the list of facts created within the specified time range, or an error if the factstore doesn't exist
      */
-    suspend fun findInTimeRange(factStoreId: FactStoreId, start: Instant, end: Instant = Instant.now()): List<Fact>
+    suspend fun findInTimeRange(factStoreId: FactStoreId, start: Instant, end: Instant = Instant.now()): FindInTimeRangeResult
 
     /**
      * Finds all facts associated with the given subject.
