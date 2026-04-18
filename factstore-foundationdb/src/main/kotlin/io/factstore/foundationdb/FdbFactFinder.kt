@@ -103,63 +103,78 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
         }.await()
     }
 
-    override suspend fun findByTags(factStoreId: FactStoreId, tags: List<Pair<TagKey, TagValue>>): List<Fact> {
-        if (tags.isEmpty()) return emptyList()
+    override suspend fun findByTags(factStoreId: FactStoreId, tags: List<Pair<TagKey, TagValue>>): FindByTagsResult {
         return db.readAsync { tr ->
-            // For each (key, value) pair, get matching factIds
-            val tagFutures: List<CompletableFuture<Set<FactPosition>>> = tags.map { (key, value) ->
-                val range = tagsIndexSubspace.range(Tuple.from(factStoreId.uuid, key.value, value.value))
-                tr.getRange(range).asList().thenApply { kvs ->
-                    kvs.mapTo(mutableSetOf()) { kv ->
-                        val tuple = tagsIndexSubspace.unpack(kv.key)
-                        tuple.getLastAsFactPosition()
+            fdbFactStore.context.getMetadata(factStoreId, tr).thenCompose { metadata ->
+                if (metadata == null) {
+                    CompletableFuture.completedFuture(FindByTagsResult.FactstoreNotFound)
+                } else {
+                    if (tags.isEmpty()) return@thenCompose CompletableFuture.completedFuture(FindByTagsResult.Found(emptyList()))
+
+                    // For each (key, value) pair, get matching factIds
+                    val tagFutures: List<CompletableFuture<Set<FactPosition>>> = tags.map { (key, value) ->
+                        val range = tagsIndexSubspace.range(Tuple.from(factStoreId.uuid, key.value, value.value))
+                        tr.getRange(range).asList().thenApply { kvs ->
+                            kvs.mapTo(mutableSetOf()) { kv ->
+                                val tuple = tagsIndexSubspace.unpack(kv.key)
+                                tuple.getLastAsFactPosition()
+                            }
+                        }
                     }
-                }
-            }
 
-            // Once all tag lookups finish, union them and load facts
-            CompletableFuture.allOf(*tagFutures.toTypedArray()).thenCompose {
-                val allFactPositions: Set<FactPosition> = tagFutures
-                    .flatMap { it.getNow(emptySet()) }
-                    .toSet() // OR semantics = union
+                    // Once all tag lookups finish, union them and load facts
+                    CompletableFuture.allOf(*tagFutures.toTypedArray()).thenCompose {
+                        val allFactPositions: Set<FactPosition> = tagFutures
+                            .flatMap { it.getNow(emptySet()) }
+                            .toSet() // OR semantics = union
 
-                with(tr) {
-                    val loadFutures: List<CompletableFuture<FdbFact?>> =
-                        allFactPositions.map { it.lookupFact(factStoreId) }
+                        with(tr) {
+                            val loadFutures: List<CompletableFuture<FdbFact?>> =
+                                allFactPositions.map { it.lookupFact(factStoreId) }
 
-                    CompletableFuture.allOf(*loadFutures.toTypedArray()).thenApply {
-                        loadFutures
-                            .mapNotNull { it.resultNow() }
-                            .sortedBy { it.factPosition }
-                            .map { it.fact }
+                            CompletableFuture.allOf(*loadFutures.toTypedArray()).thenApply {
+                                val facts = loadFutures
+                                    .mapNotNull { it.resultNow() }
+                                    .sortedBy { it.factPosition }
+                                    .map { it.fact }
+                                FindByTagsResult.Found(facts)
+                            }
+                        }
                     }
                 }
             }
         }.await()
     }
 
-    override suspend fun findByTagQuery(factStoreId: FactStoreId, query: TagQuery): List<Fact> {
+    override suspend fun findByTagQuery(factStoreId: FactStoreId, query: TagQuery): FindByTagQueryResult {
         return db.readAsync { tr ->
-            with(tr.snapshot()) {
-                val queryItemFutures = query.queryItems
-                    .map { queryItem ->
-                        // map query item to list of fact IDs
-                        factStoreId.run { queryItem.resolveFactPositions() }
-                    }
+            fdbFactStore.context.getMetadata(factStoreId, tr).thenCompose { metadata ->
+                if (metadata == null) {
+                    CompletableFuture.completedFuture(FindByTagQueryResult.FactstoreNotFound)
+                } else {
+                    with(tr.snapshot()) {
+                        val queryItemFutures = query.queryItems
+                            .map { queryItem ->
+                                // map query item to list of fact IDs
+                                factStoreId.run { queryItem.resolveFactPositions() }
+                            }
 
-                CompletableFuture.allOf(*queryItemFutures.toTypedArray()).thenCompose {
-                    val allFactPositions: Set<FactPosition> = queryItemFutures
-                        .flatMap { it.getNow(emptySet()) }
-                        .toSet() // OR semantics = union
+                        CompletableFuture.allOf(*queryItemFutures.toTypedArray()).thenCompose {
+                            val allFactPositions: Set<FactPosition> = queryItemFutures
+                                .flatMap { it.getNow(emptySet()) }
+                                .toSet() // OR semantics = union
 
-                    val loadFutures: List<CompletableFuture<FdbFact?>> =
-                        allFactPositions.map { it.lookupFact(factStoreId) }
+                            val loadFutures: List<CompletableFuture<FdbFact?>> =
+                                allFactPositions.map { it.lookupFact(factStoreId) }
 
-                    CompletableFuture.allOf(*loadFutures.toTypedArray()).thenApply {
-                        loadFutures
-                            .mapNotNull { it.getNow(null) }
-                            .sortedBy { it.factPosition }
-                            .map { it.fact }
+                            CompletableFuture.allOf(*loadFutures.toTypedArray()).thenApply {
+                                val facts = loadFutures
+                                    .mapNotNull { it.getNow(null) }
+                                    .sortedBy { it.factPosition }
+                                    .map { it.fact }
+                                FindByTagQueryResult.Found(facts)
+                            }
+                        }
                     }
                 }
             }

@@ -165,38 +165,48 @@ class MemoryFactStore : FactStore {
         }
     }
 
-    override suspend fun findByTags(factStoreId: FactStoreId, tags: List<Pair<TagKey, TagValue>>): List<Fact> = lock.withLock {
-        if (tags.isEmpty()) return emptyList()
+    override suspend fun findByTags(factStoreId: FactStoreId, tags: List<Pair<TagKey, TagValue>>): FindByTagsResult = lock.withLock {
+        if (!stores.containsKey(factStoreId.uuid)) {
+            FindByTagsResult.FactstoreNotFound
+        } else {
+            if (tags.isEmpty()) return FindByTagsResult.Found(emptyList())
 
-        facts[factStoreId.uuid]?.filter { fact ->
-            // OR semantics: fact matches if it has any of the specified tag pairs
-            tags.any { (key, value) ->
-                fact.tags[key] == value
-            }
-        } ?: emptyList()
+            val foundFacts = facts[factStoreId.uuid]?.filter { fact ->
+                // OR semantics: fact matches if it has any of the specified tag pairs
+                tags.any { (key, value) ->
+                    fact.tags[key] == value
+                }
+            } ?: emptyList()
+            FindByTagsResult.Found(foundFacts)
+        }
     }
 
-    override suspend fun findByTagQuery(factStoreId: FactStoreId, query: TagQuery): List<Fact> = lock.withLock {
-        facts[factStoreId.uuid]?.filter { fact ->
-            // OR semantics: fact matches if it matches any query item
-            query.queryItems.any { queryItem ->
-                when (queryItem) {
-                    is TagTypeItem -> {
-                        // Type must match AND all tags must match
-                        fact.type in queryItem.types &&
-                                queryItem.tags.all { (key, value) ->
-                                    fact.tags[key] == value
-                                }
-                    }
-                    is TagOnlyQueryItem -> {
-                        // All tags must match
-                        queryItem.tags.all { (key, value) ->
-                            fact.tags[key] == value
+    override suspend fun findByTagQuery(factStoreId: FactStoreId, query: TagQuery): FindByTagQueryResult = lock.withLock {
+        if (!stores.containsKey(factStoreId.uuid)) {
+            FindByTagQueryResult.FactstoreNotFound
+        } else {
+            val foundFacts = facts[factStoreId.uuid]?.filter { fact ->
+                // OR semantics: fact matches if it matches any query item
+                query.queryItems.any { queryItem ->
+                    when (queryItem) {
+                        is TagTypeItem -> {
+                            // Type must match AND all tags must match
+                            fact.type in queryItem.types &&
+                                    queryItem.tags.all { (key, value) ->
+                                        fact.tags[key] == value
+                                    }
+                        }
+                        is TagOnlyQueryItem -> {
+                            // All tags must match
+                            queryItem.tags.all { (key, value) ->
+                                fact.tags[key] == value
+                            }
                         }
                     }
                 }
-            }
-        } ?: emptyList()
+            } ?: emptyList()
+            FindByTagQueryResult.Found(foundFacts)
+        }
     }
 
     // ===== FactStreamer Implementation =====

@@ -116,7 +116,12 @@ abstract class AbstractFactStoreTest {
     @Test
     fun testExistsForNonExistingFactstore(): Unit = runBlocking {
         val nonExistingFactstore = FactStoreId.generate()
-        assertThat(store.existsById(nonExistingFactstore, FactId.generate())).isEqualTo(ExistsByIdResult.FactstoreNotFound)
+        assertThat(
+            store.existsById(
+                nonExistingFactstore,
+                FactId.generate()
+            )
+        ).isEqualTo(ExistsByIdResult.FactstoreNotFound)
     }
 
     @Test
@@ -485,23 +490,27 @@ abstract class AbstractFactStoreTest {
         store.append(factStoreId, listOf(fact1, fact2, fact3))
 
         // --- Query 1: Find all role=admin (OR semantics → fact1 + fact3)
-        val adminFacts = store.findByTags(factStoreId, listOf(TagKey("role") to TagValue("admin")))
-        assertThat(adminFacts).containsExactly(fact1, fact3)
+        val adminResult = store.findByTags(factStoreId, listOf(TagKey("role") to TagValue("admin")))
+        assertThat(adminResult).isInstanceOf(FindByTagsResult.Found::class.java)
+        assertThat((adminResult as FindByTagsResult.Found).facts).containsExactly(fact1, fact3)
 
         // --- Query 2: Find all region=us (OR semantics → fact2 + fact3)
-        val usFacts = store.findByTags(factStoreId, listOf(TagKey("region") to TagValue("us")))
-        assertThat(usFacts).containsExactly(fact2, fact3)
+        val usResult = store.findByTags(factStoreId, listOf(TagKey("region") to TagValue("us")))
+        assertThat(usResult).isInstanceOf(FindByTagsResult.Found::class.java)
+        assertThat((usResult as FindByTagsResult.Found).facts).containsExactly(fact2, fact3)
 
         // --- Query 3: Find all role=admin OR region=eu (OR semantics → fact1 + fact3)
-        val adminOrEuFacts = store.findByTags(
+        val adminOrEuResult = store.findByTags(
             factStoreId,
             listOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("eu"))
         )
-        assertThat(adminOrEuFacts).containsExactly(fact1, fact3)
+        assertThat(adminOrEuResult).isInstanceOf(FindByTagsResult.Found::class.java)
+        assertThat((adminOrEuResult as FindByTagsResult.Found).facts).containsExactly(fact1, fact3)
 
         // --- Query 4: Non-existent tag → empty
-        val noFacts = store.findByTags(factStoreId, listOf(TagKey("region") to TagValue("asia")))
-        assertThat(noFacts).isEmpty()
+        val noFactsResult = store.findByTags(factStoreId, listOf(TagKey("region") to TagValue("asia")))
+        assertThat(noFactsResult).isInstanceOf(FindByTagsResult.Found::class.java)
+        assertThat((noFactsResult as FindByTagsResult.Found).facts).isEmpty()
 
         // --- Query 5: Union of all queries (just to validate coverage)
 
@@ -509,7 +518,7 @@ abstract class AbstractFactStoreTest {
         assertThat(fact1Loaded).isInstanceOf(FindByIdResult.Found::class.java)
         println(fact1Loaded)
 
-        val allFacts = store.findByTags(
+        val allFactsResult = store.findByTags(
             factStoreId,
             listOf(
                 TagKey("role") to TagValue("admin"),
@@ -518,7 +527,18 @@ abstract class AbstractFactStoreTest {
                 TagKey("region") to TagValue("us")
             )
         )
-        assertThat(allFacts).containsExactly(fact1, fact2, fact3)
+        assertThat(allFactsResult).isInstanceOf(FindByTagsResult.Found::class.java)
+        assertThat((allFactsResult as FindByTagsResult.Found).facts).containsExactly(fact1, fact2, fact3)
+    }
+
+    @Test
+    fun testFindByTagsWithNonExistingFactstore(): Unit = runBlocking {
+        val result = store.findByTags(
+            FactStoreId.generate(),
+            listOf(TagKey("region") to TagValue("asia"))
+        )
+
+        assertThat(result).isInstanceOf(FindByTagsResult.FactstoreNotFound::class.java)
     }
 
     @OptIn(FlowPreview::class)
@@ -711,7 +731,8 @@ abstract class AbstractFactStoreTest {
         )
 
         val bobFacts = store.findByTagQuery(factStoreId, bobQuery)
-        assertThat(bobFacts).containsExactly(fact2)
+        assertThat(bobFacts).isInstanceOf(FindByTagQueryResult.Found::class.java)
+        assertThat((bobFacts as FindByTagQueryResult.Found).facts).containsExactly(fact2)
 
         // Test 2: Query with multiple tags (AND condition: username = "bob" and region = "us")
         val multipleTagsQuery = TagQuery(
@@ -724,7 +745,8 @@ abstract class AbstractFactStoreTest {
         )
 
         val multipleTagsFacts = store.findByTagQuery(factStoreId, multipleTagsQuery)
-        assertThat(multipleTagsFacts).containsExactly(fact2)
+        assertThat(multipleTagsFacts).isInstanceOf(FindByTagQueryResult.Found::class.java)
+        assertThat((multipleTagsFacts as FindByTagQueryResult.Found).facts).containsExactly(fact2)
 
         // Test 3: Query with multiple tags but one does not match (username = "bob" and region = "eu")
         val noMatchQuery = TagQuery(
@@ -737,7 +759,8 @@ abstract class AbstractFactStoreTest {
         )
 
         val noMatchFacts = store.findByTagQuery(factStoreId, noMatchQuery)
-        assertThat(noMatchFacts).isEmpty()
+        assertThat(noMatchFacts).isInstanceOf(FindByTagQueryResult.Found::class.java)
+        assertThat((noMatchFacts as FindByTagQueryResult.Found).facts).isEmpty()
 
         // Test 4: Query with multiple types (USER_CREATED or USER_DELETED)
         val multipleTypesQuery = TagQuery(
@@ -750,7 +773,8 @@ abstract class AbstractFactStoreTest {
         )
 
         val multipleTypesFacts = store.findByTagQuery(factStoreId, multipleTypesQuery)
-        assertThat(multipleTypesFacts).containsExactly(fact2)
+        assertThat(multipleTypesFacts).isInstanceOf(FindByTagQueryResult.Found::class.java)
+        assertThat((multipleTypesFacts as FindByTagQueryResult.Found).facts).containsExactly(fact2)
 
         // Test 5: Query with multiple tags and multiple types (AND for tags, OR for types)
         val complexQuery = TagQuery(
@@ -763,7 +787,8 @@ abstract class AbstractFactStoreTest {
         )
 
         val complexFacts = store.findByTagQuery(factStoreId, complexQuery)
-        assertThat(complexFacts).containsExactly(fact2)
+        assertThat(complexFacts).isInstanceOf(FindByTagQueryResult.Found::class.java)
+        assertThat((complexFacts as FindByTagQueryResult.Found).facts).containsExactly(fact2)
 
         // Test 6: Query with tags but no matching facts (tags = "username" to "dave")
         val noMatchingTagQuery = TagQuery(
@@ -776,7 +801,8 @@ abstract class AbstractFactStoreTest {
         )
 
         val noMatchingTagFacts = store.findByTagQuery(factStoreId, noMatchingTagQuery)
-        assertThat(noMatchingTagFacts).isEmpty()
+        assertThat(noMatchingTagFacts).isInstanceOf(FindByTagQueryResult.Found::class.java)
+        assertThat((noMatchingTagFacts as FindByTagQueryResult.Found).facts).isEmpty()
 
         // Test 7: Query with types but no matching facts (types = "USER_DELETED" but no such facts exist)
         val noMatchingTypeQuery = TagQuery(
@@ -789,7 +815,8 @@ abstract class AbstractFactStoreTest {
         )
 
         val noMatchingTypeFacts = store.findByTagQuery(factStoreId, noMatchingTypeQuery)
-        assertThat(noMatchingTypeFacts).isEmpty()
+        assertThat(noMatchingTypeFacts).isInstanceOf(FindByTagQueryResult.Found::class.java)
+        assertThat((noMatchingTypeFacts as FindByTagQueryResult.Found).facts).isEmpty()
 
         // Test 8: Query with tags but no facts that have these tags
         val tagsNoFactsQuery = TagQuery(
@@ -802,7 +829,8 @@ abstract class AbstractFactStoreTest {
         )
 
         val tagsNoFacts = store.findByTagQuery(factStoreId, tagsNoFactsQuery)
-        assertThat(tagsNoFacts).isEmpty()
+        assertThat(tagsNoFacts).isInstanceOf(FindByTagQueryResult.Found::class.java)
+        assertThat((tagsNoFacts as FindByTagQueryResult.Found).facts).isEmpty()
 
         // Test 9: Query for facts with different tags
         val differentTagsQuery = TagQuery(
@@ -815,7 +843,8 @@ abstract class AbstractFactStoreTest {
         )
 
         val differentTagsFacts = store.findByTagQuery(factStoreId, differentTagsQuery)
-        assertThat(differentTagsFacts).containsExactly(fact3)
+        assertThat(differentTagsFacts).isInstanceOf(FindByTagQueryResult.Found::class.java)
+        assertThat((differentTagsFacts as FindByTagQueryResult.Found).facts).containsExactly(fact3)
 
     }
 
@@ -867,7 +896,8 @@ abstract class AbstractFactStoreTest {
         val result = store.findByTagQuery(factStoreId, query)
 
         // Expecting fact1 only (username = alice, type = "USER_CREATED")
-        assertThat(result).containsExactly(fact1)
+        assertThat(result).isInstanceOf(FindByTagQueryResult.Found::class.java)
+        assertThat((result as FindByTagQueryResult.Found).facts).containsExactly(fact1)
     }
 
     @Test
@@ -923,7 +953,9 @@ abstract class AbstractFactStoreTest {
 
         // Expecting fact2 (username = bob, region = us, type = USER_UPDATED)
         // Expecting fact3 (region = us, type = USER_CREATED, but no username filter for 'bob')
-        assertThat(result).containsExactlyInAnyOrder(fact2, fact3)
+        assertThat(result).isInstanceOf(FindByTagQueryResult.Found::class.java)
+        assertThat((result as FindByTagQueryResult.Found).facts).containsExactlyInAnyOrder(fact2, fact3)
+
     }
 
     @Test
@@ -979,7 +1011,8 @@ abstract class AbstractFactStoreTest {
 
         // Expecting fact2 (username = bob, region = us, type = USER_UPDATED)
         // Expecting fact1 (username = alice, region = eu, type = USER_CREATED)
-        assertThat(result).containsExactlyInAnyOrder(fact2, fact1)
+        assertThat(result).isInstanceOf(FindByTagQueryResult.Found::class.java)
+        assertThat((result as FindByTagQueryResult.Found).facts).containsExactlyInAnyOrder(fact2, fact1)
     }
 
     @Test
@@ -1010,7 +1043,8 @@ abstract class AbstractFactStoreTest {
         val result = store.findByTagQuery(factStoreId, query)
 
         // Expecting no facts because no fact matches the query
-        assertThat(result).isEmpty()
+        assertThat(result).isInstanceOf(FindByTagQueryResult.Found::class.java)
+        assertThat((result as FindByTagQueryResult.Found).facts).isEmpty()
     }
 
     @Test
@@ -1099,15 +1133,34 @@ abstract class AbstractFactStoreTest {
         // The number of events matching "role=user" and "region=us" should be around half of 10,000 (i.e., ~5000).
         val expectedCount =
             events.count { it.tags[TagKey("role")] == TagValue("user") && it.tags[TagKey("region")] == TagValue("us") }
-        assertThat(result).hasSize(expectedCount) // Ensure the correct number of matching events
-        assertThat(result).allMatch {
-            it.tags[TagKey("role")] == TagValue("user") && it.tags[TagKey("region")] == TagValue(
-                "us"
-            )
-        } // Ensure correct tags
+        assertThat(result).isInstanceOf(FindByTagQueryResult.Found::class.java)
+        assertThat((result as FindByTagQueryResult.Found).facts)
+            .hasSize(expectedCount) // Ensure the correct number of matching events
+            .allMatch {
+                it.tags[TagKey("role")] == TagValue("user") &&
+                        it.tags[TagKey("region")] == TagValue("us")
+            }.also {
+                println("Found ${result.facts.size} events with 'role=user' and 'region=us'.")
+            }
 
-        // Step 4: Optionally, print out some details to confirm the query works (only if needed)
-        println("Found ${result.size} events with 'role=user' and 'region=us'.")
+    }
+
+    @Test
+    fun testFindByTagQueryWithNonExistingFactstore(): Unit = runBlocking {
+        assertThat(
+            store.findByTagQuery(
+                FactStoreId.generate(),
+                TagQuery(
+                    listOf(
+                        TagTypeItem(
+                            types = listOf(FactType("USER_CREATED")),
+                            tags = listOf(TagKey("role") to TagValue("custom"))
+                        )
+                    )
+                )
+            )
+        )
+            .isInstanceOf(FindByTagQueryResult.FactstoreNotFound::class.java)
     }
 
 
