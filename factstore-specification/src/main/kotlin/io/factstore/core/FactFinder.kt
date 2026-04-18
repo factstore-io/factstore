@@ -1,7 +1,5 @@
 package io.factstore.core
 
-import java.time.Instant
-
 /**
  * Provides read access to facts stored in the FactStore.
  *
@@ -34,11 +32,10 @@ interface FactFinder {
      *
      * The range is inclusive of both start and end timestamps.
      *
-     * @param start the start of the time range
-     * @param end the end of the time range (defaults to the current time)
+     * @param timeRange the time range to cover
      * @return the list of facts created within the specified time range, or an error if the factstore doesn't exist
      */
-    suspend fun findInTimeRange(factStoreId: FactStoreId, start: Instant, end: Instant = Instant.now()): FindInTimeRangeResult
+    suspend fun findInTimeRange(factStoreId: FactStoreId, timeRange: TimeRange): FindInTimeRangeResult
 
     /**
      * Finds all facts associated with the given subject.
