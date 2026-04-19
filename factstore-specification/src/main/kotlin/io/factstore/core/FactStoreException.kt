@@ -36,18 +36,3 @@ class DuplicateFactIdException(val factIds: List<FactId>) :
  */
 sealed class InvalidStreamingRequestException(message: String) :
         FactStoreException(message)
-
-/**
- * Thrown when a streaming request references a [FactId] that does not exist.
- *
- * This exception is typically raised when [StartPosition.After]
- * is set to a fact identifier that is unknown to the store.
- *
- * Streaming requires the last-seen fact to exist in order to resume
- * deterministically from a known position.
- *
- * @property factId the fact identifier that could not be found
- */
-class FactIdNotFoundException(val factId: FactId) :
-        InvalidStreamingRequestException("FactId $factId not found")
-

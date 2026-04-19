@@ -1,22 +1,16 @@
 package io.factstore.server.http
 
-import io.factstore.core.FactStore
-import io.factstore.core.FactStoreFinder
-import jakarta.ws.rs.GET
-import jakarta.ws.rs.Path
-import jakarta.ws.rs.PathParam
-import jakarta.ws.rs.Produces
-import jakarta.ws.rs.QueryParam
+import io.factstore.core.*
+import jakarta.ws.rs.*
 import jakarta.ws.rs.core.MediaType.APPLICATION_JSON
 import jakarta.ws.rs.core.MediaType.SERVER_SENT_EVENTS
+import jakarta.ws.rs.core.Response
+import jakarta.ws.rs.ext.ExceptionMapper
+import jakarta.ws.rs.ext.Provider
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
-import io.factstore.core.StartPosition
-import io.factstore.core.StreamingOptions
-import io.factstore.core.toFactId
 import org.jboss.resteasy.reactive.RestStreamElementType
-import java.util.Locale
-import java.util.UUID
+import java.util.*
 
 @Path("/v1/stores/{factStoreName}/facts/stream")
 class StreamResource(
@@ -35,8 +29,11 @@ class StreamResource(
         finder
             .resolveStoreOrThrow(factStoreName)
             .let { metadata ->
-                factStore.stream(metadata.id, buildStreamingOptions(after, from?.lowercase(Locale.ENGLISH)))
-                .map { it.toFactHttp() }
+                val streamResult = factStore.stream(
+                    factStoreId = metadata.id,
+                    streamingOptions = buildStreamingOptions(after, from?.lowercase(Locale.ENGLISH))
+                )
+                streamResult.toResponse()
             }
 
 
@@ -47,6 +44,23 @@ class StreamResource(
             else -> after?.let { StartPosition.After(it.toFactId()) } ?: StartPosition.Beginning
         }
         return StreamingOptions(startPosition)
+    }
+
+}
+
+private fun StreamResult.toResponse(): Flow<FactHttp> = when (this) {
+    is StreamResult.FactStoreNotFound -> throw NotFoundException("Fact store not found")
+    is StreamResult.InvalidStartPosition -> throw InvalidFactIdException(this.id)
+    is StreamResult.FactStream -> this.stream.map { it.toFactHttp() }
+}
+
+class InvalidFactIdException(val factId: FactId) : RuntimeException()
+
+@Provider
+class InvalidFactIdExceptionMapper : ExceptionMapper<InvalidFactIdException> {
+
+    override fun toResponse(exception: InvalidFactIdException): Response? {
+        return Response.status(422).entity("${exception.factId.uuid} does not exist" ).build()
     }
 
 }

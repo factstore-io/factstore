@@ -22,17 +22,13 @@ interface FactStreamer {
      * The returned [Flow] emits facts incrementally and may continue emitting
      * new facts as they are appended to the store.
      *
-     * If [StreamingOptions.startPosition] is set and does not reference an
-     * existing fact, an [InvalidStreamingRequestException] is thrown.
      *
      * @param streamingOptions configuration options controlling how facts
      * are streamed
-     * @return a cold [Flow] emitting facts that match the streaming criteria
-     *
-     * @throws InvalidStreamingRequestException if the streaming request
-     * cannot be satisfied
+     * @return a cold [Flow] emitting facts that match the streaming criteria,
+     * or an error result if the fact store does not exist or the start position is invalid
      */
-    fun stream(factStoreId: FactStoreId, streamingOptions: StreamingOptions): Flow<Fact>
+    suspend fun stream(factStoreId: FactStoreId, streamingOptions: StreamingOptions): StreamResult
 
     /**
      * Streams all facts from the beginning of the store.
@@ -42,7 +38,7 @@ interface FactStreamer {
      *
      * @return a cold [Flow] emitting all facts in order
      */
-    fun stream(factStoreId: FactStoreId) = stream(factStoreId, StreamingOptions())
+    suspend fun stream(factStoreId: FactStoreId) = stream(factStoreId, StreamingOptions())
 
 }
 
@@ -79,3 +75,11 @@ sealed interface StartPosition {
 data class StreamingOptions(
     val startPosition: StartPosition = StartPosition.Beginning,
 )
+
+sealed interface StreamResult {
+    @JvmInline
+    value class FactStream(val stream: Flow<Fact>) : StreamResult
+    data object FactStoreNotFound : StreamResult
+    @JvmInline
+    value class InvalidStartPosition(val id: FactId) : StreamResult
+}
