@@ -75,6 +75,8 @@ FactStore is a specification and implementation of a fact/event store with a str
 factstore/
 ├── factstore-specification/      # Core APIs and contracts
 ├── factstore-foundationdb/       # FoundationDB-backed implementation
+├── factstore-memory/             # In-memory-backed implementation
+├── factstore-testing/            # Specification tests shared across implementations
 └── factstore-server/             # HTTP API server to expose FactStore
 ```
 
