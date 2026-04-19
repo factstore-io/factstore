@@ -237,7 +237,7 @@ class MemoryFactStore : FactStore {
             }
         }
 
-        return StreamResult.Success(
+        return StreamResult.FactStream(
             stream = streamFacts(factStoreId, startIndex)
         )
     }

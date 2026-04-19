@@ -4,7 +4,6 @@ import io.factstore.core.*
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.cancelAndJoin
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
@@ -93,7 +92,7 @@ abstract class AbstractFactStoreTest {
 
         store.append(factStoreId, fact)
 
-        store.stream(factStoreId).let { (it as StreamResult.Success).stream }.take(1).collect {
+        store.stream(factStoreId).let { (it as StreamResult.FactStream).stream }.take(1).collect {
             println("Streamed fact: $it")
         }
 
@@ -555,7 +554,7 @@ abstract class AbstractFactStoreTest {
         // Start streaming from beginning
         val streamJob = launch {
             store.stream(factStoreId)
-                .let { (it as StreamResult.Success).stream }
+                .let { (it as StreamResult.FactStream).stream }
                 .take(3)
                 .collect {
                     collectedFacts += it
@@ -587,7 +586,7 @@ abstract class AbstractFactStoreTest {
         val streamedEvents = store.stream(
             factStoreId,
             StreamingOptions(startPosition = StartPosition.After(fact1.id))
-        ).let { (it as StreamResult.Success).stream }
+        ).let { (it as StreamResult.FactStream).stream }
             .take(2)
             .toList()
 
@@ -626,7 +625,7 @@ abstract class AbstractFactStoreTest {
                 factStoreId,
                 StreamingOptions(startPosition = StartPosition.End)
             )
-                .let { (it as StreamResult.Success).stream }
+                .let { (it as StreamResult.FactStream).stream }
                 .take(2)
                 .onStart { streamStartedLatch.complete(Unit) }
                 .collect {

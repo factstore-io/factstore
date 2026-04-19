@@ -51,7 +51,7 @@ class StreamResource(
 private fun StreamResult.toResponse(): Flow<FactHttp> = when (this) {
     is StreamResult.FactStoreNotFound -> throw NotFoundException("Fact store not found")
     is StreamResult.InvalidStartPosition -> throw InvalidFactIdException(this.id)
-    is StreamResult.Success -> this.stream.map { it.toFactHttp() }
+    is StreamResult.FactStream -> this.stream.map { it.toFactHttp() }
 }
 
 class InvalidFactIdException(val factId: FactId) : RuntimeException()
