@@ -194,7 +194,7 @@ class FdbFactStreamer(
     private fun List<FdbFact>.toReadResult(tr: Transaction, factStoreId: FactStoreId): ReadResult =
         if (isEmpty()) {
             ReadResult.WatchResult(
-                tr.watch(store.context.headSubspace.pack(factStoreId.uuid))
+                tr.watch(store.context.headSubspace.headKey(factStoreId))
             )
         } else {
             ReadResult.BatchResult(this)

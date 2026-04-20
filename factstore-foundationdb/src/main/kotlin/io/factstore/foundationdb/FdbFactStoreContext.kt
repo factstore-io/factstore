@@ -1,9 +1,11 @@
 package io.factstore.foundationdb
 
+import com.apple.foundationdb.MutationType.SET_VERSIONSTAMPED_VALUE
 import com.apple.foundationdb.ReadTransaction
 import com.apple.foundationdb.Transaction
 import com.apple.foundationdb.subspace.Subspace
 import com.apple.foundationdb.tuple.Tuple
+import com.apple.foundationdb.tuple.Versionstamp
 import com.github.avrokotlin.avro4k.Avro
 import io.factstore.core.FactId
 import io.factstore.core.FactStoreId
@@ -17,7 +19,7 @@ data class FdbFactStoreContext(
     val storeSubspace: Subspace,
     val storeNameToIdIndex: Subspace,
     val globalFactPositionSubspace: Subspace,
-    val headSubspace: Subspace,
+    val headSubspace: HeadSubspace,
     val factPositionsSubspace: Subspace,
     val eventTypeIndexSubspace: Subspace,
     val createdAtIndexSubspace: Subspace,
@@ -36,7 +38,7 @@ data class FdbFactStoreContext(
                 storeSubspace = root.subspace(Tuple.from(STORES)),
                 storeNameToIdIndex = root.subspace(Tuple.from(STORE_INDEX)),
                 globalFactPositionSubspace = root.subspace(Tuple.from(FACTS)),
-                headSubspace = root.subspace(Tuple.from(HEAD_INDEX)),
+                headSubspace = HeadSubspace(root.subspace(Tuple.from(HEAD_INDEX))),
                 factPositionsSubspace = root.subspace(Tuple.from(FACT_POSITIONS)),
                 eventTypeIndexSubspace = root.subspace(Tuple.from(EVENT_TYPE_INDEX)),
                 createdAtIndexSubspace = root.subspace(Tuple.from(CREATED_AT_INDEX)),
@@ -74,6 +76,16 @@ value class HeadSubspace(val subspace: Subspace) {
         tr[subspace.pack(Tuple.from(factstoreId.uuid))].thenApply { valueBytes ->
             valueBytes?.let { Tuple.fromBytes(it).getVersionstamp(0) }
         }
+
+    fun headKey(factstoreId: FactStoreId): ByteArray =
+        subspace.pack(factstoreId.uuid)
+
+    context(tr: Transaction)
+    fun save(factstoreId: FactStoreId, incompleteVersionstamp: Versionstamp) {
+        val headKey = subspace.pack(factstoreId.uuid)
+        val positionValue = Tuple.from(incompleteVersionstamp).packWithVersionstamp()
+        tr.mutate(SET_VERSIONSTAMPED_VALUE, headKey, positionValue)
+    }
 
 }
 

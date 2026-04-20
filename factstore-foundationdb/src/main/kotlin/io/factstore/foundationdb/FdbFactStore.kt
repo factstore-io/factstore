@@ -94,9 +94,7 @@ data class FdbFactStore(
         val factIdTuple = Tuple.from(id.uuid).pack()
         val incompleteVersionstamp = Versionstamp.incomplete(index)
 
-        val headKey = context.headSubspace.pack(factStoreId.uuid)
-        val positionValue = Tuple.from(incompleteVersionstamp).packWithVersionstamp()
-        transaction.mutate(SET_VERSIONSTAMPED_VALUE, headKey, positionValue)
+        context.headSubspace.save(factStoreId, incompleteVersionstamp)
 
         val eventTypeIndexKey = context.eventTypeIndexSubspace.packWithVersionstamp(
             Tuple.from(factStoreId.uuid, type.value, incompleteVersionstamp)
@@ -191,11 +189,8 @@ data class FdbFactStore(
         }
 
     fun getHead(factStoreId: FactStoreId, transaction: ReadTransaction): CompletableFuture<FactPosition?> =
-        transaction[context.headSubspace.pack(factStoreId.uuid)].thenApply { bytes ->
-            bytes?.let {
-                val positionTuple = Tuple.fromBytes(it)
-                positionTuple.getVersionstamp(0)
-            }
+        with(transaction) {
+            context.headSubspace.head(factStoreId)
         }
 
 }
