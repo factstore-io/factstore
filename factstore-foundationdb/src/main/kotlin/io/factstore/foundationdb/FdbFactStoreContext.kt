@@ -21,7 +21,7 @@ data class FdbFactStoreContext(
     val storeNameToIdIndex: Subspace,
     val factSubspace: FactSubspace,
     val headSubspace: HeadSubspace,
-    val factPositionsSubspace: Subspace,
+    val factPositionIndexSubspace: FactPositionIndexSubspace,
     val eventTypeIndexSubspace: Subspace,
     val createdAtIndexSubspace: Subspace,
     val subjectIndexSubspace: Subspace,
@@ -40,7 +40,7 @@ data class FdbFactStoreContext(
                 storeNameToIdIndex = root.subspace(Tuple.from(STORE_INDEX)),
                 factSubspace = FactSubspace(root.subspace(Tuple.from(FACTS))),
                 headSubspace = HeadSubspace(root.subspace(Tuple.from(HEAD_INDEX))),
-                factPositionsSubspace = root.subspace(Tuple.from(FACT_POSITIONS)),
+                factPositionIndexSubspace = FactPositionIndexSubspace(root.subspace(Tuple.from(FACT_POSITIONS))),
                 eventTypeIndexSubspace = root.subspace(Tuple.from(EVENT_TYPE_INDEX)),
                 createdAtIndexSubspace = root.subspace(Tuple.from(CREATED_AT_INDEX)),
                 subjectIndexSubspace = root.subspace(Tuple.from(SUBJECT_INDEX)),
@@ -115,7 +115,7 @@ value class FactSubspace(val subspace: Subspace) {
 }
 
 @JvmInline
-value class FactPositionSubspace(val subspace: Subspace) {
+value class FactPositionIndexSubspace(val subspace: Subspace) {
 
     context(tr: ReadTransaction)
     fun exists(factstoreId: FactStoreId, factId: FactId): CompletableFuture<Boolean> {
@@ -123,5 +123,18 @@ value class FactPositionSubspace(val subspace: Subspace) {
             it != null
         }
     }
+
+    context(tr: ReadTransaction)
+    fun getPosition(factstoreId: FactStoreId, factId: FactId): CompletableFuture<FactPosition?> =
+        tr[subspace.pack(Tuple.from(factstoreId.uuid, factId.uuid))].thenApply { valueBytes ->
+            valueBytes?.let { Tuple.fromBytes(it).getVersionstamp(0) }
+        }
+
+     context(tr: Transaction)
+     fun savePosition(factstoreId: FactStoreId, factId: FactId, incompleteVersionstamp: Versionstamp) {
+         val key = subspace.pack(Tuple.from(factstoreId.uuid, factId.uuid))
+         val value = Tuple.from(incompleteVersionstamp).packWithVersionstamp()
+         tr.mutate(SET_VERSIONSTAMPED_VALUE, key, value)
+     }
 
 }

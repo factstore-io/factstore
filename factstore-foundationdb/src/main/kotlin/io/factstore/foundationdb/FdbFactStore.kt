@@ -80,9 +80,7 @@ data class FdbFactStore(
         context.factSubspace.saveFact(factStoreId, incompleteVersionstamp, serializedFactBytes)
 
         // store fact position (we use versionstamp for that)
-        val positionKey = context.factPositionsSubspace.pack(Tuple.from(factStoreId.uuid, id.uuid))
-        val positionValue = Tuple.from(incompleteVersionstamp).packWithVersionstamp()
-        transaction.mutate(SET_VERSIONSTAMPED_VALUE, positionKey, positionValue)
+        context.factPositionIndexSubspace.savePosition(factStoreId, id, incompleteVersionstamp)
     }
 
     context(transaction: Transaction, factStoreId: FactStoreId)
@@ -144,17 +142,11 @@ data class FdbFactStore(
 
     context(transaction: ReadTransaction, factStoreId: FactStoreId)
     fun FactId.loadFactById(): CompletableFuture<FdbFact?> {
-        val factIdTuple = Tuple.from(factStoreId.uuid, this.uuid)
-        val factPositionKey = context.factPositionsSubspace.pack(factIdTuple)
-
         // fetch fact data and position in parallel
-        val factPositionFuture = transaction[factPositionKey].thenCompose { factPosition ->
+        val factPositionFuture = context.factPositionIndexSubspace.getPosition(factStoreId, this).thenCompose { factPosition ->
             if (factPosition == null) {
                 return@thenCompose CompletableFuture.completedFuture(null)
             }
-
-            val positionTuple = Tuple.fromBytes(factPosition)
-            val factPosition = positionTuple.getLastAsFactPosition()
 
             // now that we have the position,
             // we can look up the fact
@@ -174,14 +166,6 @@ data class FdbFactStore(
 
         return factPositionFuture
     }
-
-    fun FactId.getPosition(factStoreId: FactStoreId, transaction: ReadTransaction): CompletableFuture<FactPosition?> =
-        transaction[context.factPositionsSubspace.pack(Tuple.from(factStoreId.uuid, this.uuid))].thenApply {
-            it?.let { bytes ->
-                val positionTuple = Tuple.fromBytes(bytes)
-                positionTuple.getVersionstamp(0)
-            }
-        }
 
     fun getHead(factStoreId: FactStoreId, transaction: ReadTransaction): CompletableFuture<FactPosition?> =
         with(transaction) {

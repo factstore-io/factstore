@@ -1,7 +1,6 @@
 package io.factstore.foundationdb
 
 import com.apple.foundationdb.KeySelector
-import com.apple.foundationdb.ReadTransaction
 import com.apple.foundationdb.Transaction
 import com.apple.foundationdb.tuple.Tuple
 import io.factstore.core.*
@@ -58,9 +57,8 @@ class FdbFactAppender(
     context(transaction: Transaction)
     private fun AppendRequest.validate(): CompletableFuture<Unit> {
         val checks: List<CompletableFuture<FactId?>> = facts.map { fact ->
-            val factKey = store.context.factPositionsSubspace.pack(Tuple.from(factStoreId.uuid, fact.id.uuid))
-            transaction.get(factKey).thenApply { existing ->
-                if (existing != null) fact.id else null
+            store.context.factPositionIndexSubspace.exists(factStoreId, fact.id).thenApply { exists ->
+                if (exists) fact.id else null
             }
         }
 
@@ -139,7 +137,7 @@ class FdbFactAppender(
 
     context(tr: Transaction, appendRequest: AppendRequest)
     private fun FactId.getPosition() = with(store) {
-        this@getPosition.getPosition(appendRequest.factStoreId, tr)
+        context.factPositionIndexSubspace.getPosition(appendRequest.factStoreId, this@getPosition)
     }
 
     context(tr: Transaction, appendRequest: AppendRequest)

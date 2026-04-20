@@ -10,7 +10,7 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
 
     private val db = fdbFactStore.db
 
-    private val factPositionSubspace = fdbFactStore.context.factPositionsSubspace
+    private val factPositionSubspace = fdbFactStore.context.factPositionIndexSubspace
 
     private val createdAtIndexSubspace = fdbFactStore.context.createdAtIndexSubspace
     private val subjectIndexSubspace = fdbFactStore.context.subjectIndexSubspace
@@ -250,7 +250,7 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
 
     context(transaction: ReadTransaction)
     private fun FactId.existsById(factStoreId: FactStoreId): CompletableFuture<Boolean> {
-        return transaction[factPositionSubspace.pack(Tuple.from(factStoreId.uuid, this.uuid))].thenApply { it != null }
+        return factPositionSubspace.exists(factStoreId, this)
     }
 
     context(tr: ReadTransaction)
