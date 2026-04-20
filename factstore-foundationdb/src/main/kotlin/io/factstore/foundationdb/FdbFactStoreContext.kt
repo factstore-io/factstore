@@ -28,7 +28,7 @@ data class FdbFactStoreContext(
     val eventTypeIndexSubspace: EventTypeIndexSubspace,
     val createdAtIndexSubspace: CreatedAtIndexSubspace,
     val subjectIndexSubspace: SubjectIndexSubspace,
-    val metadataIndexSubspace: Subspace,
+    val metadataIndexSubspace: MetadataIndexSubspace,
     val tagsIndexSubspace: Subspace,
     val tagsTypeIndexSubspace: Subspace,
     val idempotencySubspace: Subspace,
@@ -47,7 +47,7 @@ data class FdbFactStoreContext(
                 eventTypeIndexSubspace = EventTypeIndexSubspace(root.subspace(Tuple.from(EVENT_TYPE_INDEX))),
                 createdAtIndexSubspace = CreatedAtIndexSubspace(root.subspace(Tuple.from(CREATED_AT_INDEX))),
                 subjectIndexSubspace = SubjectIndexSubspace(root.subspace(Tuple.from(SUBJECT_INDEX))),
-                metadataIndexSubspace = root.subspace(Tuple.from(METADATA_INDEX)),
+                metadataIndexSubspace = MetadataIndexSubspace(root.subspace(Tuple.from(METADATA_INDEX))),
                 tagsIndexSubspace = root.subspace(Tuple.from(TAGS_INDEX)),
                 tagsTypeIndexSubspace = root.subspace(Tuple.from(TAGS_TYPE_INDEX)),
                 idempotencySubspace = root.subspace(Tuple.from(IDEMPOTENCY_KEYS))
@@ -184,10 +184,27 @@ value class SubjectIndexSubspace(val subspace: Subspace) {
     fun save(factStoreId: FactStoreId, factId: FactId, subjectRef: SubjectRef, incompleteVersionstamp: Versionstamp) {
         val keyTuple = Tuple.from(factStoreId.uuid, subjectRef.type, subjectRef.id, incompleteVersionstamp)
         val keyBytes = subspace.packWithVersionstamp(keyTuple)
-        val factIdTupleBytes = Tuple.from(factId.uuid).pack()
-        tr.mutate(SET_VERSIONSTAMPED_KEY, keyBytes, factIdTupleBytes)
+        val factIdTuple = Tuple.from(factId.uuid).pack()
+        tr.mutate(SET_VERSIONSTAMPED_KEY, keyBytes, factIdTuple)
     }
 
     fun unpack(key: ByteArray): Tuple = subspace.unpack(key)
+
+}
+
+@JvmInline
+value class MetadataIndexSubspace(val subspace: Subspace) {
+
+    context(tr: Transaction)
+    fun save(factStoreId: FactStoreId, factId: FactId, metadata:  Map<String, String>, incompleteVersionstamp: Versionstamp) {
+        val factIdTuple = Tuple.from(factId.uuid).pack()
+        metadata.forEach { (key, value) ->
+            val metadataEntryIndex = subspace.packWithVersionstamp(
+                Tuple.from(factStoreId.uuid, key, value, incompleteVersionstamp)
+            )
+            tr.mutate(SET_VERSIONSTAMPED_KEY, metadataEntryIndex, factIdTuple)
+
+        }
+    }
 
 }
