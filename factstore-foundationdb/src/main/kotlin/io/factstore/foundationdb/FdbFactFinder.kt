@@ -51,16 +51,14 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
     override suspend fun findInTimeRange(factStoreId: FactStoreId, timeRange: TimeRange): FindInTimeRangeResult {
         val start = timeRange.start
         val end = timeRange.end
-        val startTuple = Tuple.from(factStoreId.uuid, start.epochSecond, start.nano)
-        val endTuple = Tuple.from(factStoreId.uuid, end.epochSecond, end.nano)
 
         return db.readAsync { tr ->
             fdbFactStore.context.getMetadata(factStoreId, tr).thenCompose { metadata ->
                 if (metadata == null) {
                     CompletableFuture.completedFuture(FindInTimeRangeResult.FactstoreNotFound)
                 } else {
-                    val begin = createdAtIndexSubspace.pack(startTuple)
-                    val endKey = createdAtIndexSubspace.pack(endTuple)
+                    val begin = createdAtIndexSubspace.getKey(factStoreId, start)
+                    val endKey = createdAtIndexSubspace.getKey(factStoreId, end)
 
                     tr.getRange(begin, endKey).asList().thenCompose { kvs ->
                         val factFutures: List<CompletableFuture<FdbFact?>> = kvs.map { kv ->
