@@ -37,15 +37,15 @@ class FdbFactAppender(
                 if (metadata == null) {
                     return@thenCompose CompletableFuture.completedFuture(AppendResult.FactStoreNotFound)
                 } else {
-                    val key = request.idempotencyKeyBytes()
+                    val idempotencyKey = request.idempotencyKeyBytes()
 
-                    tr.get(key).thenCompose { existing ->
+                    tr[idempotencyKey].thenCompose { existing ->
                         if (existing != null) {
                             CompletableFuture.completedFuture(AppendResult.AlreadyApplied)
                         } else {
                             with(tr) {
                                 request.validate().thenCompose {
-                                    request.appendNew(key)
+                                    request.appendNew()
                                 }
                             }
                         }
@@ -73,16 +73,14 @@ class FdbFactAppender(
     }
 
     context(tr: Transaction)
-    private fun AppendRequest.appendNew(
-        idempotencyKeyBytes: ByteArray
-    ): CompletableFuture<AppendResult> {
+    private fun AppendRequest.appendNew(): CompletableFuture<AppendResult> {
 
         return this.condition.isSatisfied().thenApply { satisfied ->
             if (!satisfied) {
                 AppendResult.AppendConditionViolated
             } else {
                 this.facts.store()
-                tr.set(idempotencyKeyBytes, EMPTY_BYTE_ARRAY)
+                store.context.idempotencySubspace.save(factStoreId, idempotencyKey)
                 AppendResult.Appended
             }
         }
@@ -120,7 +118,7 @@ class FdbFactAppender(
     }
 
     private fun AppendRequest.idempotencyKeyBytes(): ByteArray =
-        store.context.idempotencySubspace.pack(Tuple.from(idempotencyKey.value))
+        store.context.idempotencySubspace.pack(factStoreId, idempotencyKey)
 
     context(tr: Transaction, appendRequest: AppendRequest)
     private fun List<Fact>.store() = with(store) {

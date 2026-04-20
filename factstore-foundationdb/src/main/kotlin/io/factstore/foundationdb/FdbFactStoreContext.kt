@@ -13,6 +13,7 @@ import io.factstore.core.FactId
 import io.factstore.core.FactStoreId
 import io.factstore.core.FactStoreName
 import io.factstore.core.FactType
+import io.factstore.core.IdempotencyKey
 import io.factstore.core.SubjectRef
 import io.factstore.core.TagKey
 import io.factstore.core.TagValue
@@ -33,7 +34,7 @@ data class FdbFactStoreContext(
     val metadataIndexSubspace: MetadataIndexSubspace,
     val tagsIndexSubspace: TagsIndexSubspace,
     val tagsTypeIndexSubspace: TagsTypeIndexSubspace,
-    val idempotencySubspace: Subspace,
+    val idempotencySubspace: IdempotencySubspace,
 ) {
 
     companion object {
@@ -52,7 +53,7 @@ data class FdbFactStoreContext(
                 metadataIndexSubspace = MetadataIndexSubspace(root.subspace(Tuple.from(METADATA_INDEX))),
                 tagsIndexSubspace = TagsIndexSubspace(root.subspace(Tuple.from(TAGS_INDEX))),
                 tagsTypeIndexSubspace = TagsTypeIndexSubspace(root.subspace(Tuple.from(TAGS_TYPE_INDEX))),
-                idempotencySubspace = root.subspace(Tuple.from(IDEMPOTENCY_KEYS))
+                idempotencySubspace = IdempotencySubspace(root.subspace(Tuple.from(IDEMPOTENCY_KEYS)))
             )
         }
 
@@ -270,4 +271,18 @@ value class TagsTypeIndexSubspace(val subspace: Subspace) {
             tr.mutate(SET_VERSIONSTAMPED_KEY, tagTypeIndex, factIdTuple)
         }
     }
+}
+
+@JvmInline
+value class IdempotencySubspace(val subspace: Subspace) {
+
+    fun pack(factstoreId: FactStoreId, idempotencyKey: IdempotencyKey): ByteArray =
+        subspace.pack(Tuple.from(factstoreId.uuid, idempotencyKey.value))
+
+    context(tr: Transaction)
+    fun save(factStoreId: FactStoreId, idempotencyKey: IdempotencyKey) {
+        val key = pack(factStoreId, idempotencyKey)
+        tr[key] = EMPTY_BYTE_ARRAY
+    }
+
 }
