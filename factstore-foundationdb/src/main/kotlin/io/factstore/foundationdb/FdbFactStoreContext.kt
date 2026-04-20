@@ -12,6 +12,7 @@ import com.github.avrokotlin.avro4k.Avro
 import io.factstore.core.FactId
 import io.factstore.core.FactStoreId
 import io.factstore.core.FactStoreName
+import io.factstore.core.FactType
 import kotlinx.serialization.decodeFromByteArray
 import kotlinx.serialization.encodeToByteArray
 import java.util.concurrent.CompletableFuture
@@ -22,7 +23,7 @@ data class FdbFactStoreContext(
     val factSubspace: FactSubspace,
     val headSubspace: HeadSubspace,
     val factPositionIndexSubspace: FactPositionIndexSubspace,
-    val eventTypeIndexSubspace: Subspace,
+    val eventTypeIndexSubspace: EventTypeIndexSubspace,
     val createdAtIndexSubspace: Subspace,
     val subjectIndexSubspace: Subspace,
     val metadataIndexSubspace: Subspace,
@@ -41,7 +42,7 @@ data class FdbFactStoreContext(
                 factSubspace = FactSubspace(root.subspace(Tuple.from(FACTS))),
                 headSubspace = HeadSubspace(root.subspace(Tuple.from(HEAD_INDEX))),
                 factPositionIndexSubspace = FactPositionIndexSubspace(root.subspace(Tuple.from(FACT_POSITIONS))),
-                eventTypeIndexSubspace = root.subspace(Tuple.from(EVENT_TYPE_INDEX)),
+                eventTypeIndexSubspace = EventTypeIndexSubspace(root.subspace(Tuple.from(EVENT_TYPE_INDEX))),
                 createdAtIndexSubspace = root.subspace(Tuple.from(CREATED_AT_INDEX)),
                 subjectIndexSubspace = root.subspace(Tuple.from(SUBJECT_INDEX)),
                 metadataIndexSubspace = root.subspace(Tuple.from(METADATA_INDEX)),
@@ -136,5 +137,18 @@ value class FactPositionIndexSubspace(val subspace: Subspace) {
          val value = Tuple.from(incompleteVersionstamp).packWithVersionstamp()
          tr.mutate(SET_VERSIONSTAMPED_VALUE, key, value)
      }
+
+}
+
+@JvmInline
+value class EventTypeIndexSubspace(val subspace: Subspace) {
+
+    context(tr: Transaction)
+    fun save(factStoreId: FactStoreId, factId: FactId, factType: FactType, incompleteVersionstamp: Versionstamp) {
+        val eventTypeIndexKey = subspace.packWithVersionstamp(
+            Tuple.from(factStoreId.uuid, factType.value, incompleteVersionstamp)
+        )
+        tr.mutate(SET_VERSIONSTAMPED_KEY, eventTypeIndexKey, Tuple.from(factId.uuid).pack())
+    }
 
 }

@@ -89,11 +89,7 @@ data class FdbFactStore(
         val incompleteVersionstamp = Versionstamp.incomplete(index)
 
         context.headSubspace.save(factStoreId, incompleteVersionstamp)
-
-        val eventTypeIndexKey = context.eventTypeIndexSubspace.packWithVersionstamp(
-            Tuple.from(factStoreId.uuid, type.value, incompleteVersionstamp)
-        )
-        transaction.mutate(SET_VERSIONSTAMPED_KEY, eventTypeIndexKey, factIdTuple)
+        context.eventTypeIndexSubspace.save(factStoreId, id, type, incompleteVersionstamp)
 
         val createdAtIndexKey = context.createdAtIndexSubspace.packWithVersionstamp(
             Tuple.from(factStoreId.uuid, appendedAt.epochSecond, appendedAt.nano, incompleteVersionstamp)
