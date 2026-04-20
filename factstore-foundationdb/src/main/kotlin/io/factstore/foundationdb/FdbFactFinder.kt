@@ -10,7 +10,7 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
 
     private val db = fdbFactStore.db
 
-    private val factPositionSubspace = fdbFactStore.context.factPositionsSubspace
+    private val factPositionSubspace = fdbFactStore.context.factPositionIndexSubspace
 
     private val createdAtIndexSubspace = fdbFactStore.context.createdAtIndexSubspace
     private val subjectIndexSubspace = fdbFactStore.context.subjectIndexSubspace
@@ -51,21 +51,18 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
     override suspend fun findInTimeRange(factStoreId: FactStoreId, timeRange: TimeRange): FindInTimeRangeResult {
         val start = timeRange.start
         val end = timeRange.end
-        val startTuple = Tuple.from(factStoreId.uuid, start.epochSecond, start.nano)
-        val endTuple = Tuple.from(factStoreId.uuid, end.epochSecond, end.nano)
 
         return db.readAsync { tr ->
             fdbFactStore.context.getMetadata(factStoreId, tr).thenCompose { metadata ->
                 if (metadata == null) {
                     CompletableFuture.completedFuture(FindInTimeRangeResult.FactstoreNotFound)
                 } else {
-                    val begin = createdAtIndexSubspace.pack(startTuple)
-                    val endKey = createdAtIndexSubspace.pack(endTuple)
+                    val begin = createdAtIndexSubspace.getKey(factStoreId, start)
+                    val endKey = createdAtIndexSubspace.getKey(factStoreId, end)
 
                     tr.getRange(begin, endKey).asList().thenCompose { kvs ->
                         val factFutures: List<CompletableFuture<FdbFact?>> = kvs.map { kv ->
-                            val tuple = createdAtIndexSubspace.unpack(kv.key)
-                            val factPosition = tuple.getLastAsFactPosition()
+                            val factPosition = createdAtIndexSubspace.unpackPosition(kv.key)
                             tr.run { factPosition.lookupFact(factStoreId) }
                         }
 
@@ -86,11 +83,10 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
                 if (metadata == null) {
                     CompletableFuture.completedFuture(FindBySubjectResult.FactstoreNotFound)
                 } else {
-                    val subjectRange = subjectIndexSubspace.range(Tuple.from(factStoreId.uuid, subjectRef.type, subjectRef.id))
+                    val subjectRange = subjectIndexSubspace.range(factStoreId, subjectRef)
                     tr.getRange(subjectRange).asList().thenCompose { kvs ->
                         val factFutures: List<CompletableFuture<FdbFact?>> = kvs.map { kv ->
-                            val tuple = subjectIndexSubspace.unpack(kv.key)
-                            val factPosition = tuple.getLastAsFactPosition()
+                            val factPosition = subjectIndexSubspace.unpackPosition(kv.key)
                             tr.run { factPosition.lookupFact(factStoreId) }
                         }
 
@@ -114,11 +110,10 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
 
                     // For each (key, value) pair, get matching factIds
                     val tagFutures: List<CompletableFuture<Set<FactPosition>>> = tags.map { (key, value) ->
-                        val range = tagsIndexSubspace.range(Tuple.from(factStoreId.uuid, key.value, value.value))
+                        val range = tagsIndexSubspace.range(factStoreId, key, value)
                         tr.getRange(range).asList().thenApply { kvs ->
                             kvs.mapTo(mutableSetOf()) { kv ->
-                                val tuple = tagsIndexSubspace.unpack(kv.key)
-                                tuple.getLastAsFactPosition()
+                                tagsIndexSubspace.unpackPosition(kv.key)
                             }
                         }
                     }
@@ -191,11 +186,10 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
     context(tr: ReadTransaction, factStoreId: FactStoreId)
     private fun TagOnlyQueryItem.resolveFactPositions(): CompletableFuture<Set<FactPosition>> {
         val futures: List<CompletableFuture<Set<FactPosition>>> = tags.map { tag ->
-            val range = tagsIndexSubspace.range(Tuple.from(factStoreId.uuid, tag.first.value, tag.second.value))
+            val range = tagsIndexSubspace.range(factStoreId, tag)
             tr.getRange(range).asList().thenApply { keyValues ->
                 keyValues.map {
-                    val tuple = tagsIndexSubspace.unpack(it.key)
-                    tuple.getLastAsFactPosition()
+                    tagsIndexSubspace.unpackPosition(it.key)
                 }.toSet() // Convert to a Set to easily combine results
             }
         }
@@ -214,11 +208,10 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
         // use composite "type+tag" index
         val futures: List<CompletableFuture<Set<FactPosition>>> = types.map { type ->
             val tagFutures = tags.map { tag ->
-                val range = tagsTypeIndexSubspace.range(Tuple.from(factStoreId.uuid, type.value, tag.first.value, tag.second.value))
+                val range = tagsTypeIndexSubspace.range(factStoreId, type, tag)
                 tr.getRange(range).asList().thenApply { keyValues ->
                     keyValues.map {
-                        val tuple = tagsTypeIndexSubspace.unpack(it.key)
-                        tuple.getLastAsFactPosition()
+                        tagsTypeIndexSubspace.unpackPosition(it.key)
                     }.toSet()
                 }
             }
@@ -250,7 +243,7 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
 
     context(transaction: ReadTransaction)
     private fun FactId.existsById(factStoreId: FactStoreId): CompletableFuture<Boolean> {
-        return transaction[factPositionSubspace.pack(Tuple.from(factStoreId.uuid, this.uuid))].thenApply { it != null }
+        return factPositionSubspace.exists(factStoreId, this)
     }
 
     context(tr: ReadTransaction)

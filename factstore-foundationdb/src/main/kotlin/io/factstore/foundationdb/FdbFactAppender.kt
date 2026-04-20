@@ -1,7 +1,6 @@
 package io.factstore.foundationdb
 
 import com.apple.foundationdb.KeySelector
-import com.apple.foundationdb.ReadTransaction
 import com.apple.foundationdb.Transaction
 import com.apple.foundationdb.tuple.Tuple
 import io.factstore.core.*
@@ -38,15 +37,15 @@ class FdbFactAppender(
                 if (metadata == null) {
                     return@thenCompose CompletableFuture.completedFuture(AppendResult.FactStoreNotFound)
                 } else {
-                    val key = request.idempotencyKeyBytes()
+                    val idempotencyKey = request.idempotencyKeyBytes()
 
-                    tr.get(key).thenCompose { existing ->
+                    tr[idempotencyKey].thenCompose { existing ->
                         if (existing != null) {
                             CompletableFuture.completedFuture(AppendResult.AlreadyApplied)
                         } else {
                             with(tr) {
                                 request.validate().thenCompose {
-                                    request.appendNew(key)
+                                    request.appendNew()
                                 }
                             }
                         }
@@ -58,9 +57,8 @@ class FdbFactAppender(
     context(transaction: Transaction)
     private fun AppendRequest.validate(): CompletableFuture<Unit> {
         val checks: List<CompletableFuture<FactId?>> = facts.map { fact ->
-            val factKey = store.context.factPositionsSubspace.pack(Tuple.from(factStoreId.uuid, fact.id.uuid))
-            transaction.get(factKey).thenApply { existing ->
-                if (existing != null) fact.id else null
+            store.context.factPositionIndexSubspace.exists(factStoreId, fact.id).thenApply { exists ->
+                if (exists) fact.id else null
             }
         }
 
@@ -75,16 +73,14 @@ class FdbFactAppender(
     }
 
     context(tr: Transaction)
-    private fun AppendRequest.appendNew(
-        idempotencyKeyBytes: ByteArray
-    ): CompletableFuture<AppendResult> {
+    private fun AppendRequest.appendNew(): CompletableFuture<AppendResult> {
 
         return this.condition.isSatisfied().thenApply { satisfied ->
             if (!satisfied) {
                 AppendResult.AppendConditionViolated
             } else {
                 this.facts.store()
-                tr.set(idempotencyKeyBytes, EMPTY_BYTE_ARRAY)
+                store.context.idempotencySubspace.save(factStoreId, idempotencyKey)
                 AppendResult.Appended
             }
         }
@@ -114,8 +110,7 @@ class FdbFactAppender(
 
     context(tr: Transaction, appendRequest: AppendRequest)
     private fun SubjectRef.getLastFactId(): FactId? {
-        val subjectIndexKeyBegin = Tuple.from(appendRequest.factStoreId.uuid, type, id)
-        val subjectRange = store.context.subjectIndexSubspace.range(subjectIndexKeyBegin)
+        val subjectRange = store.context.subjectIndexSubspace.range(appendRequest.factStoreId, this)
         val latestFactKeyValue = tr.getRange(subjectRange, LIMIT_ONE, REVERSED).firstOrNull()
         return latestFactKeyValue?.let {
             Tuple.fromBytes(it.value).getFirstAsFactId()
@@ -123,7 +118,7 @@ class FdbFactAppender(
     }
 
     private fun AppendRequest.idempotencyKeyBytes(): ByteArray =
-        store.context.idempotencySubspace.pack(Tuple.from(idempotencyKey.value))
+        store.context.idempotencySubspace.pack(factStoreId, idempotencyKey)
 
     context(tr: Transaction, appendRequest: AppendRequest)
     private fun List<Fact>.store() = with(store) {
@@ -139,7 +134,7 @@ class FdbFactAppender(
 
     context(tr: Transaction, appendRequest: AppendRequest)
     private fun FactId.getPosition() = with(store) {
-        this@getPosition.getPosition(appendRequest.factStoreId, tr)
+        context.factPositionIndexSubspace.getPosition(appendRequest.factStoreId, this@getPosition)
     }
 
     context(tr: Transaction, appendRequest: AppendRequest)
@@ -177,23 +172,23 @@ class FdbFactAppender(
             tag: Pair<TagKey, TagValue>,
             afterPosition: FactPosition?
         ): Pair<KeySelector, KeySelector> {
-            val tuple = if (afterPosition != null) {
+            val key = if (afterPosition != null) {
                 // If there's a afterPosition, include it in the tuple
-                Tuple.from(appendRequest.factStoreId.uuid, tag.first.value, tag.second.value, afterPosition)
+                store.context.tagsIndexSubspace.getKey(appendRequest.factStoreId, tag, afterPosition)
             } else {
                 // If there's no afterPosition, just use the tag
-                Tuple.from(appendRequest.factStoreId.uuid, tag.first.value, tag.second.value)
+                store.context.tagsIndexSubspace.getKey(appendRequest.factStoreId, tag)
             }
 
             // Create the beginSelector (first greater than if afterPosition is provided)
             val beginSelector = if (afterPosition != null) {
-                KeySelector.firstGreaterThan(store.context.tagsIndexSubspace.pack(tuple))
+                KeySelector.firstGreaterThan(key)
             } else {
-                KeySelector(store.context.tagsIndexSubspace.pack(tuple), OR_EQUAL, ZERO_OFFSET)
+                KeySelector(key, OR_EQUAL, ZERO_OFFSET)
             }
 
             // Create the end selector based on the tag range
-            val range = store.context.tagsIndexSubspace.range(Tuple.from(appendRequest.factStoreId.uuid, tag.first.value, tag.second.value))
+            val range = store.context.tagsIndexSubspace.range(appendRequest.factStoreId, tag)
             val endSelector = KeySelector.lastLessOrEqual(range.end)
 
             return Pair(beginSelector, endSelector)
@@ -231,19 +226,19 @@ class FdbFactAppender(
             tag: Pair<TagKey, TagValue>,
             afterPosition: FactPosition?
         ): Pair<KeySelector, KeySelector> {
-            val tuple = if (afterPosition != null) {
-                Tuple.from(appendRequest.factStoreId.uuid, type.value, tag.first.value, tag.second.value, afterPosition)
+            val key = if (afterPosition != null) {
+                store.context.tagsTypeIndexSubspace.getKey(appendRequest.factStoreId, type, tag, afterPosition)
             } else {
-                Tuple.from(appendRequest.factStoreId.uuid, type.value, tag.first.value, tag.second.value)
+                store.context.tagsTypeIndexSubspace.getKey(appendRequest.factStoreId, type, tag)
             }
 
             val startKeySelector = if (afterPosition != null) {
-                KeySelector.firstGreaterThan(store.context.tagsTypeIndexSubspace.pack(tuple))
+                KeySelector.firstGreaterThan(key)
             } else {
-                KeySelector(store.context.tagsTypeIndexSubspace.pack(tuple), OR_EQUAL, ZERO_OFFSET)
+                KeySelector(key, OR_EQUAL, ZERO_OFFSET)
             }
 
-            val range = store.context.tagsTypeIndexSubspace.subspace(Tuple.from(appendRequest.factStoreId.uuid, type.value, tag.first.value, tag.second.value)).range()
+            val range = store.context.tagsTypeIndexSubspace.range(appendRequest.factStoreId, type, tag)
             val endSelector = KeySelector.lastLessOrEqual(range.end)
 
             return Pair(startKeySelector, endSelector)

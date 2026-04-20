@@ -73,20 +73,14 @@ data class FdbFactStore(
 
     context(transaction: Transaction, factStoreId: FactStoreId)
     private fun Fact.storeFact(index: Int) {
-        val factIdTuple = Tuple.from(id.uuid).pack()
         val incompleteVersionstamp = Versionstamp.incomplete(index)
 
         // store fact itself
         val serializedFactBytes = toSerializableFdbFact().encodeToByteArray()
-        val globalPositionKey = context.globalFactPositionSubspace.packWithVersionstamp(
-            Tuple.from(factStoreId.uuid, incompleteVersionstamp)
-        )
-        transaction.mutate(SET_VERSIONSTAMPED_KEY, globalPositionKey, serializedFactBytes)
+        context.factSubspace.saveFact(factStoreId, incompleteVersionstamp, serializedFactBytes)
 
         // store fact position (we use versionstamp for that)
-        val positionKey = context.factPositionsSubspace.pack(Tuple.from(factStoreId.uuid, id.uuid))
-        val positionValue = Tuple.from(incompleteVersionstamp).packWithVersionstamp()
-        transaction.mutate(SET_VERSIONSTAMPED_VALUE, positionKey, positionValue)
+        context.factPositionIndexSubspace.savePosition(factStoreId, id, incompleteVersionstamp)
     }
 
     context(transaction: Transaction, factStoreId: FactStoreId)
@@ -94,49 +88,18 @@ data class FdbFactStore(
         val factIdTuple = Tuple.from(id.uuid).pack()
         val incompleteVersionstamp = Versionstamp.incomplete(index)
 
-        val headKey = context.headSubspace.pack(factStoreId.uuid)
-        val positionValue = Tuple.from(incompleteVersionstamp).packWithVersionstamp()
-        transaction.mutate(SET_VERSIONSTAMPED_VALUE, headKey, positionValue)
-
-        val eventTypeIndexKey = context.eventTypeIndexSubspace.packWithVersionstamp(
-            Tuple.from(factStoreId.uuid, type.value, incompleteVersionstamp)
-        )
-        transaction.mutate(SET_VERSIONSTAMPED_KEY, eventTypeIndexKey, factIdTuple)
-
-        val createdAtIndexKey = context.createdAtIndexSubspace.packWithVersionstamp(
-            Tuple.from(factStoreId.uuid, appendedAt.epochSecond, appendedAt.nano, incompleteVersionstamp)
-        )
-        transaction.mutate(SET_VERSIONSTAMPED_KEY, createdAtIndexKey, factIdTuple)
-
-        val subjectIndex = context.subjectIndexSubspace.packWithVersionstamp(
-            Tuple.from(factStoreId.uuid, subjectRef.type, subjectRef.id, incompleteVersionstamp)
-        )
-        transaction.mutate(SET_VERSIONSTAMPED_KEY, subjectIndex, factIdTuple)
-
-        metadata.forEach { (key, value) ->
-            val metadataEntryIndex = context.metadataIndexSubspace.packWithVersionstamp(
-                Tuple.from(factStoreId.uuid, key, value, incompleteVersionstamp)
-            )
-            transaction.mutate(SET_VERSIONSTAMPED_KEY, metadataEntryIndex, factIdTuple)
-        }
-
-        tags.forEach { (key, value) ->
-            val tagsEntryIndex = context.tagsIndexSubspace.packWithVersionstamp(
-                Tuple.from(factStoreId.uuid, key.value, value.value, incompleteVersionstamp)
-            )
-            transaction.mutate(SET_VERSIONSTAMPED_KEY, tagsEntryIndex, factIdTuple)
-
-            val tagTypeIndex = context.tagsTypeIndexSubspace.packWithVersionstamp(
-                Tuple.from(factStoreId.uuid, type.value, key.value, value.value, incompleteVersionstamp)
-            )
-            transaction.mutate(SET_VERSIONSTAMPED_KEY, tagTypeIndex, factIdTuple)
-        }
+        context.headSubspace.save(factStoreId, incompleteVersionstamp)
+        context.eventTypeIndexSubspace.save(factStoreId, id, type, incompleteVersionstamp)
+        context.createdAtIndexSubspace.save(factStoreId, id, appendedAt, incompleteVersionstamp)
+        context.subjectIndexSubspace.save(factStoreId, id, subjectRef, incompleteVersionstamp)
+        context.metadataIndexSubspace.save(factStoreId, id, metadata, incompleteVersionstamp)
+        context.tagsIndexSubspace.save(factStoreId, id, tags, incompleteVersionstamp)
+        context.tagsTypeIndexSubspace.save(factStoreId, id, type, tags, incompleteVersionstamp)
     }
 
     context(transaction: ReadTransaction, factStoreId: FactStoreId)
     fun FactPosition.loadFactByPosition(): CompletableFuture<FdbFact?> {
-        val positionTuple = Tuple.from(factStoreId.uuid, this)
-        return transaction[context.globalFactPositionSubspace.pack(positionTuple)].thenApply { factBytes ->
+        return context.factSubspace.findFact(factStoreId, this).thenApply { factBytes ->
             if (factBytes == null) {
                 return@thenApply null
             }
@@ -151,51 +114,34 @@ data class FdbFactStore(
 
     context(transaction: ReadTransaction, factStoreId: FactStoreId)
     fun FactId.loadFactById(): CompletableFuture<FdbFact?> {
-        val factIdTuple = Tuple.from(factStoreId.uuid, this.uuid)
-        val factPositionKey = context.factPositionsSubspace.pack(factIdTuple)
-
         // fetch fact data and position in parallel
-        val factPositionFuture = transaction[factPositionKey].thenCompose { factPosition ->
+        val factPositionFuture = context.factPositionIndexSubspace.getPosition(factStoreId, this).thenCompose { factPosition ->
             if (factPosition == null) {
                 return@thenCompose CompletableFuture.completedFuture(null)
             }
 
-            val positionTuple = Tuple.fromBytes(factPosition)
-            val factPosition = positionTuple.getLastAsFactPosition()
-
             // now that we have the position,
             // we can look up the fact
-            val globalPositionKey = context.globalFactPositionSubspace.pack(Tuple.from(factStoreId.uuid, factPosition))
-
-            transaction[globalPositionKey].thenApply { factBytes ->
-                if (factBytes == null) {
-                    return@thenApply null
+            context.factSubspace
+                .findFact(factStoreId, factPosition)
+                .thenApply { factBytes ->
+                    if (factBytes == null) {
+                        return@thenApply null
+                    }
+                    FdbFact(
+                        fact = factBytes.toSerializableFdbFact().toFact(),
+                        factPosition = factPosition
+                    )
                 }
-                FdbFact(
-                    fact = factBytes.toSerializableFdbFact().toFact(),
-                    factPosition = factPosition
-                )
-            }
 
         }
 
         return factPositionFuture
     }
 
-    fun FactId.getPosition(factStoreId: FactStoreId, transaction: ReadTransaction): CompletableFuture<FactPosition?> =
-        transaction[context.factPositionsSubspace.pack(Tuple.from(factStoreId.uuid, this.uuid))].thenApply {
-            it?.let { bytes ->
-                val positionTuple = Tuple.fromBytes(bytes)
-                positionTuple.getVersionstamp(0)
-            }
-        }
-
     fun getHead(factStoreId: FactStoreId, transaction: ReadTransaction): CompletableFuture<FactPosition?> =
-        transaction[context.headSubspace.pack(factStoreId.uuid)].thenApply { bytes ->
-            bytes?.let {
-                val positionTuple = Tuple.fromBytes(it)
-                positionTuple.getVersionstamp(0)
-            }
+        with(transaction) {
+            context.headSubspace.head(factStoreId)
         }
 
 }
