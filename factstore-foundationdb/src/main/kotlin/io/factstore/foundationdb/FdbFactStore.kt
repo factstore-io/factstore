@@ -73,15 +73,11 @@ data class FdbFactStore(
 
     context(transaction: Transaction, factStoreId: FactStoreId)
     private fun Fact.storeFact(index: Int) {
-        val factIdTuple = Tuple.from(id.uuid).pack()
         val incompleteVersionstamp = Versionstamp.incomplete(index)
 
         // store fact itself
         val serializedFactBytes = toSerializableFdbFact().encodeToByteArray()
-        val globalPositionKey = context.globalFactPositionSubspace.packWithVersionstamp(
-            Tuple.from(factStoreId.uuid, incompleteVersionstamp)
-        )
-        transaction.mutate(SET_VERSIONSTAMPED_KEY, globalPositionKey, serializedFactBytes)
+        context.factSubspace.saveFact(factStoreId, incompleteVersionstamp, serializedFactBytes)
 
         // store fact position (we use versionstamp for that)
         val positionKey = context.factPositionsSubspace.pack(Tuple.from(factStoreId.uuid, id.uuid))
@@ -133,8 +129,7 @@ data class FdbFactStore(
 
     context(transaction: ReadTransaction, factStoreId: FactStoreId)
     fun FactPosition.loadFactByPosition(): CompletableFuture<FdbFact?> {
-        val positionTuple = Tuple.from(factStoreId.uuid, this)
-        return transaction[context.globalFactPositionSubspace.pack(positionTuple)].thenApply { factBytes ->
+        return context.factSubspace.findFact(factStoreId, this).thenApply { factBytes ->
             if (factBytes == null) {
                 return@thenApply null
             }
@@ -163,17 +158,17 @@ data class FdbFactStore(
 
             // now that we have the position,
             // we can look up the fact
-            val globalPositionKey = context.globalFactPositionSubspace.pack(Tuple.from(factStoreId.uuid, factPosition))
-
-            transaction[globalPositionKey].thenApply { factBytes ->
-                if (factBytes == null) {
-                    return@thenApply null
+            context.factSubspace
+                .findFact(factStoreId, factPosition)
+                .thenApply { factBytes ->
+                    if (factBytes == null) {
+                        return@thenApply null
+                    }
+                    FdbFact(
+                        fact = factBytes.toSerializableFdbFact().toFact(),
+                        factPosition = factPosition
+                    )
                 }
-                FdbFact(
-                    fact = factBytes.toSerializableFdbFact().toFact(),
-                    factPosition = factPosition
-                )
-            }
 
         }
 

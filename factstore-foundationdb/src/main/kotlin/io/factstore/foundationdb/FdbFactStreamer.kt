@@ -44,8 +44,7 @@ class FdbFactStreamer(
             CursorResult.Beginning -> null
         }
 
-        val globalRange = store.context.globalFactPositionSubspace
-            .range(Tuple.from(factStoreId.uuid))
+        val globalRange = store.context.factSubspace.getRange(factStoreId)
         val flow = streamFacts(initialCursor, globalRange, factStoreId)
 
         return FactStream(flow)
@@ -169,9 +168,7 @@ class FdbFactStreamer(
 
     context(factStoreId: FactStoreId)
     private fun FactPosition.getFactPositionKey(): ByteArray =
-        store.context.globalFactPositionSubspace.pack(
-            Tuple.from(factStoreId.uuid, this)
-        )
+        store.context.factSubspace.getFactKey(factStoreId, this)
 
     context(factStoreId: FactStoreId)
     private suspend fun getCurrentEndKey(): ByteArray? =

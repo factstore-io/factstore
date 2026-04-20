@@ -1,6 +1,8 @@
 package io.factstore.foundationdb
 
+import com.apple.foundationdb.MutationType.SET_VERSIONSTAMPED_KEY
 import com.apple.foundationdb.MutationType.SET_VERSIONSTAMPED_VALUE
+import com.apple.foundationdb.Range
 import com.apple.foundationdb.ReadTransaction
 import com.apple.foundationdb.Transaction
 import com.apple.foundationdb.subspace.Subspace
@@ -9,7 +11,6 @@ import com.apple.foundationdb.tuple.Versionstamp
 import com.github.avrokotlin.avro4k.Avro
 import io.factstore.core.FactId
 import io.factstore.core.FactStoreId
-import io.factstore.core.FactStoreMetadata
 import io.factstore.core.FactStoreName
 import kotlinx.serialization.decodeFromByteArray
 import kotlinx.serialization.encodeToByteArray
@@ -18,7 +19,7 @@ import java.util.concurrent.CompletableFuture
 data class FdbFactStoreContext(
     val storeSubspace: Subspace,
     val storeNameToIdIndex: Subspace,
-    val globalFactPositionSubspace: Subspace,
+    val factSubspace: FactSubspace,
     val headSubspace: HeadSubspace,
     val factPositionsSubspace: Subspace,
     val eventTypeIndexSubspace: Subspace,
@@ -37,7 +38,7 @@ data class FdbFactStoreContext(
             return FdbFactStoreContext(
                 storeSubspace = root.subspace(Tuple.from(STORES)),
                 storeNameToIdIndex = root.subspace(Tuple.from(STORE_INDEX)),
-                globalFactPositionSubspace = root.subspace(Tuple.from(FACTS)),
+                factSubspace = FactSubspace(root.subspace(Tuple.from(FACTS))),
                 headSubspace = HeadSubspace(root.subspace(Tuple.from(HEAD_INDEX))),
                 factPositionsSubspace = root.subspace(Tuple.from(FACT_POSITIONS)),
                 eventTypeIndexSubspace = root.subspace(Tuple.from(EVENT_TYPE_INDEX)),
@@ -87,6 +88,30 @@ value class HeadSubspace(val subspace: Subspace) {
         tr.mutate(SET_VERSIONSTAMPED_VALUE, headKey, positionValue)
     }
 
+}
+
+@JvmInline
+value class FactSubspace(val subspace: Subspace) {
+
+    context(tr: ReadTransaction)
+    fun findFact(factStoreId: FactStoreId, factPosition: FactPosition): CompletableFuture<ByteArray?> {
+        val factKey = subspace.pack(Tuple.from(factStoreId.uuid, factPosition))
+        return tr[factKey]
+    }
+
+    context(tr: Transaction)
+    fun saveFact(factstoreId: FactStoreId, incompleteVersionstamp: Versionstamp, serializedFact: ByteArray) {
+        val globalPositionKey = subspace.packWithVersionstamp(
+            Tuple.from(factstoreId.uuid, incompleteVersionstamp)
+        )
+        tr.mutate(SET_VERSIONSTAMPED_KEY, globalPositionKey, serializedFact)
+    }
+
+    fun getFactKey(factstoreId: FactStoreId, factPosition: FactPosition): ByteArray =
+        subspace.pack(Tuple.from(factstoreId.uuid, factPosition))
+
+    fun getRange(factstoreId: FactStoreId): Range =
+        subspace.range(Tuple.from(factstoreId.uuid))
 }
 
 @JvmInline
