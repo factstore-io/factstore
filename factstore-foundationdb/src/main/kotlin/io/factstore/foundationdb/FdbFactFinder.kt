@@ -208,11 +208,10 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
         // use composite "type+tag" index
         val futures: List<CompletableFuture<Set<FactPosition>>> = types.map { type ->
             val tagFutures = tags.map { tag ->
-                val range = tagsTypeIndexSubspace.range(Tuple.from(factStoreId.uuid, type.value, tag.first.value, tag.second.value))
+                val range = tagsTypeIndexSubspace.range(factStoreId, type, tag)
                 tr.getRange(range).asList().thenApply { keyValues ->
                     keyValues.map {
-                        val tuple = tagsTypeIndexSubspace.unpack(it.key)
-                        tuple.getLastAsFactPosition()
+                        tagsTypeIndexSubspace.unpackPosition(it.key)
                     }.toSet()
                 }
             }

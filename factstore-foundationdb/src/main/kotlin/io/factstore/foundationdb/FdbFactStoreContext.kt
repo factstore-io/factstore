@@ -32,7 +32,7 @@ data class FdbFactStoreContext(
     val subjectIndexSubspace: SubjectIndexSubspace,
     val metadataIndexSubspace: MetadataIndexSubspace,
     val tagsIndexSubspace: TagsIndexSubspace,
-    val tagsTypeIndexSubspace: Subspace,
+    val tagsTypeIndexSubspace: TagsTypeIndexSubspace,
     val idempotencySubspace: Subspace,
 ) {
 
@@ -51,7 +51,7 @@ data class FdbFactStoreContext(
                 subjectIndexSubspace = SubjectIndexSubspace(root.subspace(Tuple.from(SUBJECT_INDEX))),
                 metadataIndexSubspace = MetadataIndexSubspace(root.subspace(Tuple.from(METADATA_INDEX))),
                 tagsIndexSubspace = TagsIndexSubspace(root.subspace(Tuple.from(TAGS_INDEX))),
-                tagsTypeIndexSubspace = root.subspace(Tuple.from(TAGS_TYPE_INDEX)),
+                tagsTypeIndexSubspace = TagsTypeIndexSubspace(root.subspace(Tuple.from(TAGS_TYPE_INDEX))),
                 idempotencySubspace = root.subspace(Tuple.from(IDEMPOTENCY_KEYS))
             )
         }
@@ -243,4 +243,31 @@ value class TagsIndexSubspace(val subspace: Subspace) {
 
     }
 
+}
+
+@JvmInline
+value class TagsTypeIndexSubspace(val subspace: Subspace) {
+
+    fun getKey(factStoreId: FactStoreId, factType: FactType, tag: Pair<TagKey, TagValue>): ByteArray =
+        subspace.pack(Tuple.from(factStoreId.uuid, factType.value, tag.first.value, tag.second.value))
+
+    fun getKey(factStoreId: FactStoreId, factType: FactType, tag: Pair<TagKey, TagValue>, position: FactPosition): ByteArray =
+        subspace.pack(Tuple.from(factStoreId.uuid, factType.value, tag.first.value, tag.second.value, position))
+
+    fun range(factStoreId: FactStoreId, factType: FactType, tag: Pair<TagKey, TagValue>): Range =
+        subspace.range(Tuple.from(factStoreId.uuid, factType.value, tag.first.value, tag.second.value))
+
+    fun unpackPosition(key: ByteArray): FactPosition =
+        subspace.unpack(key).getLastAsFactPosition()
+
+    context(tr: Transaction)
+    fun save(factStoreId: FactStoreId, factId: FactId, type: FactType, tags: Map<TagKey, TagValue>, incompleteVersionstamp: Versionstamp) {
+        val factIdTuple = Tuple.from(factId.uuid).pack()
+        tags.forEach { (key, value) ->
+            val tagTypeIndex = subspace.packWithVersionstamp(
+                Tuple.from(factStoreId.uuid, type.value, key.value, value.value, incompleteVersionstamp)
+            )
+            tr.mutate(SET_VERSIONSTAMPED_KEY, tagTypeIndex, factIdTuple)
+        }
+    }
 }
