@@ -112,8 +112,7 @@ class FdbFactAppender(
 
     context(tr: Transaction, appendRequest: AppendRequest)
     private fun SubjectRef.getLastFactId(): FactId? {
-        val subjectIndexKeyBegin = Tuple.from(appendRequest.factStoreId.uuid, type, id)
-        val subjectRange = store.context.subjectIndexSubspace.range(subjectIndexKeyBegin)
+        val subjectRange = store.context.subjectIndexSubspace.range(appendRequest.factStoreId, this)
         val latestFactKeyValue = tr.getRange(subjectRange, LIMIT_ONE, REVERSED).firstOrNull()
         return latestFactKeyValue?.let {
             Tuple.fromBytes(it.value).getFirstAsFactId()

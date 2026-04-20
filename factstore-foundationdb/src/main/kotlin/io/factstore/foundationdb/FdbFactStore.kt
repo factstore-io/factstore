@@ -91,11 +91,7 @@ data class FdbFactStore(
         context.headSubspace.save(factStoreId, incompleteVersionstamp)
         context.eventTypeIndexSubspace.save(factStoreId, id, type, incompleteVersionstamp)
         context.createdAtIndexSubspace.save(factStoreId, id, appendedAt, incompleteVersionstamp)
-
-        val subjectIndex = context.subjectIndexSubspace.packWithVersionstamp(
-            Tuple.from(factStoreId.uuid, subjectRef.type, subjectRef.id, incompleteVersionstamp)
-        )
-        transaction.mutate(SET_VERSIONSTAMPED_KEY, subjectIndex, factIdTuple)
+        context.subjectIndexSubspace.save(factStoreId, id, subjectRef, incompleteVersionstamp)
 
         metadata.forEach { (key, value) ->
             val metadataEntryIndex = context.metadataIndexSubspace.packWithVersionstamp(

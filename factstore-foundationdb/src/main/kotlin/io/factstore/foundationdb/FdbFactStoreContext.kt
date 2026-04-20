@@ -13,6 +13,7 @@ import io.factstore.core.FactId
 import io.factstore.core.FactStoreId
 import io.factstore.core.FactStoreName
 import io.factstore.core.FactType
+import io.factstore.core.SubjectRef
 import kotlinx.serialization.decodeFromByteArray
 import kotlinx.serialization.encodeToByteArray
 import java.time.Instant
@@ -26,7 +27,7 @@ data class FdbFactStoreContext(
     val factPositionIndexSubspace: FactPositionIndexSubspace,
     val eventTypeIndexSubspace: EventTypeIndexSubspace,
     val createdAtIndexSubspace: CreatedAtIndexSubspace,
-    val subjectIndexSubspace: Subspace,
+    val subjectIndexSubspace: SubjectIndexSubspace,
     val metadataIndexSubspace: Subspace,
     val tagsIndexSubspace: Subspace,
     val tagsTypeIndexSubspace: Subspace,
@@ -45,7 +46,7 @@ data class FdbFactStoreContext(
                 factPositionIndexSubspace = FactPositionIndexSubspace(root.subspace(Tuple.from(FACT_POSITIONS))),
                 eventTypeIndexSubspace = EventTypeIndexSubspace(root.subspace(Tuple.from(EVENT_TYPE_INDEX))),
                 createdAtIndexSubspace = CreatedAtIndexSubspace(root.subspace(Tuple.from(CREATED_AT_INDEX))),
-                subjectIndexSubspace = root.subspace(Tuple.from(SUBJECT_INDEX)),
+                subjectIndexSubspace = SubjectIndexSubspace(root.subspace(Tuple.from(SUBJECT_INDEX))),
                 metadataIndexSubspace = root.subspace(Tuple.from(METADATA_INDEX)),
                 tagsIndexSubspace = root.subspace(Tuple.from(TAGS_INDEX)),
                 tagsTypeIndexSubspace = root.subspace(Tuple.from(TAGS_TYPE_INDEX)),
@@ -171,4 +172,22 @@ value class CreatedAtIndexSubspace(val subspace: Subspace) {
         subspace.pack(Tuple.from(factstoreId.uuid, createdAt.epochSecond, createdAt.nano))
 
     fun unpack(key: ByteArray): Tuple = subspace.unpack(key)
+}
+
+@JvmInline
+value class SubjectIndexSubspace(val subspace: Subspace) {
+
+    fun range(factStoreId: FactStoreId, subjectRef: SubjectRef): Range =
+        subspace.range(Tuple.from(factStoreId.uuid, subjectRef.type, subjectRef.id))
+
+    context(tr: Transaction)
+    fun save(factStoreId: FactStoreId, factId: FactId, subjectRef: SubjectRef, incompleteVersionstamp: Versionstamp) {
+        val keyTuple = Tuple.from(factStoreId.uuid, subjectRef.type, subjectRef.id, incompleteVersionstamp)
+        val keyBytes = subspace.packWithVersionstamp(keyTuple)
+        val factIdTupleBytes = Tuple.from(factId.uuid).pack()
+        tr.mutate(SET_VERSIONSTAMPED_KEY, keyBytes, factIdTupleBytes)
+    }
+
+    fun unpack(key: ByteArray): Tuple = subspace.unpack(key)
+
 }

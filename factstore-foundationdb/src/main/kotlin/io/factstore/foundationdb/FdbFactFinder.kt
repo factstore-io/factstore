@@ -84,7 +84,7 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
                 if (metadata == null) {
                     CompletableFuture.completedFuture(FindBySubjectResult.FactstoreNotFound)
                 } else {
-                    val subjectRange = subjectIndexSubspace.range(Tuple.from(factStoreId.uuid, subjectRef.type, subjectRef.id))
+                    val subjectRange = subjectIndexSubspace.range(factStoreId, subjectRef)
                     tr.getRange(subjectRange).asList().thenCompose { kvs ->
                         val factFutures: List<CompletableFuture<FdbFact?>> = kvs.map { kv ->
                             val tuple = subjectIndexSubspace.unpack(kv.key)
