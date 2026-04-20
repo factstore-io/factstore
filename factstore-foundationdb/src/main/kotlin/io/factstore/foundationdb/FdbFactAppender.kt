@@ -174,23 +174,23 @@ class FdbFactAppender(
             tag: Pair<TagKey, TagValue>,
             afterPosition: FactPosition?
         ): Pair<KeySelector, KeySelector> {
-            val tuple = if (afterPosition != null) {
+            val key = if (afterPosition != null) {
                 // If there's a afterPosition, include it in the tuple
-                Tuple.from(appendRequest.factStoreId.uuid, tag.first.value, tag.second.value, afterPosition)
+                store.context.tagsIndexSubspace.getKey(appendRequest.factStoreId, tag, afterPosition)
             } else {
                 // If there's no afterPosition, just use the tag
-                Tuple.from(appendRequest.factStoreId.uuid, tag.first.value, tag.second.value)
+                store.context.tagsIndexSubspace.getKey(appendRequest.factStoreId, tag)
             }
 
             // Create the beginSelector (first greater than if afterPosition is provided)
             val beginSelector = if (afterPosition != null) {
-                KeySelector.firstGreaterThan(store.context.tagsIndexSubspace.pack(tuple))
+                KeySelector.firstGreaterThan(key)
             } else {
-                KeySelector(store.context.tagsIndexSubspace.pack(tuple), OR_EQUAL, ZERO_OFFSET)
+                KeySelector(key, OR_EQUAL, ZERO_OFFSET)
             }
 
             // Create the end selector based on the tag range
-            val range = store.context.tagsIndexSubspace.range(Tuple.from(appendRequest.factStoreId.uuid, tag.first.value, tag.second.value))
+            val range = store.context.tagsIndexSubspace.range(appendRequest.factStoreId, tag)
             val endSelector = KeySelector.lastLessOrEqual(range.end)
 
             return Pair(beginSelector, endSelector)

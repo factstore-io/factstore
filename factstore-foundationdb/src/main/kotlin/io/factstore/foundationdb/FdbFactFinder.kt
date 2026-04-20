@@ -62,8 +62,7 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
 
                     tr.getRange(begin, endKey).asList().thenCompose { kvs ->
                         val factFutures: List<CompletableFuture<FdbFact?>> = kvs.map { kv ->
-                            val tuple = createdAtIndexSubspace.unpack(kv.key)
-                            val factPosition = tuple.getLastAsFactPosition()
+                            val factPosition = createdAtIndexSubspace.unpackPosition(kv.key)
                             tr.run { factPosition.lookupFact(factStoreId) }
                         }
 
@@ -87,8 +86,7 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
                     val subjectRange = subjectIndexSubspace.range(factStoreId, subjectRef)
                     tr.getRange(subjectRange).asList().thenCompose { kvs ->
                         val factFutures: List<CompletableFuture<FdbFact?>> = kvs.map { kv ->
-                            val tuple = subjectIndexSubspace.unpack(kv.key)
-                            val factPosition = tuple.getLastAsFactPosition()
+                            val factPosition = subjectIndexSubspace.unpackPosition(kv.key)
                             tr.run { factPosition.lookupFact(factStoreId) }
                         }
 
@@ -112,11 +110,10 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
 
                     // For each (key, value) pair, get matching factIds
                     val tagFutures: List<CompletableFuture<Set<FactPosition>>> = tags.map { (key, value) ->
-                        val range = tagsIndexSubspace.range(Tuple.from(factStoreId.uuid, key.value, value.value))
+                        val range = tagsIndexSubspace.range(factStoreId, key, value)
                         tr.getRange(range).asList().thenApply { kvs ->
                             kvs.mapTo(mutableSetOf()) { kv ->
-                                val tuple = tagsIndexSubspace.unpack(kv.key)
-                                tuple.getLastAsFactPosition()
+                                tagsIndexSubspace.unpackPosition(kv.key)
                             }
                         }
                     }
@@ -189,11 +186,10 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
     context(tr: ReadTransaction, factStoreId: FactStoreId)
     private fun TagOnlyQueryItem.resolveFactPositions(): CompletableFuture<Set<FactPosition>> {
         val futures: List<CompletableFuture<Set<FactPosition>>> = tags.map { tag ->
-            val range = tagsIndexSubspace.range(Tuple.from(factStoreId.uuid, tag.first.value, tag.second.value))
+            val range = tagsIndexSubspace.range(factStoreId, tag)
             tr.getRange(range).asList().thenApply { keyValues ->
                 keyValues.map {
-                    val tuple = tagsIndexSubspace.unpack(it.key)
-                    tuple.getLastAsFactPosition()
+                    tagsIndexSubspace.unpackPosition(it.key)
                 }.toSet() // Convert to a Set to easily combine results
             }
         }
