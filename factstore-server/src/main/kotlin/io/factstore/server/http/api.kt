@@ -107,7 +107,7 @@ data class CreateFactStoreHttpRequest(
     val name: String
 )
 
-data class FactStoreMetadataHttp(
+data class StoreMetadataHttp(
     val id: UUID,
     val name: String,
     val createdAt: Instant

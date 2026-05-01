@@ -5,7 +5,7 @@ import kotlinx.serialization.Serializable
 import java.util.UUID
 
 @Serializable
-data class FdbFactStoreMetadata(
+data class FdbStoreMetadata(
     @Contextual
     val storeId: UUID,
     val name: String,

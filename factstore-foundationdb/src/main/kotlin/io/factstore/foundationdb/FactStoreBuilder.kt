@@ -20,8 +20,8 @@ suspend fun buildFdbFactStore(
         factAppender = FdbFactAppender(fdbFactStore),
         factFinder = FdbFactFinder(fdbFactStore),
         factStreamer = FdbFactStreamer(fdbFactStore),
-        factStoreFactory = FdbFactStoreFactory(fdbFactStore),
-        factStoreFinder = FdbFactStoreFinder(fdbFactStore),
+        storeFactory = FdbStoreFactory(fdbFactStore),
+        storeFinder = FdbStoreFinder(fdbFactStore),
     )
 }
 

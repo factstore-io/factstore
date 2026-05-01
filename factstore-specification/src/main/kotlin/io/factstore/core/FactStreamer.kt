@@ -28,7 +28,7 @@ interface FactStreamer {
      * @return a cold [Flow] emitting facts that match the streaming criteria,
      * or an error result if the fact store does not exist or the start position is invalid
      */
-    suspend fun stream(factStoreId: FactStoreId, streamingOptions: StreamingOptions): StreamResult
+    suspend fun stream(storeId: StoreId, streamingOptions: StreamingOptions): StreamResult
 
     /**
      * Streams all facts from the beginning of the store.
@@ -38,7 +38,7 @@ interface FactStreamer {
      *
      * @return a cold [Flow] emitting all facts in order
      */
-    suspend fun stream(factStoreId: FactStoreId) = stream(factStoreId, StreamingOptions())
+    suspend fun stream(storeId: StoreId) = stream(storeId, StreamingOptions())
 
 }
 
@@ -79,7 +79,7 @@ data class StreamingOptions(
 sealed interface StreamResult {
     @JvmInline
     value class FactStream(val stream: Flow<Fact>) : StreamResult
-    data object FactStoreNotFound : StreamResult
+    data object StoreNotFound : StreamResult
     @JvmInline
     value class InvalidStartPosition(val id: FactId) : StreamResult
 }

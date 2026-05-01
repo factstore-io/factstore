@@ -1,8 +1,6 @@
 package io.factstore.foundationdb
 
 import com.apple.foundationdb.Database
-import com.apple.foundationdb.MutationType.SET_VERSIONSTAMPED_KEY
-import com.apple.foundationdb.MutationType.SET_VERSIONSTAMPED_VALUE
 import com.apple.foundationdb.ReadTransaction
 import com.apple.foundationdb.Transaction
 import com.apple.foundationdb.tuple.Tuple
@@ -58,48 +56,48 @@ data class FdbFactStore(
     val context: FdbFactStoreContext,
 ) {
 
-    context(transaction: Transaction, factStoreId: FactStoreId)
+    context(transaction: Transaction, storeId: StoreId)
     fun List<Fact>.store() {
         forEachIndexed { index, fact ->
             fact.store(index)
         }
     }
 
-    context(transaction: Transaction, factStoreId: FactStoreId)
+    context(transaction: Transaction, storeId: StoreId)
     fun Fact.store(index: Int = DEFAULT_INDEX) {
         this.storeFact(index)
         this.storeIndexes(index)
     }
 
-    context(transaction: Transaction, factStoreId: FactStoreId)
+    context(transaction: Transaction, storeId: StoreId)
     private fun Fact.storeFact(index: Int) {
         val incompleteVersionstamp = Versionstamp.incomplete(index)
 
         // store fact itself
         val serializedFactBytes = toSerializableFdbFact().encodeToByteArray()
-        context.factSubspace.saveFact(factStoreId, incompleteVersionstamp, serializedFactBytes)
+        context.factSubspace.saveFact(storeId, incompleteVersionstamp, serializedFactBytes)
 
         // store fact position (we use versionstamp for that)
-        context.factPositionIndexSubspace.savePosition(factStoreId, id, incompleteVersionstamp)
+        context.factPositionIndexSubspace.savePosition(storeId, id, incompleteVersionstamp)
     }
 
-    context(transaction: Transaction, factStoreId: FactStoreId)
+    context(transaction: Transaction, storeId: StoreId)
     private fun Fact.storeIndexes(index: Int) {
         val factIdTuple = Tuple.from(id.uuid).pack()
         val incompleteVersionstamp = Versionstamp.incomplete(index)
 
-        context.headSubspace.save(factStoreId, incompleteVersionstamp)
-        context.eventTypeIndexSubspace.save(factStoreId, id, type, incompleteVersionstamp)
-        context.createdAtIndexSubspace.save(factStoreId, id, appendedAt, incompleteVersionstamp)
-        context.subjectIndexSubspace.save(factStoreId, id, subjectRef, incompleteVersionstamp)
-        context.metadataIndexSubspace.save(factStoreId, id, metadata, incompleteVersionstamp)
-        context.tagsIndexSubspace.save(factStoreId, id, tags, incompleteVersionstamp)
-        context.tagsTypeIndexSubspace.save(factStoreId, id, type, tags, incompleteVersionstamp)
+        context.headSubspace.save(storeId, incompleteVersionstamp)
+        context.eventTypeIndexSubspace.save(storeId, id, type, incompleteVersionstamp)
+        context.createdAtIndexSubspace.save(storeId, id, appendedAt, incompleteVersionstamp)
+        context.subjectIndexSubspace.save(storeId, id, subjectRef, incompleteVersionstamp)
+        context.metadataIndexSubspace.save(storeId, id, metadata, incompleteVersionstamp)
+        context.tagsIndexSubspace.save(storeId, id, tags, incompleteVersionstamp)
+        context.tagsTypeIndexSubspace.save(storeId, id, type, tags, incompleteVersionstamp)
     }
 
-    context(transaction: ReadTransaction, factStoreId: FactStoreId)
+    context(transaction: ReadTransaction, storeId: StoreId)
     fun FactPosition.loadFactByPosition(): CompletableFuture<FdbFact?> {
-        return context.factSubspace.findFact(factStoreId, this).thenApply { factBytes ->
+        return context.factSubspace.findFact(storeId, this).thenApply { factBytes ->
             if (factBytes == null) {
                 return@thenApply null
             }
@@ -112,10 +110,10 @@ data class FdbFactStore(
         }
     }
 
-    context(transaction: ReadTransaction, factStoreId: FactStoreId)
+    context(transaction: ReadTransaction, storeId: StoreId)
     fun FactId.loadFactById(): CompletableFuture<FdbFact?> {
         // fetch fact data and position in parallel
-        val factPositionFuture = context.factPositionIndexSubspace.getPosition(factStoreId, this).thenCompose { factPosition ->
+        val factPositionFuture = context.factPositionIndexSubspace.getPosition(storeId, this).thenCompose { factPosition ->
             if (factPosition == null) {
                 return@thenCompose CompletableFuture.completedFuture(null)
             }
@@ -123,7 +121,7 @@ data class FdbFactStore(
             // now that we have the position,
             // we can look up the fact
             context.factSubspace
-                .findFact(factStoreId, factPosition)
+                .findFact(storeId, factPosition)
                 .thenApply { factBytes ->
                     if (factBytes == null) {
                         return@thenApply null
@@ -139,9 +137,9 @@ data class FdbFactStore(
         return factPositionFuture
     }
 
-    fun getHead(factStoreId: FactStoreId, transaction: ReadTransaction): CompletableFuture<FactPosition?> =
+    fun getHead(storeId: StoreId, transaction: ReadTransaction): CompletableFuture<FactPosition?> =
         with(transaction) {
-            context.headSubspace.head(factStoreId)
+            context.headSubspace.head(storeId)
         }
 
 }

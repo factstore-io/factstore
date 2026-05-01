@@ -4,26 +4,26 @@ import io.factstore.core.*
 import kotlinx.coroutines.future.await
 import java.time.Instant
 
-class FdbFactStoreFactory(
+class FdbStoreFactory(
     private val store: FdbFactStore
-) : FactStoreFactory {
+) : StoreFactory {
 
-    override suspend fun handle(request: CreateFactStoreRequest): CreateFactStoreResult {
+    override suspend fun handle(request: CreateStoreRequest): CreateStoreResult {
         // create...
         return store.db.runAsync { tr ->
             // check if name is already taken
-            store.context.lookUpFactstoreIdByName(request.factStoreName, tr).thenApply { id ->
+            store.context.lookUpFactstoreIdByName(request.storeName, tr).thenApply { id ->
                 if (id != null) {
-                    return@thenApply CreateFactStoreResult.NameAlreadyExists(request.factStoreName)
+                    return@thenApply CreateStoreResult.NameAlreadyExists(request.storeName)
                 } else {
-                    val id = FactStoreId.generate()
-                    val metadata = FdbFactStoreMetadata(
+                    val id = StoreId.generate()
+                    val metadata = FdbStoreMetadata(
                         storeId = id.uuid,
-                        name = request.factStoreName.value,
+                        name = request.storeName.value,
                         createdAtEpochSeconds = Instant.now().epochSecond
                     )
                     store.context.saveMetadata(metadata, tr)
-                    CreateFactStoreResult.Created(id)
+                    CreateStoreResult.Created(id)
                 }
             }
         }.await()

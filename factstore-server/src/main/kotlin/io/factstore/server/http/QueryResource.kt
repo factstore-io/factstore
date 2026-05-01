@@ -17,7 +17,7 @@ import jakarta.ws.rs.core.Response.Status.NOT_FOUND
 import java.time.Instant
 import java.util.*
 
-@Path("/v1/stores/{factStoreName}")
+@Path("/v1/stores/{storeName}")
 class QueryResource(
     private val store: FactStore
 ) {
@@ -26,11 +26,11 @@ class QueryResource(
     @Produces(APPLICATION_JSON)
     @Path("/facts/{factId}")
     suspend fun findById(
-        @PathParam("factStoreName") factStoreName: String,
+        @PathParam("storeName") storeName: String,
         @PathParam("factId") factId: UUID,
     ): Response =
         store
-            .resolveStoreOrThrow(factStoreName)
+            .resolveStoreOrThrow(storeName)
             .let { store.findById(it.id, factId.toFactId()) }
             .toResponse()
 
@@ -39,11 +39,11 @@ class QueryResource(
     @Produces(APPLICATION_JSON)
     @Path("/facts/query")
     suspend fun findByQuery(
-        @PathParam("factStoreName") factStoreName: String,
+        @PathParam("storeName") storeName: String,
         @Valid factQueryHttp: FactQueryHttp
     ): Response =
         store
-            .resolveStoreOrThrow(factStoreName)
+            .resolveStoreOrThrow(storeName)
             .let { metadata ->
                 store.findByTagQuery(metadata.id, factQueryHttp.toTagQuery())
                     .toResponse()
@@ -53,12 +53,12 @@ class QueryResource(
     @Produces(APPLICATION_JSON)
     @Path("/subjects/{subjectType}/{subjectId}/facts")
     suspend fun findBySubject(
-        @PathParam("factStoreName") factStoreName: String,
+        @PathParam("storeName") storeName: String,
         @PathParam("subjectType") subjectType: String,
         @PathParam("subjectId") subjectId: String,
     ): Response =
         store
-            .resolveStoreOrThrow(factStoreName)
+            .resolveStoreOrThrow(storeName)
             .let { metadata ->
                 store.findBySubject(metadata.id, SubjectRef(subjectType, subjectId))
             }
@@ -68,15 +68,15 @@ class QueryResource(
     @Produces(APPLICATION_JSON)
     @Path("/facts")
     suspend fun findFacts(
-        @PathParam("factStoreName") factStoreName: String,
+        @PathParam("storeName") storeName: String,
         @QueryParam("from") from: Instant? = null,
         @QueryParam("to") to: Instant? = null,
     ): Response =
         store
-            .resolveStoreOrThrow(factStoreName)
+            .resolveStoreOrThrow(storeName)
             .let { metadata ->
                 store.findInTimeRange(
-                    factStoreId = metadata.id,
+                    storeId = metadata.id,
                     TimeRange(
                         start = from ?: Instant.MIN,
                         end = to ?: Instant.now()
@@ -91,28 +91,28 @@ private fun FindByIdResult.toResponse(): Response {
     return when (this) {
         is FindByIdResult.Found -> Response.ok(fact.toFactHttp()).build()
         is FindByIdResult.NotFound -> Response.status(NOT_FOUND).build()
-        is FindByIdResult.FactstoreNotFound -> Response.status(NOT_FOUND).build()
+        is FindByIdResult.StoreNotFound -> Response.status(NOT_FOUND).build()
     }
 }
 
 private fun FindInTimeRangeResult.toResponse(): Response {
     return when (this) {
         is FindInTimeRangeResult.Found -> Response.ok(facts.map { it.toFactHttp() }).build()
-        is FindInTimeRangeResult.FactstoreNotFound -> Response.status(NOT_FOUND).build()
+        is FindInTimeRangeResult.StoreNotFound -> Response.status(NOT_FOUND).build()
     }
 }
 
 private fun FindBySubjectResult.toResponse(): Response {
     return when (this) {
         is FindBySubjectResult.Found -> Response.ok(facts.map { it.toFactHttp() }).build()
-        is FindBySubjectResult.FactstoreNotFound -> Response.status(NOT_FOUND).build()
+        is FindBySubjectResult.StoreNotFound -> Response.status(NOT_FOUND).build()
     }
 }
 
 private fun FindByTagQueryResult.toResponse(): Response {
     return when (this) {
         is FindByTagQueryResult.Found -> Response.ok(facts.map { it.toFactHttp() }).build()
-        is FindByTagQueryResult.FactstoreNotFound -> Response.status(NOT_FOUND).build()
+        is FindByTagQueryResult.StoreNotFound -> Response.status(NOT_FOUND).build()
     }
 }
 

@@ -1,9 +1,10 @@
 package io.factstore.server.http
 
-import io.factstore.core.CreateFactStoreRequest
-import io.factstore.core.CreateFactStoreResult
+import io.factstore.core.CreateStoreRequest
+import io.factstore.core.CreateStoreResult
 import io.factstore.core.FactStore
-import io.factstore.core.FactStoreName
+import io.factstore.core.StoreMetadata
+import io.factstore.core.StoreName
 import jakarta.validation.Valid
 import jakarta.ws.rs.*
 import jakarta.ws.rs.core.MediaType.APPLICATION_JSON
@@ -17,31 +18,31 @@ class FactStoreResource(
     @POST
     @Consumes(APPLICATION_JSON)
     @Produces(APPLICATION_JSON)
-    suspend fun createFactStore(
+    suspend fun createStore(
         @Valid request: CreateFactStoreHttpRequest
     ): Response = store
-        .handle(CreateFactStoreRequest(FactStoreName(request.name)))
+        .handle(CreateStoreRequest(StoreName(request.name)))
         .toResponse()
 
-    private fun CreateFactStoreResult.toResponse(): Response {
+    private fun CreateStoreResult.toResponse(): Response {
         return when (this) {
-            is CreateFactStoreResult.Created -> Response
+            is CreateStoreResult.Created -> Response
                 .status(Response.Status.CREATED)
                 .entity(id.uuid)
                 .build()
-            is CreateFactStoreResult.NameAlreadyExists -> Response
+            is CreateStoreResult.NameAlreadyExists -> Response
                 .status(Response.Status.CONFLICT)
-                .entity("A fact store with the name '${factStoreName}' already exists.")
+                .entity("A fact store with the name '${storeName}' already exists.")
                 .build()
         }
     }
 
     @HEAD
     @Path("/{name}")
-    suspend fun factStoreExists(
+    suspend fun existsByName(
         @PathParam("name") name: String
     ): Response {
-        store.existsByName(FactStoreName(name)).let { exists ->
+        store.existsByName(StoreName(name)).let { exists ->
             return if (exists) {
                 Response.ok().build()
             } else {
@@ -53,15 +54,17 @@ class FactStoreResource(
     @GET
     @Produces(APPLICATION_JSON)
     suspend fun listFactStores(): Response {
-        store.listAll().let { factStores ->
-            val response = factStores.map { factStore ->
-                FactStoreMetadataHttp(
-                    id = factStore.id.uuid,
-                    name = factStore.name.value,
-                    createdAt = factStore.createdAt
-                )
-            }
-            return Response.ok(response).build()
+        return store.listAll().toResponse()
+    }
+
+    private fun List<StoreMetadata>.toResponse(): Response {
+        val stores = this.map { store ->
+            StoreMetadataHttp(
+                id = store.id.uuid,
+                name = store.name.value,
+                createdAt = store.createdAt
+            )
         }
+        return Response.ok(stores).build()
     }
 }
