@@ -19,17 +19,18 @@ class FdbFactStreamer(
 ) : FactStreamer {
 
     override suspend fun stream(
-        storeId: StoreId,
+        storeName: StoreName,
         streamingOptions: StreamingOptions
     ): StreamResult {
 
         // Check existence
-        val storeExists = read { tr ->
-            store.context.getMetadata(storeId, tr)
-                .thenApply { it != null }
+        val storeId = read { tr ->
+            with(tr) {
+                store.context.lookUpStoreIdByName(storeName)
+            }
         }
 
-        if (!storeExists) {
+        if (storeId == null) {
             return StoreNotFound
         }
 
@@ -90,8 +91,10 @@ class FdbFactStreamer(
 
     sealed interface CursorResult {
         data object Beginning : CursorResult
+
         @JvmInline
         value class Found(val key: ByteArray) : CursorResult
+
         @JvmInline
         value class FactNotFound(val factId: FactId) : CursorResult
     }
@@ -107,6 +110,7 @@ class FdbFactStreamer(
                 if (key == null) CursorResult.Beginning
                 else CursorResult.Found(key)
             }
+
             is StartPosition.After -> {
                 val key = getKeyForFactOrNull(startPosition.factId)
                 if (key == null) CursorResult.FactNotFound(startPosition.factId)

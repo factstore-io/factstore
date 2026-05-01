@@ -1,6 +1,7 @@
 package io.factstore.server.http
 
 import io.factstore.core.FactStore
+import io.factstore.core.StoreName
 import jakarta.validation.Valid
 import jakarta.ws.rs.*
 import jakarta.ws.rs.core.MediaType.APPLICATION_JSON
@@ -18,8 +19,7 @@ class AppendResource(
         @PathParam("storeName") storeName: String,
         @Valid httpRequest: AppendHttpRequest
     ): Response {
-        val storeId = factStore.resolveStoreOrThrow(storeName).id
-        val appendRequest = httpRequest.toAppendRequest(storeId)
+        val appendRequest = httpRequest.toAppendRequest(StoreName(storeName))
         return factStore.append(appendRequest).toResponse()
     }
 

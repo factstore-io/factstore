@@ -24,7 +24,7 @@ import java.util.concurrent.CompletableFuture
 
 data class FdbFactStoreContext(
     val storeSubspace: Subspace,
-    val storeNameToIdIndex: Subspace,
+    val storeNameToIdIndex: StoreNameToIdIndexSubspace,
     val factSubspace: FactSubspace,
     val headSubspace: HeadSubspace,
     val factPositionIndexSubspace: FactPositionIndexSubspace,
@@ -43,7 +43,7 @@ data class FdbFactStoreContext(
             val root = rootDirectory.rootDirectorySubspace
             return FdbFactStoreContext(
                 storeSubspace = root.subspace(Tuple.from(STORES)),
-                storeNameToIdIndex = root.subspace(Tuple.from(STORE_INDEX)),
+                storeNameToIdIndex = StoreNameToIdIndexSubspace(root.subspace(Tuple.from(STORE_INDEX))),
                 factSubspace = FactSubspace(root.subspace(Tuple.from(FACTS))),
                 headSubspace = HeadSubspace(root.subspace(Tuple.from(HEAD_INDEX))),
                 factPositionIndexSubspace = FactPositionIndexSubspace(root.subspace(Tuple.from(FACT_POSITIONS))),
@@ -67,13 +67,43 @@ fun FdbFactStoreContext.getMetadata(storeId: StoreId, tr: ReadTransaction): Comp
 
 fun FdbFactStoreContext.saveMetadata(metadata: FdbStoreMetadata, tr: Transaction) {
     tr[storeSubspace.pack(Tuple.from(metadata.storeId))] = Avro.encodeToByteArray(metadata)
-    tr[storeNameToIdIndex.pack(Tuple.from(metadata.name))] = Tuple.from(metadata.storeId).pack()
+    with(tr) {
+        storeNameToIdIndex.save(StoreName(metadata.name), StoreId(metadata.storeId))
+    }
 }
 
 fun FdbFactStoreContext.lookUpFactstoreIdByName(name: StoreName, tr: ReadTransaction): CompletableFuture<StoreId?> =
-    tr[storeNameToIdIndex.pack(Tuple.from(name.value))].thenApply { valueBytes ->
-        valueBytes?.let { StoreId(Tuple.fromBytes(it).getUUID(0)) }
+    with(tr) {
+        storeNameToIdIndex.lookUpStore(name)
     }
+
+context(tr: ReadTransaction)
+fun FdbFactStoreContext.lookUpStoreIdByName(name: StoreName): CompletableFuture<StoreId?> =
+    with(tr) {
+        storeNameToIdIndex.lookUpStore(name)
+    }
+
+@JvmInline
+value class StoreNameToIdIndexSubspace(val subspace: Subspace) {
+
+    context(tr: ReadTransaction)
+    fun lookUpStore(name: StoreName): CompletableFuture<StoreId?> {
+        return tr[subspace.pack(Tuple.from(name.value))].thenApply { valueBytes ->
+            valueBytes?.let { StoreId(Tuple.fromBytes(it).getUUID(0)) }
+        }
+    }
+
+    context(tr: ReadTransaction)
+    fun exists(name: StoreName): CompletableFuture<Boolean> {
+        return tr[subspace.pack(Tuple.from(name.value))].thenApply { it != null }
+    }
+
+    context(tr: Transaction)
+    fun save(name: StoreName, storeId: StoreId) {
+        tr[subspace.pack(Tuple.from(name.value))] = Tuple.from(storeId.uuid).pack()
+    }
+
+}
 
 @JvmInline
 value class HeadSubspace(val subspace: Subspace) {

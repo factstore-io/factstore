@@ -17,7 +17,8 @@ import kotlin.system.measureTimeMillis
 
 abstract class AbstractFactStoreTest {
 
-    private var storeId: StoreId = StoreId.generate()
+    private var testStore = StoreName("default-test-store")
+    private val nonExistingStore = StoreName("non-existing-store")
     private lateinit var store: FactStore
 
     abstract fun reset()
@@ -26,14 +27,13 @@ abstract class AbstractFactStoreTest {
 
 
     @BeforeEach
-    fun clearEventStore() = runBlocking {
+    fun clearEventStore(): Unit = runBlocking {
         store = initializeFactStore()
         reset()
-        val createStoreRequest = CreateStoreRequest(storeName = StoreName("test-factstore"))
+        val createStoreRequest = CreateStoreRequest(storeName = testStore)
         val result = store.handle(createStoreRequest)
 
         assertThat(result).isInstanceOf(CreateStoreResult.Created::class.java)
-        storeId = (result as CreateStoreResult.Created).id
     }
 
 
@@ -90,17 +90,17 @@ abstract class AbstractFactStoreTest {
             appendedAt = createdAt
         )
 
-        store.append(storeId, fact)
+        store.append(testStore, fact)
 
-        store.stream(storeId).let { (it as StreamResult.FactStream).stream }.take(1).collect {
+        store.stream(testStore).let { (it as StreamResult.FactStream).stream }.take(1).collect {
             println("Streamed fact: $it")
         }
 
         // validate existence of fact
-        assertThat(store.existsById(storeId, id)).isEqualTo(ExistsByIdResult.Exists)
+        assertThat(store.existsById(testStore, id)).isEqualTo(ExistsByIdResult.Exists)
 
         // find fact by ID
-        val findResult = store.findById(storeId, id)
+        val findResult = store.findById(testStore, id)
         assertThat(findResult).isInstanceOf(FindByIdResult.Found::class.java)
         val foundFact = (findResult as FindByIdResult.Found).fact
         assertThat(foundFact).isEqualTo(fact)
@@ -109,15 +109,14 @@ abstract class AbstractFactStoreTest {
     @Test
     fun testExists(): Unit = runBlocking {
         val nonExistingFactId = FactId.generate()
-        assertThat(store.existsById(storeId, nonExistingFactId)).isEqualTo(ExistsByIdResult.DoesNotExist)
+        assertThat(store.existsById(testStore, nonExistingFactId)).isEqualTo(ExistsByIdResult.DoesNotExist)
     }
 
     @Test
     fun testExistsForNonExistingFactstore(): Unit = runBlocking {
-        val nonExistingFactstore = StoreId.generate()
         assertThat(
             store.existsById(
-                nonExistingFactstore,
+                nonExistingStore,
                 FactId.generate()
             )
         ).isEqualTo(ExistsByIdResult.StoreNotFound)
@@ -125,8 +124,7 @@ abstract class AbstractFactStoreTest {
 
     @Test
     fun testFindByIdWithNonExistingFactStore(): Unit = runBlocking {
-        val nonExistingFactstore = StoreId.generate()
-        val result = store.findById(nonExistingFactstore, FactId.generate())
+        val result = store.findById(nonExistingStore, FactId.generate())
         assertThat(result).isInstanceOf(FindByIdResult.StoreNotFound::class.java)
     }
 
@@ -168,11 +166,11 @@ abstract class AbstractFactStoreTest {
         )
 
         // Append all three
-        store.append(storeId, listOf(fact1, fact2, fact3))
+        store.append(testStore, listOf(fact1, fact2, fact3))
 
         // Query range covering fact1 + fact2, but excluding fact3
         val result = store.findInTimeRange(
-            storeId = storeId,
+            storeName = testStore,
             TimeRange(
                 start = now.minusSeconds(120),
                 end = now.plusSeconds(10)
@@ -188,7 +186,7 @@ abstract class AbstractFactStoreTest {
     @Test
     fun testFindInTimeRangeForNonExistingStore(): Unit = runBlocking {
         val result = store.findInTimeRange(
-            storeId = StoreId.generate(),
+            storeName = nonExistingStore,
             TimeRange(
                 start = Instant.now().minusSeconds(120),
                 end = Instant.now().plusSeconds(10)
@@ -215,7 +213,7 @@ abstract class AbstractFactStoreTest {
 
         // append fact1
         val appendRequestWithEmptySubjectCondition = AppendRequest(
-            storeId = storeId,
+            storeName = testStore,
             facts = listOf(fact1),
             idempotencyKey = IdempotencyKey(),
             condition = AppendCondition.ExpectedLastFact(
@@ -246,7 +244,7 @@ abstract class AbstractFactStoreTest {
         )
 
         val appendRequestWithFirstFactSubjectCondition = AppendRequest(
-            storeId = storeId,
+            storeName = testStore,
             facts = listOf(fact2),
             idempotencyKey = IdempotencyKey(),
             condition = AppendCondition.ExpectedLastFact(
@@ -266,7 +264,7 @@ abstract class AbstractFactStoreTest {
         // this simulates two concurrent/conflicting append requests
         val fact3 = fact2.copy(id = FactId.generate())
         val appendRequestWithViolatingSubjectCondition = AppendRequest(
-            storeId = storeId,
+            storeName = testStore,
             facts = listOf(fact3),
             idempotencyKey = IdempotencyKey(),
             condition = AppendCondition.ExpectedLastFact(
@@ -324,7 +322,7 @@ abstract class AbstractFactStoreTest {
         )
 
         val appendRequest = AppendRequest(
-            storeId = storeId,
+            storeName = testStore,
             facts = listOf(fact1, fact2, fact3),
             idempotencyKey = IdempotencyKey(),
             condition = AppendCondition.ExpectedMultiSubjectLastFact(
@@ -383,30 +381,30 @@ abstract class AbstractFactStoreTest {
 
         val factsToAppend = listOf(fact1, fact2, fact3)
 
-        store.append(storeId, factsToAppend)
+        store.append(testStore, factsToAppend)
 
-        val aliceResult = store.findBySubject(storeId, SubjectRef("USER", "ALICE"))
+        val aliceResult = store.findBySubject(testStore, SubjectRef("USER", "ALICE"))
         assertThat(aliceResult).isInstanceOf(FindBySubjectResult.Found::class.java)
         assertThat((aliceResult as FindBySubjectResult.Found).facts)
             .containsExactly(fact1, fact3)
 
-        val bobResult = store.findBySubject(storeId, SubjectRef("USER", "BOB"))
+        val bobResult = store.findBySubject(testStore, SubjectRef("USER", "BOB"))
         assertThat(bobResult).isInstanceOf(FindBySubjectResult.Found::class.java)
         assertThat((bobResult as FindBySubjectResult.Found).facts)
             .containsExactly(fact2)
 
-        val peterResult = store.findBySubject(storeId, SubjectRef("USER", "PETER"))
+        val peterResult = store.findBySubject(testStore, SubjectRef("USER", "PETER"))
         assertThat(peterResult).isInstanceOf(FindBySubjectResult.Found::class.java)
         assertThat((peterResult as FindBySubjectResult.Found).facts).isEmpty()
 
-        val unknownResult = store.findBySubject(storeId, SubjectRef("UNKNOWN", "UNKNOWN"))
+        val unknownResult = store.findBySubject(testStore, SubjectRef("UNKNOWN", "UNKNOWN"))
         assertThat(unknownResult).isInstanceOf(FindBySubjectResult.Found::class.java)
         assertThat((unknownResult as FindBySubjectResult.Found).facts).isEmpty()
     }
 
     @Test
     fun findBySubjectForNonExistingFactstore(): Unit = runBlocking {
-        val result = store.findBySubject(StoreId.generate(), SubjectRef("SOME_TYPE", "SOME_ID"))
+        val result = store.findBySubject(nonExistingStore, SubjectRef("SOME_TYPE", "SOME_ID"))
         assertThat(result).isInstanceOf(FindBySubjectResult.StoreNotFound::class.java)
     }
 
@@ -441,12 +439,12 @@ abstract class AbstractFactStoreTest {
 
         val factsToAppend = listOf(fact1, fact2)
 
-        store.append(storeId, factsToAppend)
+        store.append(testStore, factsToAppend)
 
-        assertThat(store.findById(storeId, fact1Id)).isInstanceOf(FindByIdResult.Found::class.java)
-        assertThat((store.findById(storeId, fact1Id) as FindByIdResult.Found).fact).isEqualTo(fact1)
-        assertThat(store.findById(storeId, fact2Id)).isInstanceOf(FindByIdResult.Found::class.java)
-        assertThat((store.findById(storeId, fact2Id) as FindByIdResult.Found).fact).isEqualTo(fact2)
+        assertThat(store.findById(testStore, fact1Id)).isInstanceOf(FindByIdResult.Found::class.java)
+        assertThat((store.findById(testStore, fact1Id) as FindByIdResult.Found).fact).isEqualTo(fact1)
+        assertThat(store.findById(testStore, fact2Id)).isInstanceOf(FindByIdResult.Found::class.java)
+        assertThat((store.findById(testStore, fact2Id) as FindByIdResult.Found).fact).isEqualTo(fact2)
     }
 
     @Test
@@ -490,39 +488,39 @@ abstract class AbstractFactStoreTest {
             tags = mapOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("us"))
         )
 
-        store.append(storeId, listOf(fact1, fact2, fact3))
+        store.append(testStore, listOf(fact1, fact2, fact3))
 
         // --- Query 1: Find all role=admin (OR semantics → fact1 + fact3)
-        val adminResult = store.findByTags(storeId, listOf(TagKey("role") to TagValue("admin")))
+        val adminResult = store.findByTags(testStore, listOf(TagKey("role") to TagValue("admin")))
         assertThat(adminResult).isInstanceOf(FindByTagsResult.Found::class.java)
         assertThat((adminResult as FindByTagsResult.Found).facts).containsExactly(fact1, fact3)
 
         // --- Query 2: Find all region=us (OR semantics → fact2 + fact3)
-        val usResult = store.findByTags(storeId, listOf(TagKey("region") to TagValue("us")))
+        val usResult = store.findByTags(testStore, listOf(TagKey("region") to TagValue("us")))
         assertThat(usResult).isInstanceOf(FindByTagsResult.Found::class.java)
         assertThat((usResult as FindByTagsResult.Found).facts).containsExactly(fact2, fact3)
 
         // --- Query 3: Find all role=admin OR region=eu (OR semantics → fact1 + fact3)
         val adminOrEuResult = store.findByTags(
-            storeId,
+            testStore,
             listOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("eu"))
         )
         assertThat(adminOrEuResult).isInstanceOf(FindByTagsResult.Found::class.java)
         assertThat((adminOrEuResult as FindByTagsResult.Found).facts).containsExactly(fact1, fact3)
 
         // --- Query 4: Non-existent tag → empty
-        val noFactsResult = store.findByTags(storeId, listOf(TagKey("region") to TagValue("asia")))
+        val noFactsResult = store.findByTags(testStore, listOf(TagKey("region") to TagValue("asia")))
         assertThat(noFactsResult).isInstanceOf(FindByTagsResult.Found::class.java)
         assertThat((noFactsResult as FindByTagsResult.Found).facts).isEmpty()
 
         // --- Query 5: Union of all queries (just to validate coverage)
 
-        val fact1Loaded = store.findById(storeId, fact1.id)
+        val fact1Loaded = store.findById(testStore, fact1.id)
         assertThat(fact1Loaded).isInstanceOf(FindByIdResult.Found::class.java)
         println(fact1Loaded)
 
         val allFactsResult = store.findByTags(
-            storeId,
+            testStore,
             listOf(
                 TagKey("role") to TagValue("admin"),
                 TagKey("role") to TagValue("user"),
@@ -537,7 +535,7 @@ abstract class AbstractFactStoreTest {
     @Test
     fun testFindByTagsWithNonExistingFactstore(): Unit = runBlocking {
         val result = store.findByTags(
-            StoreId.generate(),
+            nonExistingStore,
             listOf(TagKey("region") to TagValue("asia"))
         )
 
@@ -553,7 +551,7 @@ abstract class AbstractFactStoreTest {
 
         // Start streaming from beginning
         val streamJob = launch {
-            store.stream(storeId)
+            store.stream(testStore)
                 .let { (it as StreamResult.FactStream).stream }
                 .take(3)
                 .collect {
@@ -570,9 +568,9 @@ abstract class AbstractFactStoreTest {
         val fact3 = createUserFact("CHARLIE", "Charlie", "admin", "us")
 
         // Append
-        store.append(storeId, fact1)
-        store.append(storeId, fact2)
-        store.append(storeId, fact3)
+        store.append(testStore, fact1)
+        store.append(testStore, fact2)
+        store.append(testStore, fact3)
 
         // Wait deterministically until 3 facts are received
         firstThreeReceived.await()
@@ -584,7 +582,7 @@ abstract class AbstractFactStoreTest {
         // ---- Test StartPosition.After ----
 
         val streamedEvents = store.stream(
-            storeId,
+            testStore,
             StreamingOptions(startPosition = StartPosition.After(fact1.id))
         ).let { (it as StreamResult.FactStream).stream }
             .take(2)
@@ -597,7 +595,7 @@ abstract class AbstractFactStoreTest {
         val nonExistingFactId = FactId.generate()
 
         val streamResult = store.stream(
-            storeId,
+            testStore,
             StreamingOptions(startPosition = StartPosition.After(nonExistingFactId))
         )
 
@@ -612,8 +610,8 @@ abstract class AbstractFactStoreTest {
         val initialFact1 = createUserFact("ALICE", "Alice", "admin", "eu")
         val initialFact2 = createUserFact("BOB", "Bob", "user", "us")
 
-        store.append(storeId, initialFact1)
-        store.append(storeId, initialFact2)
+        store.append(testStore, initialFact1)
+        store.append(testStore, initialFact2)
 
         val received = mutableListOf<Fact>()
         val receivedLatch = CompletableDeferred<Unit>()
@@ -622,7 +620,7 @@ abstract class AbstractFactStoreTest {
         // Start stream from END (should NOT see initialFact1/2)
         val job = launch {
             store.stream(
-                storeId,
+                testStore,
                 StreamingOptions(startPosition = StartPosition.End)
             )
                 .let { (it as StreamResult.FactStream).stream }
@@ -643,8 +641,8 @@ abstract class AbstractFactStoreTest {
         val newFact1 = createUserFact("CHARLIE", "Charlie", "admin", "us")
         val newFact2 = createUserFact("DAVID", "David", "user", "eu")
 
-        store.append(storeId, newFact1)
-        store.append(storeId, newFact2)
+        store.append(testStore, newFact1)
+        store.append(testStore, newFact2)
 
         // Wait deterministically until 2 facts received
         receivedLatch.await()
@@ -676,7 +674,7 @@ abstract class AbstractFactStoreTest {
 
     @Test
     fun testStreamingNonExistingFactstore(): Unit = runBlocking {
-        val streamResult = store.stream(StoreId.generate())
+        val streamResult = store.stream(nonExistingStore)
         assertThat(streamResult).isInstanceOf(StreamResult.StoreNotFound::class.java)
     }
 
@@ -724,7 +722,7 @@ abstract class AbstractFactStoreTest {
             tags = mapOf(TagKey("username") to TagValue("charlie"), TagKey("region") to TagValue("us"))
         )
 
-        store.append(storeId, listOf(fact1, fact2, fact3))
+        store.append(testStore, listOf(fact1, fact2, fact3))
 
 
         // Test 1: Query with a single tag (username = "bob")
@@ -737,7 +735,7 @@ abstract class AbstractFactStoreTest {
             )
         )
 
-        val bobFacts = store.findByTagQuery(storeId, bobQuery)
+        val bobFacts = store.findByTagQuery(testStore, bobQuery)
         assertThat(bobFacts).isInstanceOf(FindByTagQueryResult.Found::class.java)
         assertThat((bobFacts as FindByTagQueryResult.Found).facts).containsExactly(fact2)
 
@@ -751,7 +749,7 @@ abstract class AbstractFactStoreTest {
             )
         )
 
-        val multipleTagsFacts = store.findByTagQuery(storeId, multipleTagsQuery)
+        val multipleTagsFacts = store.findByTagQuery(testStore, multipleTagsQuery)
         assertThat(multipleTagsFacts).isInstanceOf(FindByTagQueryResult.Found::class.java)
         assertThat((multipleTagsFacts as FindByTagQueryResult.Found).facts).containsExactly(fact2)
 
@@ -765,7 +763,7 @@ abstract class AbstractFactStoreTest {
             )
         )
 
-        val noMatchFacts = store.findByTagQuery(storeId, noMatchQuery)
+        val noMatchFacts = store.findByTagQuery(testStore, noMatchQuery)
         assertThat(noMatchFacts).isInstanceOf(FindByTagQueryResult.Found::class.java)
         assertThat((noMatchFacts as FindByTagQueryResult.Found).facts).isEmpty()
 
@@ -779,7 +777,7 @@ abstract class AbstractFactStoreTest {
             )
         )
 
-        val multipleTypesFacts = store.findByTagQuery(storeId, multipleTypesQuery)
+        val multipleTypesFacts = store.findByTagQuery(testStore, multipleTypesQuery)
         assertThat(multipleTypesFacts).isInstanceOf(FindByTagQueryResult.Found::class.java)
         assertThat((multipleTypesFacts as FindByTagQueryResult.Found).facts).containsExactly(fact2)
 
@@ -793,7 +791,7 @@ abstract class AbstractFactStoreTest {
             )
         )
 
-        val complexFacts = store.findByTagQuery(storeId, complexQuery)
+        val complexFacts = store.findByTagQuery(testStore, complexQuery)
         assertThat(complexFacts).isInstanceOf(FindByTagQueryResult.Found::class.java)
         assertThat((complexFacts as FindByTagQueryResult.Found).facts).containsExactly(fact2)
 
@@ -807,7 +805,7 @@ abstract class AbstractFactStoreTest {
             )
         )
 
-        val noMatchingTagFacts = store.findByTagQuery(storeId, noMatchingTagQuery)
+        val noMatchingTagFacts = store.findByTagQuery(testStore, noMatchingTagQuery)
         assertThat(noMatchingTagFacts).isInstanceOf(FindByTagQueryResult.Found::class.java)
         assertThat((noMatchingTagFacts as FindByTagQueryResult.Found).facts).isEmpty()
 
@@ -821,7 +819,7 @@ abstract class AbstractFactStoreTest {
             )
         )
 
-        val noMatchingTypeFacts = store.findByTagQuery(storeId, noMatchingTypeQuery)
+        val noMatchingTypeFacts = store.findByTagQuery(testStore, noMatchingTypeQuery)
         assertThat(noMatchingTypeFacts).isInstanceOf(FindByTagQueryResult.Found::class.java)
         assertThat((noMatchingTypeFacts as FindByTagQueryResult.Found).facts).isEmpty()
 
@@ -835,7 +833,7 @@ abstract class AbstractFactStoreTest {
             )
         )
 
-        val tagsNoFacts = store.findByTagQuery(storeId, tagsNoFactsQuery)
+        val tagsNoFacts = store.findByTagQuery(testStore, tagsNoFactsQuery)
         assertThat(tagsNoFacts).isInstanceOf(FindByTagQueryResult.Found::class.java)
         assertThat((tagsNoFacts as FindByTagQueryResult.Found).facts).isEmpty()
 
@@ -849,7 +847,7 @@ abstract class AbstractFactStoreTest {
             )
         )
 
-        val differentTagsFacts = store.findByTagQuery(storeId, differentTagsQuery)
+        val differentTagsFacts = store.findByTagQuery(testStore, differentTagsQuery)
         assertThat(differentTagsFacts).isInstanceOf(FindByTagQueryResult.Found::class.java)
         assertThat((differentTagsFacts as FindByTagQueryResult.Found).facts).containsExactly(fact3)
 
@@ -888,7 +886,7 @@ abstract class AbstractFactStoreTest {
             tags = mapOf(TagKey("username") to TagValue("charlie"), TagKey("region") to TagValue("us"))
         )
 
-        store.append(storeId, listOf(fact1, fact2, fact3))
+        store.append(testStore, listOf(fact1, fact2, fact3))
 
         // Query for facts with types "USER_CREATED" or "USER_UPDATED" and with tags "username" = "alice"
         val query = TagQuery(
@@ -900,7 +898,7 @@ abstract class AbstractFactStoreTest {
             )
         )
 
-        val result = store.findByTagQuery(storeId, query)
+        val result = store.findByTagQuery(testStore, query)
 
         // Expecting fact1 only (username = alice, type = "USER_CREATED")
         assertThat(result).isInstanceOf(FindByTagQueryResult.Found::class.java)
@@ -940,7 +938,7 @@ abstract class AbstractFactStoreTest {
             tags = mapOf(TagKey("username") to TagValue("charlie"), TagKey("region") to TagValue("us"))
         )
 
-        store.append(storeId, listOf(fact1, fact2, fact3))
+        store.append(testStore, listOf(fact1, fact2, fact3))
 
         // Query for facts with type "USER_CREATED" or "USER_UPDATED", tagged with "username" = "bob"
         val query = TagQuery(
@@ -956,7 +954,7 @@ abstract class AbstractFactStoreTest {
             )
         )
 
-        val result = store.findByTagQuery(storeId, query)
+        val result = store.findByTagQuery(testStore, query)
 
         // Expecting fact2 (username = bob, region = us, type = USER_UPDATED)
         // Expecting fact3 (region = us, type = USER_CREATED, but no username filter for 'bob')
@@ -998,7 +996,7 @@ abstract class AbstractFactStoreTest {
             tags = mapOf(TagKey("username") to TagValue("charlie"), TagKey("region") to TagValue("us"))
         )
 
-        store.append(storeId, listOf(fact1, fact2, fact3))
+        store.append(testStore, listOf(fact1, fact2, fact3))
 
         // Query with multiple query items
         val query = TagQuery(
@@ -1014,7 +1012,7 @@ abstract class AbstractFactStoreTest {
             )
         )
 
-        val result = store.findByTagQuery(storeId, query)
+        val result = store.findByTagQuery(testStore, query)
 
         // Expecting fact2 (username = bob, region = us, type = USER_UPDATED)
         // Expecting fact1 (username = alice, region = eu, type = USER_CREATED)
@@ -1035,7 +1033,7 @@ abstract class AbstractFactStoreTest {
             tags = mapOf(TagKey("username") to TagValue("alice"), TagKey("region") to TagValue("eu"))
         )
 
-        store.append(storeId, listOf(fact1))
+        store.append(testStore, listOf(fact1))
 
         // Query for facts with a non-matching type and tag
         val query = TagQuery(
@@ -1047,7 +1045,7 @@ abstract class AbstractFactStoreTest {
             )
         )
 
-        val result = store.findByTagQuery(storeId, query)
+        val result = store.findByTagQuery(testStore, query)
 
         // Expecting no facts because no fact matches the query
         assertThat(result).isInstanceOf(FindByTagQueryResult.Found::class.java)
@@ -1081,11 +1079,11 @@ abstract class AbstractFactStoreTest {
         // Append all events to the store (in chunks to avoid exceeding byte limit in FoundationDB)
         events
             .chunked(500)
-            .forEach { store.append(storeId, it) }
+            .forEach { store.append(testStore, it) }
 
         // append a few more events
         store.append(
-            storeId,
+            testStore,
             Fact(
                 id = FactId.generate(),
                 subjectRef = SubjectRef(
@@ -1114,16 +1112,16 @@ abstract class AbstractFactStoreTest {
             )
         )
 
-        val result = store.findByTagQuery(storeId, query)
+        val result = store.findByTagQuery(testStore, query)
 
 
         measureTimeMillis {
-            store.findByTagQuery(storeId, query)
+            store.findByTagQuery(testStore, query)
         }.also { println(it) }
 
         measureTimeMillis {
             store.findByTagQuery(
-                storeId,
+                testStore,
                 TagQuery(
                     listOf(
                         TagTypeItem(
@@ -1156,7 +1154,7 @@ abstract class AbstractFactStoreTest {
     fun testFindByTagQueryWithNonExistingFactstore(): Unit = runBlocking {
         assertThat(
             store.findByTagQuery(
-                StoreId.generate(),
+                nonExistingStore,
                 TagQuery(
                     listOf(
                         TagTypeItem(
@@ -1203,7 +1201,7 @@ abstract class AbstractFactStoreTest {
         println("appending $fact1Id")
         store.append(
             AppendRequest(
-                storeId = storeId,
+                storeName = testStore,
                 facts = listOf(fact1),
                 idempotencyKey = IdempotencyKey(),
                 condition = AppendCondition.TagQueryBased(
@@ -1229,7 +1227,7 @@ abstract class AbstractFactStoreTest {
         )
 
         val appendRequest2 = AppendRequest(
-            storeId = storeId,
+            storeName = testStore,
             facts = listOf(fact2),
             idempotencyKey = IdempotencyKey(),
             condition = AppendCondition.TagQueryBased(
@@ -1241,7 +1239,7 @@ abstract class AbstractFactStoreTest {
         store.append(appendRequest2).also { assertThat(it).isInstanceOf(AppendResult.Appended::class.java) }
 
         val appendRequest3 = AppendRequest(
-            storeId = storeId,
+            storeName = testStore,
             facts = listOf(fact2.copy(id = FactId.generate())),
             idempotencyKey = IdempotencyKey(),
             condition = AppendCondition.TagQueryBased(
@@ -1282,7 +1280,7 @@ abstract class AbstractFactStoreTest {
 
         println("appending $fact3Id")
         val appendRequest4 = AppendRequest(
-            storeId = storeId,
+            storeName = testStore,
             facts = listOf(fact3),
             idempotencyKey = IdempotencyKey(),
             condition = AppendCondition.TagQueryBased(
@@ -1308,7 +1306,7 @@ abstract class AbstractFactStoreTest {
         )
 
         val appendRequestThatShouldAppendFact4 = AppendRequest(
-            storeId = storeId,
+            storeName = testStore,
             facts = listOf(fact4),
             idempotencyKey = IdempotencyKey(),
             condition = AppendCondition.TagQueryBased(
@@ -1331,10 +1329,11 @@ abstract class AbstractFactStoreTest {
         // two fact store instances should be treated as two logical database instances
         // even if they share underlying infrastructure, like the same FoundationDB cluster
 
-        val storeId1 = store.handle(CreateStoreRequest(StoreName("store-1")))
-            .let { it as CreateStoreResult.Created }.id
-        val storeId2 = store.handle(CreateStoreRequest(StoreName("store-2")))
-            .let { it as CreateStoreResult.Created }.id
+        val storeName1 = StoreName("store-1")
+        val storeName2 = StoreName("store-2")
+
+        store.handle(CreateStoreRequest(storeName1))
+        store.handle(CreateStoreRequest(storeName2))
 
         val fact1 = Fact(
             id = FactId.generate(),
@@ -1360,20 +1359,19 @@ abstract class AbstractFactStoreTest {
             tags = emptyMap()
         )
 
-        store.append(storeId1, fact1)
-        store.append(storeId2, fact2)
+        store.append(storeName1, fact1)
+        store.append(storeName2, fact2)
 
-        assertThat(store.existsById(storeId1, fact1.id)).isEqualTo(ExistsByIdResult.Exists)
-        assertThat(store.existsById(storeId1, fact2.id)).isEqualTo(ExistsByIdResult.DoesNotExist)
+        assertThat(store.existsById(storeName1, fact1.id)).isEqualTo(ExistsByIdResult.Exists)
+        assertThat(store.existsById(storeName1, fact2.id)).isEqualTo(ExistsByIdResult.DoesNotExist)
 
-        assertThat(store.existsById(storeId2, fact1.id)).isEqualTo(ExistsByIdResult.DoesNotExist)
-        assertThat(store.existsById(storeId2, fact2.id)).isEqualTo(ExistsByIdResult.Exists)
+        assertThat(store.existsById(storeName2, fact1.id)).isEqualTo(ExistsByIdResult.DoesNotExist)
+        assertThat(store.existsById(storeName2, fact2.id)).isEqualTo(ExistsByIdResult.Exists)
     }
 
     @Test
     fun testAppendWithoutFactStore(): Unit = runBlocking {
-        val storeId = StoreId.generate()
-        val result = store.append(storeId, createUserFact("TEST", "Test User", "user", "eu"))
+        val result = store.append(nonExistingStore, createUserFact("TEST", "Test User", "user", "eu"))
         assertThat(result).isInstanceOf(AppendResult.StoreNotFound::class.java)
     }
 
@@ -1393,7 +1391,7 @@ abstract class AbstractFactStoreTest {
         )
         val idempotencyKey = IdempotencyKey(UUID.randomUUID())
         val appendRequest = AppendRequest(
-            storeId = storeId,
+            storeName = testStore,
             facts = listOf(fact1),
             idempotencyKey = idempotencyKey,
             condition = AppendCondition.ExpectedLastFact(
@@ -1436,18 +1434,18 @@ abstract class AbstractFactStoreTest {
 
         val fact2 = fact1.copy()
 
-        store.append(storeId, fact1)
+        store.append(testStore, fact1)
 
         assertDuplicateFactIds(
             expected = listOf(factId)
         ) {
-            store.append(storeId, fact2)
+            store.append(testStore, fact2)
         }
 
         assertDuplicateFactIds(
             expected = listOf(factId)
         ) {
-            store.append(storeId, listOf(fact2))
+            store.append(testStore, listOf(fact2))
         }
 
         assertDuplicateFactIds(
@@ -1455,7 +1453,7 @@ abstract class AbstractFactStoreTest {
         ) {
             store.append(
                 AppendRequest(
-                    storeId = storeId,
+                    storeName = testStore,
                     facts = listOf(fact2),
                     idempotencyKey = IdempotencyKey(),
                     condition = AppendCondition.None
