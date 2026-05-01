@@ -12,9 +12,9 @@ import kotlinx.coroutines.flow.map
 import org.jboss.resteasy.reactive.RestStreamElementType
 import java.util.*
 
-@Path("/v1/stores/{factStoreName}/facts/stream")
+@Path("/v1/stores/{storeName}/facts/stream")
 class StreamResource(
-    private val finder: FactStoreFinder,
+    private val finder: StoreFinder,
     private val factStore: FactStore,
 ) {
 
@@ -22,15 +22,15 @@ class StreamResource(
     @RestStreamElementType(APPLICATION_JSON)
     @Produces(SERVER_SENT_EVENTS)
     suspend fun streamFacts(
-        @PathParam("factStoreName") factStoreName: String,
+        @PathParam("storeName") storeName: String,
         @QueryParam("after") after: UUID? = null,
         @QueryParam("from") from: String? = null,
     ): Flow<FactHttp> =
         finder
-            .resolveStoreOrThrow(factStoreName)
+            .resolveStoreOrThrow(storeName)
             .let { metadata ->
                 val streamResult = factStore.stream(
-                    factStoreId = metadata.id,
+                    storeId = metadata.id,
                     streamingOptions = buildStreamingOptions(after, from?.lowercase(Locale.ENGLISH))
                 )
                 streamResult.toResponse()
@@ -49,7 +49,7 @@ class StreamResource(
 }
 
 private fun StreamResult.toResponse(): Flow<FactHttp> = when (this) {
-    is StreamResult.FactStoreNotFound -> throw NotFoundException("Fact store not found")
+    is StreamResult.StoreNotFound -> throw NotFoundException("Fact store not found")
     is StreamResult.InvalidStartPosition -> throw InvalidFactIdException(this.id)
     is StreamResult.FactStream -> this.stream.map { it.toFactHttp() }
 }

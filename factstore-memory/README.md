@@ -61,9 +61,9 @@ The implementation uses Kotlin coroutine mutexes to ensure thread-safe access to
 val store: FactStore = MemoryFactStore()
 
 // Create a fact store instance
-val request = CreateFactStoreRequest(FactStoreName("my-store"))
+val request = CreateFactStoreRequest(StoreName("my-store"))
 val result = store.handle(request)
-val factStoreId = (result as CreateFactStoreResult.Created).id
+val storeId = (result as CreateFactStoreResult.Created).id
 
 // Append facts
 val fact = Fact(
@@ -74,14 +74,14 @@ val fact = Fact(
     appendedAt = Instant.now()
 )
 
-store.append(factStoreId, fact)
+store.append(storeId, fact)
 
 // Find facts
-val foundFact = store.findById(factStoreId, fact.id)
-val allFacts = store.findBySubject(factStoreId, SubjectRef("USER", "user-123"))
+val foundFact = store.findById(storeId, fact.id)
+val allFacts = store.findBySubject(storeId, SubjectRef("USER", "user-123"))
 
 // Stream facts
-store.stream(factStoreId).collect { fact ->
+store.stream(storeId).collect { fact ->
     println("Streamed: $fact")
 }
 ```
@@ -90,10 +90,10 @@ store.stream(factStoreId).collect { fact ->
 
 ### Internal Data Structures
 
-- **stores**: Map of FactStoreId → FactStoreMetadata for storing metadata
-- **nameIndex**: Map of store name → FactStoreId for fast lookups
-- **facts**: Map of FactStoreId → List<Fact> for storing facts
-- **idempotencyKeys**: Map of FactStoreId → Set<UUID> for tracking idempotency
+- **stores**: Map of StoreId → StoreMetadata for storing metadata
+- **nameIndex**: Map of store name → StoreId for fast lookups
+- **facts**: Map of StoreId → List<Fact> for storing facts
+- **idempotencyKeys**: Map of StoreId → Set<UUID> for tracking idempotency
 
 ### Lock Strategy
 

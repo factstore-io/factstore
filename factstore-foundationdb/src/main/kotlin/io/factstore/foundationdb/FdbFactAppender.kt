@@ -16,13 +16,13 @@ class FdbFactAppender(
     private val store: FdbFactStore,
 ) : FactAppender {
 
-    override suspend fun append(factStoreId: FactStoreId, fact: Fact): AppendResult =
-        append(factStoreId, listOf(fact))
+    override suspend fun append(storeId: StoreId, fact: Fact): AppendResult =
+        append(storeId, listOf(fact))
 
-    override suspend fun append(factStoreId: FactStoreId, facts: List<Fact>): AppendResult =
+    override suspend fun append(storeId: StoreId, facts: List<Fact>): AppendResult =
         append(
             AppendRequest(
-                factStoreId = factStoreId,
+                storeId = storeId,
                 facts = facts,
                 idempotencyKey = IdempotencyKey(),
                 condition = AppendCondition.None
@@ -33,9 +33,9 @@ class FdbFactAppender(
         store.db.runAsync { tr ->
 
             // check fact store exists
-            store.context.getMetadata(request.factStoreId, tr).thenCompose { metadata ->
+            store.context.getMetadata(request.storeId, tr).thenCompose { metadata ->
                 if (metadata == null) {
-                    return@thenCompose CompletableFuture.completedFuture(AppendResult.FactStoreNotFound)
+                    return@thenCompose CompletableFuture.completedFuture(AppendResult.StoreNotFound)
                 } else {
                     val idempotencyKey = request.idempotencyKeyBytes()
 
@@ -57,7 +57,7 @@ class FdbFactAppender(
     context(transaction: Transaction)
     private fun AppendRequest.validate(): CompletableFuture<Unit> {
         val checks: List<CompletableFuture<FactId?>> = facts.map { fact ->
-            store.context.factPositionIndexSubspace.exists(factStoreId, fact.id).thenApply { exists ->
+            store.context.factPositionIndexSubspace.exists(storeId, fact.id).thenApply { exists ->
                 if (exists) fact.id else null
             }
         }
@@ -80,7 +80,7 @@ class FdbFactAppender(
                 AppendResult.AppendConditionViolated
             } else {
                 this.facts.store()
-                store.context.idempotencySubspace.save(factStoreId, idempotencyKey)
+                store.context.idempotencySubspace.save(storeId, idempotencyKey)
                 AppendResult.Appended
             }
         }
@@ -110,7 +110,7 @@ class FdbFactAppender(
 
     context(tr: Transaction, appendRequest: AppendRequest)
     private fun SubjectRef.getLastFactId(): FactId? {
-        val subjectRange = store.context.subjectIndexSubspace.range(appendRequest.factStoreId, this)
+        val subjectRange = store.context.subjectIndexSubspace.range(appendRequest.storeId, this)
         val latestFactKeyValue = tr.getRange(subjectRange, LIMIT_ONE, REVERSED).firstOrNull()
         return latestFactKeyValue?.let {
             Tuple.fromBytes(it.value).getFirstAsFactId()
@@ -118,11 +118,11 @@ class FdbFactAppender(
     }
 
     private fun AppendRequest.idempotencyKeyBytes(): ByteArray =
-        store.context.idempotencySubspace.pack(factStoreId, idempotencyKey)
+        store.context.idempotencySubspace.pack(storeId, idempotencyKey)
 
     context(tr: Transaction, appendRequest: AppendRequest)
     private fun List<Fact>.store() = with(store) {
-        appendRequest.factStoreId.apply { this@store.store() }
+        appendRequest.storeId.apply { this@store.store() }
     }
 
     context(tr: Transaction, appendRequest: AppendRequest)
@@ -134,7 +134,7 @@ class FdbFactAppender(
 
     context(tr: Transaction, appendRequest: AppendRequest)
     private fun FactId.getPosition() = with(store) {
-        context.factPositionIndexSubspace.getPosition(appendRequest.factStoreId, this@getPosition)
+        context.factPositionIndexSubspace.getPosition(appendRequest.storeId, this@getPosition)
     }
 
     context(tr: Transaction, appendRequest: AppendRequest)
@@ -174,10 +174,10 @@ class FdbFactAppender(
         ): Pair<KeySelector, KeySelector> {
             val key = if (afterPosition != null) {
                 // If there's a afterPosition, include it in the tuple
-                store.context.tagsIndexSubspace.getKey(appendRequest.factStoreId, tag, afterPosition)
+                store.context.tagsIndexSubspace.getKey(appendRequest.storeId, tag, afterPosition)
             } else {
                 // If there's no afterPosition, just use the tag
-                store.context.tagsIndexSubspace.getKey(appendRequest.factStoreId, tag)
+                store.context.tagsIndexSubspace.getKey(appendRequest.storeId, tag)
             }
 
             // Create the beginSelector (first greater than if afterPosition is provided)
@@ -188,7 +188,7 @@ class FdbFactAppender(
             }
 
             // Create the end selector based on the tag range
-            val range = store.context.tagsIndexSubspace.range(appendRequest.factStoreId, tag)
+            val range = store.context.tagsIndexSubspace.range(appendRequest.storeId, tag)
             val endSelector = KeySelector.lastLessOrEqual(range.end)
 
             return Pair(beginSelector, endSelector)
@@ -227,9 +227,9 @@ class FdbFactAppender(
             afterPosition: FactPosition?
         ): Pair<KeySelector, KeySelector> {
             val key = if (afterPosition != null) {
-                store.context.tagsTypeIndexSubspace.getKey(appendRequest.factStoreId, type, tag, afterPosition)
+                store.context.tagsTypeIndexSubspace.getKey(appendRequest.storeId, type, tag, afterPosition)
             } else {
-                store.context.tagsTypeIndexSubspace.getKey(appendRequest.factStoreId, type, tag)
+                store.context.tagsTypeIndexSubspace.getKey(appendRequest.storeId, type, tag)
             }
 
             val startKeySelector = if (afterPosition != null) {
@@ -238,7 +238,7 @@ class FdbFactAppender(
                 KeySelector(key, OR_EQUAL, ZERO_OFFSET)
             }
 
-            val range = store.context.tagsTypeIndexSubspace.range(appendRequest.factStoreId, type, tag)
+            val range = store.context.tagsTypeIndexSubspace.range(appendRequest.storeId, type, tag)
             val endSelector = KeySelector.lastLessOrEqual(range.end)
 
             return Pair(startKeySelector, endSelector)

@@ -5,7 +5,7 @@ import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.catchThrowable
 import org.junit.jupiter.api.Test
 
-class FactStoreNameTest {
+class StoreNameTest {
 
     @Test
     fun `create should reject empty names`(): Unit = runBlocking {
@@ -14,7 +14,7 @@ class FactStoreNameTest {
             " "
         ).forEach { invalidName ->
             val exception = catchThrowable {
-                runBlocking { FactStoreName(invalidName) }
+                runBlocking { StoreName(invalidName) }
             }
 
             assertThat(exception)
@@ -35,7 +35,7 @@ class FactStoreNameTest {
             "Mÿ_store", // non-ASCII
         ).forEach { invalidName ->
             val exception = catchThrowable {
-                runBlocking { FactStoreName(invalidName) }
+                runBlocking { StoreName(invalidName) }
             }
 
             assertThat(exception)
@@ -59,7 +59,7 @@ class FactStoreNameTest {
         )
 
         validNames.forEach { validName ->
-            assertThat(FactStoreName(validName)).matches { it.value == validName }
+            assertThat(StoreName(validName)).matches { it.value == validName }
 
         }
     }
@@ -69,7 +69,7 @@ class FactStoreNameTest {
         val longName = "a".repeat(256)
 
         val exception = catchThrowable {
-            runBlocking { FactStoreName(longName) }
+            runBlocking { StoreName(longName) }
         }
 
         assertThat(exception)

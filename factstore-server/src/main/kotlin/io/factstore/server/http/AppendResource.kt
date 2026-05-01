@@ -6,7 +6,7 @@ import jakarta.ws.rs.*
 import jakarta.ws.rs.core.MediaType.APPLICATION_JSON
 import jakarta.ws.rs.core.Response
 
-@Path("/v1/stores/{factStoreName}/facts")
+@Path("/v1/stores/{storeName}/facts")
 class AppendResource(
     private val factStore: FactStore
 ) {
@@ -15,11 +15,11 @@ class AppendResource(
     @Consumes(APPLICATION_JSON)
     @Produces(APPLICATION_JSON)
     suspend fun appendFacts(
-        @PathParam("factStoreName") factStoreName: String,
+        @PathParam("storeName") storeName: String,
         @Valid httpRequest: AppendHttpRequest
     ): Response {
-        val factstoreId = factStore.resolveStoreOrThrow(factStoreName).id
-        val appendRequest = httpRequest.toAppendRequest(factstoreId)
+        val storeId = factStore.resolveStoreOrThrow(storeName).id
+        val appendRequest = httpRequest.toAppendRequest(storeId)
         return factStore.append(appendRequest).toResponse()
     }
 

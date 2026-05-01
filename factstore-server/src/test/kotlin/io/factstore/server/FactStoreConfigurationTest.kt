@@ -1,7 +1,6 @@
 package io.factstore.server
 
 import io.factstore.core.FactStore
-import io.factstore.memory.MemoryFactStore
 import io.quarkus.test.junit.QuarkusTest
 import jakarta.inject.Inject
 import org.assertj.core.api.Assertions.assertThat
@@ -30,12 +29,12 @@ class FactStoreConfigurationTest {
         runBlocking {
             // This is a basic smoke test to ensure the FactStore works
             val result = factStore.handle(
-                io.factstore.core.CreateFactStoreRequest(
-                    io.factstore.core.FactStoreName("test-store")
+                io.factstore.core.CreateStoreRequest(
+                    io.factstore.core.StoreName("test-store")
                 )
             )
 
-            assertThat(result).isInstanceOf(io.factstore.core.CreateFactStoreResult.Created::class.java)
+            assertThat(result).isInstanceOf(io.factstore.core.CreateStoreResult.Created::class.java)
         }
     }
 }

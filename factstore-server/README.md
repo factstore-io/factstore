@@ -64,12 +64,12 @@ It should not yet be considered stable for long-term external integrations.
 
 All endpoints are namespaced under:
 ```
-/v1/stores/{factStoreName}
+/v1/stores/{storeName}
 ```
 
 In the examples below, we use
 ```
-factStoreName = default
+storeName = default
 baseUrl       = http://localhost:8080
 ```
 

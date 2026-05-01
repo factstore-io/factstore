@@ -23,7 +23,7 @@ value class IdempotencyKey(val value: UUID = UUID.randomUUID())
  * and conditional append semantics. All facts contained in the request are
  * processed atomically.
  *
- * @property factStoreId the fact store to which to append the facts to
+ * @property storeId the fact store to which to append the facts to
  * @property facts the facts to append
  * @property idempotencyKey the key used to ensure idempotent processing
  * @property condition an optional condition that must be satisfied for the
@@ -34,7 +34,7 @@ value class IdempotencyKey(val value: UUID = UUID.randomUUID())
  * @author Domenic Cassisi
  */
 data class AppendRequest(
-    val factStoreId: FactStoreId,
+    val storeId: StoreId,
     val facts: List<Fact>,
     val idempotencyKey: IdempotencyKey,
     val condition: AppendCondition = AppendCondition.None

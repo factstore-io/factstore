@@ -1,7 +1,7 @@
 package io.factstore.core
 
 @JvmInline
-value class FactStoreName(val value: String) {
+value class StoreName(val value: String) {
 
     companion object {
         const val MAX_LENGTH = 255
