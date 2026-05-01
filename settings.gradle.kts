@@ -7,4 +7,5 @@ include(
     "factstore-explorer",
     "factstore-memory",
     "factstore-server",
+    "factstore-cli",
 )
