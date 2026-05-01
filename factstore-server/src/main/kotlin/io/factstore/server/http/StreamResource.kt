@@ -14,7 +14,6 @@ import java.util.*
 
 @Path("/v1/stores/{storeName}/facts/stream")
 class StreamResource(
-    private val finder: StoreFinder,
     private val factStore: FactStore,
 ) {
 
@@ -26,15 +25,11 @@ class StreamResource(
         @QueryParam("after") after: UUID? = null,
         @QueryParam("from") from: String? = null,
     ): Flow<FactHttp> =
-        finder
-            .resolveStoreOrThrow(storeName)
-            .let { metadata ->
-                val streamResult = factStore.stream(
-                    storeId = metadata.id,
-                    streamingOptions = buildStreamingOptions(after, from?.lowercase(Locale.ENGLISH))
-                )
-                streamResult.toResponse()
-            }
+        factStore.stream(
+            storeName = StoreName(storeName),
+            streamingOptions = buildStreamingOptions(after, from?.lowercase(Locale.ENGLISH))
+        )
+            .toResponse()
 
 
     private fun buildStreamingOptions(after: UUID?, from: String?): StreamingOptions {

@@ -1,11 +1,11 @@
 package io.factstore.server.http
 
-import io.factstore.core.Fact
 import io.factstore.core.FactStore
 import io.factstore.core.FindByIdResult
 import io.factstore.core.FindBySubjectResult
 import io.factstore.core.FindByTagQueryResult
 import io.factstore.core.FindInTimeRangeResult
+import io.factstore.core.StoreName
 import io.factstore.core.SubjectRef
 import io.factstore.core.TimeRange
 import io.factstore.core.toFactId
@@ -30,8 +30,7 @@ class QueryResource(
         @PathParam("factId") factId: UUID,
     ): Response =
         store
-            .resolveStoreOrThrow(storeName)
-            .let { store.findById(it.id, factId.toFactId()) }
+            .findById(StoreName(storeName), factId.toFactId())
             .toResponse()
 
     @POST
@@ -43,11 +42,8 @@ class QueryResource(
         @Valid factQueryHttp: FactQueryHttp
     ): Response =
         store
-            .resolveStoreOrThrow(storeName)
-            .let { metadata ->
-                store.findByTagQuery(metadata.id, factQueryHttp.toTagQuery())
-                    .toResponse()
-            }
+            .findByTagQuery(StoreName(storeName), factQueryHttp.toTagQuery())
+            .toResponse()
 
     @GET
     @Produces(APPLICATION_JSON)
@@ -58,10 +54,7 @@ class QueryResource(
         @PathParam("subjectId") subjectId: String,
     ): Response =
         store
-            .resolveStoreOrThrow(storeName)
-            .let { metadata ->
-                store.findBySubject(metadata.id, SubjectRef(subjectType, subjectId))
-            }
+            .findBySubject(StoreName(storeName), SubjectRef(subjectType, subjectId))
             .toResponse()
 
     @GET
@@ -73,16 +66,13 @@ class QueryResource(
         @QueryParam("to") to: Instant? = null,
     ): Response =
         store
-            .resolveStoreOrThrow(storeName)
-            .let { metadata ->
-                store.findInTimeRange(
-                    storeId = metadata.id,
-                    TimeRange(
-                        start = from ?: Instant.MIN,
-                        end = to ?: Instant.now()
-                    )
+            .findInTimeRange(
+                storeName = StoreName(storeName),
+                TimeRange(
+                    start = from ?: Instant.MIN,
+                    end = to ?: Instant.now()
                 )
-            }
+            )
             .toResponse()
 
 }
@@ -115,6 +105,3 @@ private fun FindByTagQueryResult.toResponse(): Response {
         is FindByTagQueryResult.StoreNotFound -> Response.status(NOT_FOUND).build()
     }
 }
-
-private fun List<Fact>.toResponse(): Response =
-    Response.ok(map { it.toFactHttp() }).build()

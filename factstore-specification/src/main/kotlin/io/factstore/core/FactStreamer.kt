@@ -22,13 +22,13 @@ interface FactStreamer {
      * The returned [Flow] emits facts incrementally and may continue emitting
      * new facts as they are appended to the store.
      *
-     *
+     * @param storeName the store from which to stream facts
      * @param streamingOptions configuration options controlling how facts
      * are streamed
      * @return a cold [Flow] emitting facts that match the streaming criteria,
      * or an error result if the fact store does not exist or the start position is invalid
      */
-    suspend fun stream(storeId: StoreId, streamingOptions: StreamingOptions): StreamResult
+    suspend fun stream(storeName: StoreName, streamingOptions: StreamingOptions): StreamResult
 
     /**
      * Streams all facts from the beginning of the store.
@@ -38,7 +38,7 @@ interface FactStreamer {
      *
      * @return a cold [Flow] emitting all facts in order
      */
-    suspend fun stream(storeId: StoreId) = stream(storeId, StreamingOptions())
+    suspend fun stream(storeName: StoreName) = stream(storeName, StreamingOptions())
 
 }
 

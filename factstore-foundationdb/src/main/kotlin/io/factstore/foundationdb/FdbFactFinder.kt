@@ -16,15 +16,19 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
     private val tagsIndexSubspace = fdbFactStore.context.tagsIndexSubspace
     private val tagsTypeIndexSubspace = fdbFactStore.context.tagsTypeIndexSubspace
 
-    override suspend fun findById(storeId: StoreId, factId: FactId): FindByIdResult =
+    override suspend fun findById(storeName: StoreName, factId: FactId): FindByIdResult =
         db.readAsync { tr ->
             with(tr) {
-                factId.loadFact(storeId).thenCompose { fact ->
-                    if (fact != null) {
-                        CompletableFuture.completedFuture(FindByIdResult.Found(fact))
+                fdbFactStore.context.lookUpStoreIdByName(storeName).thenCompose { storeId ->
+                    if (storeId == null) {
+                        CompletableFuture.completedFuture(FindByIdResult.StoreNotFound)
                     } else {
-                        fdbFactStore.context.getMetadata(storeId, tr).thenApply { metadata ->
-                            if (metadata == null) FindByIdResult.StoreNotFound else FindByIdResult.NotFound(factId)
+                        factId.loadFact(storeId).thenApply { fact ->
+                            if (fact != null) {
+                                FindByIdResult.Found(fact)
+                            } else {
+                                FindByIdResult.NotFound(factId)
+                            }
                         }
                     }
                 }
@@ -32,28 +36,32 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
         }.await()
 
 
-    override suspend fun existsById(storeId: StoreId, factId: FactId): ExistsByIdResult =
+    override suspend fun existsById(storeName: StoreName, factId: FactId): ExistsByIdResult =
         db.readAsync { tr ->
             with(tr) {
-                factId.existsById(storeId).thenCompose { exists ->
-                    if (exists) {
-                        CompletableFuture.completedFuture(ExistsByIdResult.Exists)
+                fdbFactStore.context.lookUpStoreIdByName(storeName).thenCompose { storeId ->
+                    if (storeId == null) {
+                        CompletableFuture.completedFuture(ExistsByIdResult.StoreNotFound)
                     } else {
-                        fdbFactStore.context.getMetadata(storeId, tr).thenApply { metadata ->
-                            if (metadata == null) ExistsByIdResult.StoreNotFound else ExistsByIdResult.DoesNotExist
+                        factId.existsById(storeId).thenApply { exists ->
+                            if (exists) {
+                                ExistsByIdResult.Exists
+                            } else {
+                                ExistsByIdResult.DoesNotExist
+                            }
                         }
                     }
                 }
             }
         }.await()
 
-    override suspend fun findInTimeRange(storeId: StoreId, timeRange: TimeRange): FindInTimeRangeResult {
+    override suspend fun findInTimeRange(storeName: StoreName, timeRange: TimeRange): FindInTimeRangeResult {
         val start = timeRange.start
         val end = timeRange.end
 
-        return db.readAsync { tr ->
-            fdbFactStore.context.getMetadata(storeId, tr).thenCompose { metadata ->
-                if (metadata == null) {
+        return db.readAsync { tr -> with(tr) {
+            fdbFactStore.context.lookUpStoreIdByName(storeName).thenCompose { storeId ->
+                if (storeId == null) {
                     CompletableFuture.completedFuture(FindInTimeRangeResult.StoreNotFound)
                 } else {
                     val begin = createdAtIndexSubspace.getKey(storeId, start)
@@ -73,13 +81,14 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
                     }
                 }
             }
+        }
         }.await()
     }
 
-    override suspend fun findBySubject(storeId: StoreId, subjectRef: SubjectRef): FindBySubjectResult {
-        return db.readAsync { tr ->
-            fdbFactStore.context.getMetadata(storeId, tr).thenCompose { metadata ->
-                if (metadata == null) {
+    override suspend fun findBySubject(storeName: StoreName, subjectRef: SubjectRef): FindBySubjectResult {
+        return db.readAsync { tr -> with(tr) {
+            fdbFactStore.context.lookUpStoreIdByName(storeName).thenCompose { storeId ->
+                if (storeId == null) {
                     CompletableFuture.completedFuture(FindBySubjectResult.StoreNotFound)
                 } else {
                     val subjectRange = subjectIndexSubspace.range(storeId, subjectRef)
@@ -96,13 +105,14 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
                     }
                 }
             }
+        }
         }.await()
     }
 
-    override suspend fun findByTags(storeId: StoreId, tags: List<Pair<TagKey, TagValue>>): FindByTagsResult {
-        return db.readAsync { tr ->
-            fdbFactStore.context.getMetadata(storeId, tr).thenCompose { metadata ->
-                if (metadata == null) {
+    override suspend fun findByTags(storeName: StoreName, tags: List<Pair<TagKey, TagValue>>): FindByTagsResult {
+        return db.readAsync { tr -> with(tr) {
+            fdbFactStore.context.lookUpStoreIdByName(storeName).thenCompose { storeId ->
+                if (storeId == null) {
                     CompletableFuture.completedFuture(FindByTagsResult.StoreNotFound)
                 } else {
                     if (tags.isEmpty()) return@thenCompose CompletableFuture.completedFuture(FindByTagsResult.Found(emptyList()))
@@ -138,13 +148,15 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
                     }
                 }
             }
+        }
+
         }.await()
     }
 
-    override suspend fun findByTagQuery(storeId: StoreId, query: TagQuery): FindByTagQueryResult {
-        return db.readAsync { tr ->
-            fdbFactStore.context.getMetadata(storeId, tr).thenCompose { metadata ->
-                if (metadata == null) {
+    override suspend fun findByTagQuery(storeName: StoreName, query: TagQuery): FindByTagQueryResult {
+        return db.readAsync { tr -> with(tr) {
+            fdbFactStore.context.lookUpStoreIdByName(storeName).thenCompose { storeId ->
+                if (storeId == null) {
                     CompletableFuture.completedFuture(FindByTagQueryResult.StoreNotFound)
                 } else {
                     with(tr.snapshot()) {
@@ -173,6 +185,8 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
                     }
                 }
             }
+        }
+
         }.await()
     }
 

@@ -12,57 +12,76 @@ package io.factstore.core
 interface FactFinder {
 
     /**
-     * Finds a fact by its unique identifier.
+     * Retrieves a specific fact by its unique identifier within a named store.
      *
-     * @param factId the identifier of the fact
-     * @return the fact if it exists, or `null` otherwise
+     * This method is the primary way to access a single event when the [FactId] is known.
+     * Because store resolution and fact lookup are distinct operations, the result
+     * explicitly distinguishes between a missing store and a missing fact.
+     *
+     * @param storeName the logical name of the store
+     * @param factId the unique identifier of the fact to retrieve.
+     * @return a [FindByIdResult] which can be handled using a `when` expression:
+     * - [FindByIdResult.Found]: contains the requested [Fact].
+     * - [FindByIdResult.NotFound]: the store exists, but the fact ID is unknown.
+     * - [FindByIdResult.StoreNotFound]: the provided [storeName] does not exist.
      */
-    suspend fun findById(storeId: StoreId, factId: FactId): FindByIdResult
+    suspend fun findById(storeName: StoreName, factId: FactId): FindByIdResult
 
     /**
-     * Checks whether a fact with the given identifier exists.
+     * Checks for the existence of a specific fact within a named store.
      *
-     * @param factId the identifier of the fact
-     * @return `true` if a fact with the given identifier exists, `false` otherwise
+     * Use this lightweight check when you only need to verify presence without
+     * fetching the full fact payload.
+     *
+     * @param storeName the logical name of the store.
+     * @param factId the unique identifier of the fact.
+     * @return an [ExistsByIdResult] indicating if the fact was [ExistsByIdResult.Exists],
+     *         [ExistsByIdResult.DoesNotExist], or if the [ExistsByIdResult.StoreNotFound].
      */
-    suspend fun existsById(storeId: StoreId, factId: FactId): ExistsByIdResult
+    suspend fun existsById(storeName: StoreName, factId: FactId): ExistsByIdResult
 
     /**
-     * Finds all facts created within the given time range.
+     * Retrieves a chronological list of facts appended within a specific time window.
      *
-     * The range is inclusive of both start and end timestamps.
+     * This method is useful for querying recent events or performing time-based analyses.
      *
-     * @param timeRange the time range to cover
-     * @return the list of facts created within the specified time range, or an error if the factstore doesn't exist
+     * @param storeName the logical name of the store.
+     * @param timeRange the inclusive temporal boundaries for the search.
+     * @return a [FindInTimeRangeResult] containing the list of facts, or
+     *         [FindInTimeRangeResult.StoreNotFound] if the store does not exist.
      */
-    suspend fun findInTimeRange(storeId: StoreId, timeRange: TimeRange): FindInTimeRangeResult
+    suspend fun findInTimeRange(storeName: StoreName, timeRange: TimeRange): FindInTimeRangeResult
 
     /**
-     * Finds all facts associated with the given subject.
+     * Retrieves the complete history of facts associated with a specific subject.
      *
+     * @param storeName the logical name of the store.
      * @param subjectRef the subject reference
-     * @return the list of facts associated with the subject, or an error if the factstore doesn't exist
+     * @return a [FindBySubjectResult.Found] containing the stream of facts for this subject,
+     *         or [FindBySubjectResult.StoreNotFound] if the store is missing.
      */
-    suspend fun findBySubject(storeId: StoreId, subjectRef: SubjectRef): FindBySubjectResult
+    suspend fun findBySubject(storeName: StoreName, subjectRef: SubjectRef): FindBySubjectResult
 
     /**
-     * Finds all facts that match the given set of tags.
+     * Finds facts that match at least one of the provided tags (OR logic).
      *
-     * The provided tags are interpreted as an OR match requirement.
-     *
-     * @param tags the list of tag key-value pairs
-     * @return the list of facts matching the specified tags, or an error if the factstore doesn't exist
+     * @param storeName the logical name of the store.
+     * @param tags a list of key-value pairs to match against.
+     * @return a [FindByTagsResult.Found] with matching facts, or
+     *         [FindByTagsResult.StoreNotFound] if the store does not exist.
      */
-    suspend fun findByTags(storeId: StoreId, tags: List<Pair<TagKey, TagValue>>): FindByTagsResult
+    suspend fun findByTags(storeName: StoreName, tags: List<Pair<TagKey, TagValue>>): FindByTagsResult
 
     /**
-     * Finds all facts that match the given tag query.
+     * Performs an expressive search for facts using a structured tag query.
      *
      * Tag queries allow more expressive matching semantics than simple
      * key-value pairs.
      *
+     * @param storeName the logical name of the store.
      * @param query the tag query
-     * @return the list of facts matching the query, or an error if the factstore doesn't exist
+     * @return a [FindByTagQueryResult.Found] containing the filtered facts, or
+     *         [FindByTagQueryResult.StoreNotFound] if the store name cannot be resolved.
      */
-    suspend fun findByTagQuery(storeId: StoreId, query: TagQuery): FindByTagQueryResult
+    suspend fun findByTagQuery(storeName: StoreName, query: TagQuery): FindByTagQueryResult
 }
