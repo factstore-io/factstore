@@ -30,22 +30,24 @@ class FdbFactAppender(
         )
 
     override suspend fun append(request: AppendRequest): AppendResult =
-        store.db.runAsync { tr -> with(tr) {
-            // check fact store exists
-            store.context.lookUpStoreIdByName(request.storeName).thenCompose { storeId ->
-                if (storeId == null) {
-                    return@thenCompose CompletableFuture.completedFuture(AppendResult.StoreNotFound)
-                } else {
-                    with(storeId) {
-                        val idempotencyKey = request.idempotencyKeyBytes()
+        store.db.runAsync { tr ->
+            with(tr) {
+                // check fact store exists
+                store.context.lookUpStoreIdByName(request.storeName).thenCompose { storeId ->
+                    if (storeId == null) {
+                        return@thenCompose CompletableFuture.completedFuture(AppendResult.StoreNotFound)
+                    } else {
+                        with(storeId) {
+                            val idempotencyKey = request.idempotencyKeyBytes()
 
-                        tr[idempotencyKey].thenCompose { existing ->
-                            if (existing != null) {
-                                CompletableFuture.completedFuture(AppendResult.AlreadyApplied)
-                            } else {
-                                with(storeId) {
-                                    request.validate().thenCompose {
-                                        request.appendNew()
+                            tr[idempotencyKey].thenCompose { existing ->
+                                if (existing != null) {
+                                    CompletableFuture.completedFuture(AppendResult.AlreadyApplied)
+                                } else {
+                                    with(storeId) {
+                                        request.validate().thenCompose {
+                                            request.appendNew()
+                                        }
                                     }
                                 }
                             }
@@ -53,7 +55,6 @@ class FdbFactAppender(
                     }
                 }
             }
-        }
         }.await()
 
     context(transaction: Transaction, storeId: StoreId)
