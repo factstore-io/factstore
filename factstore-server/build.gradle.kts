@@ -20,6 +20,8 @@ dependencies {
     implementation(project(":factstore-foundationdb"))
     implementation(project(":factstore-memory"))
 
+    implementation(libs.io.github.oshai.kotlin.logging)
+
     testImplementation("io.quarkus:quarkus-junit")
     testImplementation("io.rest-assured:rest-assured")
     testImplementation(libs.org.assertj.assertj.core)

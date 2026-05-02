@@ -11,6 +11,7 @@ testcontainers-junit-jupiter = "1.21.4"
 testcontainers-foundationdb = "1.1.0"
 fmodel = "3.7.0"
 quarkusVersion = "3.35.1"
+kotlin-logging = "7.0.3"
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
@@ -33,3 +34,4 @@ earth-adi-testcontainers-foundationdb = { module = "earth.adi:testcontainers-fou
 com-fraktalio-fmodel-domain = { module = "com.fraktalio.fmodel:domain", version.ref = "fmodel" }
 com-fraktalio-fmodel-application-vanilla = { module = "com.fraktalio.fmodel:application-vanilla", version.ref = "fmodel" }
 io-quarkus-platform-quarkus-bom = { module = "io.quarkus.platform:quarkus-bom", version.ref = "quarkusVersion" }
+io-github-oshai-kotlin-logging = {module = 'io.github.oshai:kotlin-logging-jvm', version.ref = "kotlin-logging" }
