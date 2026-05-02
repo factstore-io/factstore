@@ -122,8 +122,8 @@ class FdbFactStreamer(
     private suspend fun getKeyForFactOrNull(factId: FactId): ByteArray? =
         read { tr ->
             with(tr) {
-                factId.loadFact().thenApply { fdbFact ->
-                    fdbFact?.getFactPositionKey()
+                store.context.factPositionIndexSubspace.getPosition(storeId, factId).thenApply { position ->
+                    position?.getFactPositionKey()
                 }
             }
         }
@@ -181,12 +181,6 @@ class FdbFactStreamer(
                 .thenApply { factPosition ->
                     factPosition?.getFactPositionKey()
                 }
-        }
-
-    context(transaction: ReadTransaction, storeId: StoreId)
-    private fun FactId.loadFact(): CompletableFuture<FdbFact?> =
-        with(store) {
-            this@loadFact.loadFactById()
         }
 
     private suspend fun <T> read(trBlock: (ReadTransaction) -> CompletableFuture<T>): T =
