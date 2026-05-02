@@ -189,7 +189,9 @@ class FdbFactStreamer(
     private fun List<FdbFact>.toReadResult(tr: Transaction, storeId: StoreId): ReadResult =
         if (isEmpty()) {
             ReadResult.WatchResult(
-                tr.watch(store.context.headSubspace.headKey(storeId))
+                tr
+                    .watch(store.context.headSubspace.headKey(storeId))
+                    .thenApply { Unit } // to avoid Java's Void
             )
         } else {
             ReadResult.BatchResult(this)
@@ -201,6 +203,6 @@ class FdbFactStreamer(
 
     private sealed interface ReadResult {
         data class BatchResult(val batch: List<FdbFact>) : ReadResult
-        data class WatchResult(val watch: CompletableFuture<Void>) : ReadResult
+        data class WatchResult(val watch: CompletableFuture<Unit>) : ReadResult
     }
 }

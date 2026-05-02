@@ -89,13 +89,13 @@ class MemoryFactStore : FactStore {
         val storeId = resolveId(request.storeName) ?: return AppendResult.StoreNotFound
 
         // Check idempotency
-        val idempotencySet = idempotencyKeys[storeId]!!
+        val idempotencySet = idempotencyKeys[storeId] ?: throw IllegalStateException("Idempotency set should be initialized for store $storeId")
         if (idempotencySet.contains(request.idempotencyKey.value)) {
             return AppendResult.AlreadyApplied
         }
 
         // Check for duplicate fact IDs
-        val store = facts[storeId]!!
+        val store = facts[storeId] ?: throw IllegalStateException("Facts list should be initialized for store $storeId")
         val existingIds = store.map { it.id.uuid }.toSet()
         val duplicates = request.facts.filter { it.id.uuid in existingIds }
         if (duplicates.isNotEmpty()) {
@@ -108,7 +108,7 @@ class MemoryFactStore : FactStore {
         }
 
         // Append facts
-        facts[storeId]!!.addAll(request.facts)
+        facts[storeId]?.addAll(request.facts)
         idempotencySet.add(request.idempotencyKey.value)
 
         AppendResult.Appended
@@ -203,19 +203,19 @@ class MemoryFactStore : FactStore {
         return when (condition) {
             AppendCondition.None -> true
             is AppendCondition.ExpectedLastFact -> {
-                val store = facts[storeId] ?: return false
+                val store = facts[storeId]?.toList() ?: return false
                 val lastFact = store.findLast { it.subjectRef == condition.subjectRef }
                 lastFact?.id == condition.expectedLastFactId
             }
             is AppendCondition.ExpectedMultiSubjectLastFact -> {
-                val store = facts[storeId] ?: return false
+                val store = facts[storeId]?.toList() ?: return false
                 condition.expectations.all { (subjectRef, expectedId) ->
                     val lastFact = store.findLast { it.subjectRef == subjectRef }
                     lastFact?.id == expectedId
                 }
             }
             is AppendCondition.TagQueryBased -> {
-                val store = facts[storeId] ?: return false
+                val store = facts[storeId]?.toList() ?: return false
                 val startIndex = if (condition.after != null) {
                     val index = store.indexOfFirst { it.id == condition.after }
                     if (index == -1) return false

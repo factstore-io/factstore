@@ -1,6 +1,6 @@
 package io.factstore.core
 
-interface StoreFactory {
+fun interface StoreFactory {
 
     suspend fun handle(request: CreateStoreRequest): CreateStoreResult
 

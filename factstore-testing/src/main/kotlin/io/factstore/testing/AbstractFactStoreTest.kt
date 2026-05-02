@@ -21,6 +21,10 @@ abstract class AbstractFactStoreTest {
     private val nonExistingStore = StoreName("non-existing-store")
     private lateinit var store: FactStore
 
+    private val alicePayload = """{ "username": "Alice" }""".toFactPayload()
+    private val bobPayload = """{ "username": "Bob" }""".toFactPayload()
+    private val charliePayload = """{ "username": "Charlie" }""".toFactPayload()
+
     abstract fun reset()
 
     abstract fun initializeFactStore(): FactStore
@@ -139,7 +143,7 @@ abstract class AbstractFactStoreTest {
                 id = "ALICE",
             ),
             type = "USER_CREATED".toFactType(),
-            payload = """{ "username": "Alice" }""".toFactPayload(),
+            payload = alicePayload,
             appendedAt = now.minusSeconds(60) // 1 minute ago
         )
 
@@ -161,7 +165,7 @@ abstract class AbstractFactStoreTest {
                 id = "BOB",
             ),
             type = "USER_DELETED".toFactType(),
-            payload = """{ "username": "Bob" }""".toFactPayload(),
+            payload = bobPayload,
             appendedAt = now.plusSeconds(60) // 1 minute in the future
         )
 
@@ -207,7 +211,7 @@ abstract class AbstractFactStoreTest {
                 id = "ALICE",
             ),
             type = "USER_CREATED".toFactType(),
-            payload = """{ "username": "Alice" }""".toFactPayload(),
+            payload = alicePayload,
             appendedAt = Instant.now()
         )
 
@@ -239,7 +243,7 @@ abstract class AbstractFactStoreTest {
                 id = "ALICE",
             ),
             type = "USER_LOCKED".toFactType(),
-            payload = """{ "username": "Alice" }""".toFactPayload(),
+            payload = alicePayload,
             appendedAt = Instant.now()
         )
 
@@ -295,7 +299,7 @@ abstract class AbstractFactStoreTest {
                 id = "ALICE",
             ),
             type = "USER_CREATED".toFactType(),
-            payload = """{ "username": "Alice" }""".toFactPayload(),
+            payload = alicePayload,
             appendedAt = Instant.now()
         )
 
@@ -306,7 +310,7 @@ abstract class AbstractFactStoreTest {
                 id = "BOB",
             ),
             type = "USER_CREATED".toFactType(),
-            payload = """{ "username": "BOB" }""".toFactPayload(),
+            payload = bobPayload,
             appendedAt = Instant.now()
         )
 
@@ -317,7 +321,7 @@ abstract class AbstractFactStoreTest {
                 id = "ALICE",
             ),
             type = "USER_LOCKED".toFactType(),
-            payload = """{ "username": "Alice" }""".toFactPayload(),
+            payload = alicePayload,
             appendedAt = Instant.now()
         )
 
@@ -353,7 +357,7 @@ abstract class AbstractFactStoreTest {
                 id = "ALICE",
             ),
             type = "USER_CREATED".toFactType(),
-            payload = """{ "username": "Alice" }""".toFactPayload(),
+            payload = alicePayload,
             appendedAt = Instant.now()
         )
 
@@ -364,7 +368,7 @@ abstract class AbstractFactStoreTest {
                 id = "BOB",
             ),
             type = "USER_CREATED".toFactType(),
-            payload = """{ "username": "BOB" }""".toFactPayload(),
+            payload = bobPayload,
             appendedAt = Instant.now()
         )
 
@@ -375,7 +379,7 @@ abstract class AbstractFactStoreTest {
                 id = "ALICE",
             ),
             type = "USER_LOCKED".toFactType(),
-            payload = """{ "username": "Alice" }""".toFactPayload(),
+            payload = alicePayload,
             appendedAt = Instant.now()
         )
 
@@ -421,7 +425,7 @@ abstract class AbstractFactStoreTest {
                 id = "ALICE",
             ),
             type = "USER_CREATED".toFactType(),
-            payload = """{ "username": "Alice" }""".toFactPayload(),
+            payload = alicePayload,
             appendedAt = Instant.now(),
             metadata = mapOf("test" to "123", "loc" to "world")
         )
@@ -433,7 +437,7 @@ abstract class AbstractFactStoreTest {
                 id = "BOB",
             ),
             type = "USER_CREATED".toFactType(),
-            payload = """{ "username": "BOB" }""".toFactPayload(),
+            payload = bobPayload,
             appendedAt = Instant.now()
         )
 
@@ -456,7 +460,7 @@ abstract class AbstractFactStoreTest {
                 id = "ALICE",
             ),
             type = "USER_CREATED".toFactType(),
-            payload = """{ "username": "Alice" }""".toFactPayload(),
+            payload = alicePayload,
             appendedAt = Instant.now(),
             metadata = emptyMap(),
             tags = mapOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("eu"))
@@ -469,7 +473,7 @@ abstract class AbstractFactStoreTest {
                 id = "BOB",
             ),
             type = "USER_CREATED".toFactType(),
-            payload = """{ "username": "Bob" }""".toFactPayload(),
+            payload = bobPayload,
             appendedAt = Instant.now(),
             metadata = emptyMap(),
             tags = mapOf(TagKey("role") to TagValue("user"), TagKey("region") to TagValue("us"))
@@ -482,7 +486,7 @@ abstract class AbstractFactStoreTest {
                 id = "CHARLIE",
             ),
             type = "USER_CREATED".toFactType(),
-            payload = """{ "username": "Charlie" }""".toFactPayload(),
+            payload = charliePayload,
             appendedAt = Instant.now(),
             metadata = emptyMap(),
             tags = mapOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("us"))
@@ -604,7 +608,7 @@ abstract class AbstractFactStoreTest {
 
     @OptIn(FlowPreview::class)
     @Test
-    fun testFactStreaming_startPositionEnd() = runBlocking {
+    fun testFactStreamingStartPositionEnd() = runBlocking {
 
         // Append initial facts BEFORE starting the stream
         val initialFact1 = createUserFact("ALICE", "Alice", "admin", "eu")
@@ -690,7 +694,7 @@ abstract class AbstractFactStoreTest {
                 id = "ALICE",
             ),
             type = "USER_CREATED".toFactType(),
-            payload = """{ "username": "Alice" }""".toFactPayload(),
+            payload = alicePayload,
             appendedAt = Instant.now(),
             metadata = emptyMap(),
             tags = mapOf(TagKey("username") to TagValue("alice"), TagKey("region") to TagValue("eu"))
@@ -703,7 +707,7 @@ abstract class AbstractFactStoreTest {
                 id = "BOB",
             ),
             type = "USER_CREATED".toFactType(),
-            payload = """{ "username": "Bob" }""".toFactPayload(),
+            payload = bobPayload,
             appendedAt = Instant.now(),
             metadata = emptyMap(),
             tags = mapOf(TagKey("username") to TagValue("bob"), TagKey("region") to TagValue("us"))
@@ -716,7 +720,7 @@ abstract class AbstractFactStoreTest {
                 id = "CHARLIE",
             ),
             type = "USER_CREATED".toFactType(),
-            payload = """{ "username": "Charlie" }""".toFactPayload(),
+            payload = charliePayload,
             appendedAt = Instant.now(),
             metadata = emptyMap(),
             tags = mapOf(TagKey("username") to TagValue("charlie"), TagKey("region") to TagValue("us"))
@@ -860,7 +864,7 @@ abstract class AbstractFactStoreTest {
             id = FactId.generate(),
             subjectRef = SubjectRef(type = "USER", id = "ALICE"),
             type = "USER_CREATED".toFactType(),
-            payload = """{ "username": "Alice" }""".toFactPayload(),
+            payload = alicePayload,
             appendedAt = Instant.now(),
             metadata = emptyMap(),
             tags = mapOf(TagKey("username") to TagValue("alice"), TagKey("region") to TagValue("eu"))
@@ -870,7 +874,7 @@ abstract class AbstractFactStoreTest {
             id = FactId.generate(),
             subjectRef = SubjectRef(type = "USER", id = "BOB"),
             type = "USER_UPDATED".toFactType(),
-            payload = """{ "username": "Bob" }""".toFactPayload(),
+            payload = bobPayload,
             appendedAt = Instant.now(),
             metadata = emptyMap(),
             tags = mapOf(TagKey("username") to TagValue("bob"), TagKey("region") to TagValue("us"))
@@ -880,7 +884,7 @@ abstract class AbstractFactStoreTest {
             id = FactId.generate(),
             subjectRef = SubjectRef(type = "USER", id = "CHARLIE"),
             type = "USER_CREATED".toFactType(),
-            payload = """{ "username": "Charlie" }""".toFactPayload(),
+            payload = charliePayload,
             appendedAt = Instant.now(),
             metadata = emptyMap(),
             tags = mapOf(TagKey("username") to TagValue("charlie"), TagKey("region") to TagValue("us"))
@@ -912,7 +916,7 @@ abstract class AbstractFactStoreTest {
             id = FactId.generate(),
             subjectRef = SubjectRef(type = "USER", id = "ALICE"),
             type = "USER_CREATED".toFactType(),
-            payload = """{ "username": "Alice" }""".toFactPayload(),
+            payload = alicePayload,
             appendedAt = Instant.now(),
             metadata = emptyMap(),
             tags = mapOf(TagKey("username") to TagValue("alice"), TagKey("region") to TagValue("eu"))
@@ -922,7 +926,7 @@ abstract class AbstractFactStoreTest {
             id = FactId.generate(),
             subjectRef = SubjectRef(type = "USER", id = "BOB"),
             type = "USER_UPDATED".toFactType(),
-            payload = """{ "username": "Bob" }""".toFactPayload(),
+            payload = bobPayload,
             appendedAt = Instant.now(),
             metadata = emptyMap(),
             tags = mapOf(TagKey("username") to TagValue("bob"), TagKey("region") to TagValue("us"))
@@ -932,7 +936,7 @@ abstract class AbstractFactStoreTest {
             id = FactId.generate(),
             subjectRef = SubjectRef(type = "USER", id = "CHARLIE"),
             type = "USER_CREATED".toFactType(),
-            payload = """{ "username": "Charlie" }""".toFactPayload(),
+            payload = charliePayload,
             appendedAt = Instant.now(),
             metadata = emptyMap(),
             tags = mapOf(TagKey("username") to TagValue("charlie"), TagKey("region") to TagValue("us"))
@@ -970,7 +974,7 @@ abstract class AbstractFactStoreTest {
             id = FactId.generate(),
             subjectRef = SubjectRef(type = "USER", id = "ALICE"),
             type = "USER_CREATED".toFactType(),
-            payload = """{ "username": "Alice" }""".toFactPayload(),
+            payload = alicePayload,
             appendedAt = Instant.now(),
             metadata = emptyMap(),
             tags = mapOf(TagKey("username") to TagValue("alice"), TagKey("region") to TagValue("eu"))
@@ -980,7 +984,7 @@ abstract class AbstractFactStoreTest {
             id = FactId.generate(),
             subjectRef = SubjectRef(type = "USER", id = "BOB"),
             type = "USER_UPDATED".toFactType(),
-            payload = """{ "username": "Bob" }""".toFactPayload(),
+            payload = bobPayload,
             appendedAt = Instant.now(),
             metadata = emptyMap(),
             tags = mapOf(TagKey("username") to TagValue("bob"), TagKey("region") to TagValue("us"))
@@ -990,7 +994,7 @@ abstract class AbstractFactStoreTest {
             id = FactId.generate(),
             subjectRef = SubjectRef(type = "USER", id = "CHARLIE"),
             type = "USER_CREATED".toFactType(),
-            payload = """{ "username": "Charlie" }""".toFactPayload(),
+            payload = charliePayload,
             appendedAt = Instant.now(),
             metadata = emptyMap(),
             tags = mapOf(TagKey("username") to TagValue("charlie"), TagKey("region") to TagValue("us"))
@@ -1027,7 +1031,7 @@ abstract class AbstractFactStoreTest {
             id = FactId.generate(),
             subjectRef = SubjectRef(type = "USER", id = "ALICE"),
             type = "USER_CREATED".toFactType(),
-            payload = """{ "username": "Alice" }""".toFactPayload(),
+            payload = alicePayload,
             appendedAt = Instant.now(),
             metadata = emptyMap(),
             tags = mapOf(TagKey("username") to TagValue("alice"), TagKey("region") to TagValue("eu"))
@@ -1181,7 +1185,7 @@ abstract class AbstractFactStoreTest {
                 id = "ALICE",
             ),
             type = "USER_CREATED".toFactType(),
-            payload = """{ "username": "Alice" }""".toFactPayload(),
+            payload = alicePayload,
             appendedAt = Instant.now(),
             tags = mapOf(
                 TagKey("user") to TagValue("ALICE"),
@@ -1219,7 +1223,7 @@ abstract class AbstractFactStoreTest {
                 id = "ALICE",
             ),
             type = "USER_LOCKED".toFactType(),
-            payload = """{ "username": "ALICE" }""".toFactPayload(),
+            payload = alicePayload,
             appendedAt = Instant.now(),
             tags = mapOf(
                 TagKey("user") to TagValue("ALICE"),
@@ -1262,7 +1266,7 @@ abstract class AbstractFactStoreTest {
                 id = "BOB",
             ),
             type = "USER_CREATED".toFactType(),
-            payload = """{ "username": "BOB" }""".toFactPayload(),
+            payload = bobPayload,
             appendedAt = Instant.now(),
             tags = mapOf(
                 TagKey("user") to TagValue("BOB"),
@@ -1298,7 +1302,7 @@ abstract class AbstractFactStoreTest {
                 id = "BOB",
             ),
             type = "USER_LOCKED".toFactType(),
-            payload = """{ "username": "BOB" }""".toFactPayload(),
+            payload = bobPayload,
             appendedAt = Instant.now(),
             tags = mapOf(
                 TagKey("user") to TagValue("BOB"),
@@ -1342,7 +1346,7 @@ abstract class AbstractFactStoreTest {
                 id = "BOB",
             ),
             type = "USER_LOCKED".toFactType(),
-            payload = """{ "username": "BOB" }""".toFactPayload(),
+            payload = bobPayload,
             appendedAt = Instant.now(),
             tags = emptyMap()
         )
@@ -1354,7 +1358,7 @@ abstract class AbstractFactStoreTest {
                 id = "ALICE",
             ),
             type = "USER_LOCKED".toFactType(),
-            payload = """{ "username": "ALICE" }""".toFactPayload(),
+            payload = alicePayload,
             appendedAt = Instant.now(),
             tags = emptyMap()
         )
