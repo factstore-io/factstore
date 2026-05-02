@@ -35,30 +35,40 @@ class FdbFactAppender(
                 // check fact store exists
                 store.context.lookUpStoreIdByName(request.storeName).thenCompose { storeId ->
                     if (storeId == null) {
-                        return@thenCompose CompletableFuture.completedFuture(AppendResult.StoreNotFound)
+                        CompletableFuture.completedFuture(AppendResult.StoreNotFound)
                     } else {
-                        with(storeId) {
-                            val idempotencyKey = request.idempotencyKeyBytes()
-
-                            tr[idempotencyKey].thenCompose { existing ->
-                                if (existing != null) {
-                                    CompletableFuture.completedFuture(AppendResult.AlreadyApplied)
-                                } else {
-                                    with(storeId) {
-                                        request.validate().thenCompose {
-                                            request.appendNew()
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                        appendToStore(storeId, request)
                     }
                 }
             }
         }.await()
 
+    context(tr: Transaction)
+    private fun appendToStore(
+        storeId: StoreId,
+        request: AppendRequest,
+    ): CompletableFuture<AppendResult> = with(storeId) {
+        val idempotencyKey = request.idempotencyKeyBytes()
+
+        tr[idempotencyKey].thenCompose { existing ->
+            if (existing != null) {
+                CompletableFuture.completedFuture(AppendResult.AlreadyApplied)
+            } else {
+                with(storeId) {
+                    request.checkDuplicatedFactIds().thenCompose { duplicateFactIds ->
+                        if (duplicateFactIds.isNotEmpty()) {
+                            CompletableFuture.completedFuture(AppendResult.DuplicateFactIds(duplicateFactIds))
+                        } else {
+                            request.appendNew()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     context(transaction: Transaction, storeId: StoreId)
-    private fun AppendRequest.validate(): CompletableFuture<Unit> {
+    private fun AppendRequest.checkDuplicatedFactIds(): CompletableFuture<List<FactId>> {
         val checks: List<CompletableFuture<FactId?>> = facts.map { fact ->
             store.context.factPositionIndexSubspace.exists(storeId, fact.id).thenApply { exists ->
                 if (exists) fact.id else null
@@ -69,9 +79,7 @@ class FdbFactAppender(
             .allOf(*checks.toTypedArray())
             .thenApply {
                 val duplicatedFactIds = checks.mapNotNull { it.resultNow() }
-                if (duplicatedFactIds.isNotEmpty()) {
-                    throw DuplicateFactIdException(duplicatedFactIds)
-                }
+                duplicatedFactIds
             }
     }
 

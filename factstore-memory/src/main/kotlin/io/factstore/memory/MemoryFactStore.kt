@@ -99,7 +99,7 @@ class MemoryFactStore : FactStore {
         val existingIds = store.map { it.id.uuid }.toSet()
         val duplicates = request.facts.filter { it.id.uuid in existingIds }
         if (duplicates.isNotEmpty()) {
-            throw DuplicateFactIdException(duplicates.map { it.id })
+            return AppendResult.DuplicateFactIds(duplicates.map { it.id })
         }
 
         // Check append condition
