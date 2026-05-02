@@ -20,6 +20,7 @@ class StreamResource(
     @GET
     @RestStreamElementType(APPLICATION_JSON)
     @Produces(SERVER_SENT_EVENTS)
+    @Suppress("kotlin:S6309")
     suspend fun streamFacts(
         @PathParam("storeName") storeName: String,
         @QueryParam("after") after: UUID? = null,

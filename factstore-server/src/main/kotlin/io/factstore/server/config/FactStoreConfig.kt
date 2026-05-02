@@ -13,7 +13,7 @@ interface FactStoreConfig {
 
     fun foundationdb(): FoundationDbConfig
 
-    interface StorageConfig {
+    fun interface StorageConfig {
         fun type(): String
     }
 
