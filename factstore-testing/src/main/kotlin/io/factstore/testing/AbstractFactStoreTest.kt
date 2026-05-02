@@ -1440,47 +1440,29 @@ abstract class AbstractFactStoreTest {
 
         store.append(testStore, fact1)
 
-        assertDuplicateFactIds(
-            expected = listOf(factId)
-        ) {
-            store.append(testStore, fact2)
-        }
+        val appendResult2 = store.append(testStore, fact2)
+        assertThat(appendResult2)
+            .isInstanceOf(AppendResult.DuplicateFactIds::class.java)
+            .matches {
+                val duplicateResult = it as AppendResult.DuplicateFactIds
+                assertThat(duplicateResult.factIds)
+                    .containsExactly(factId)
+                true
+            }
 
-        assertDuplicateFactIds(
-            expected = listOf(factId)
-        ) {
-            store.append(testStore, listOf(fact2))
-        }
-
-        assertDuplicateFactIds(
-            expected = listOf(factId)
-        ) {
-            store.append(
-                AppendRequest(
-                    storeName = testStore,
-                    facts = listOf(fact2),
-                    idempotencyKey = IdempotencyKey(),
-                    condition = AppendCondition.None
-                )
+        store.append(
+            AppendRequest(
+                storeName = testStore,
+                facts = listOf(fact2),
+                idempotencyKey = IdempotencyKey(),
+                condition = AppendCondition.None
             )
+        ).let {
+            assertThat(it).isInstanceOf(AppendResult.DuplicateFactIds::class.java)
+            val duplicateResult = it as AppendResult.DuplicateFactIds
+            assertThat(duplicateResult.factIds)
+                .containsExactly(factId)
         }
-    }
-
-    private fun assertDuplicateFactIds(
-        expected: List<FactId>,
-        block: suspend () -> Unit
-    ) {
-        val exception = catchThrowable {
-            runBlocking { block() }
-        }
-
-        assertThat(exception)
-            .isInstanceOf(DuplicateFactIdException::class.java)
-
-        val duplicateException = exception as DuplicateFactIdException
-
-        assertThat(duplicateException.factIds)
-            .containsExactlyElementsOf(expected)
     }
 
 }
