@@ -11,7 +11,7 @@ testcontainers-junit-jupiter = "1.21.4"
 testcontainers-foundationdb = "1.1.0"
 fmodel = "3.7.0"
 quarkusVersion = "3.35.1"
-kotlin-logging = "7.0.3"
+kotlin-logging = "8.0.02"
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
