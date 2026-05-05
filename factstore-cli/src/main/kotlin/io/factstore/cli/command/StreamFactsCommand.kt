@@ -1,0 +1,88 @@
+package io.factstore.cli.command
+
+import io.factstore.cli.client.FactHttp
+import io.factstore.cli.client.FactStoreClient
+import io.smallrye.mutiny.coroutines.asFlow
+import io.vertx.core.http.HttpClosedException
+import jakarta.inject.Inject
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.runBlocking
+import picocli.CommandLine.*
+import java.time.temporal.ChronoUnit.SECONDS
+import java.util.*
+import java.util.concurrent.Callable
+import kotlin.coroutines.cancellation.CancellationException
+import kotlin.text.Charsets.UTF_8
+
+@Command(
+    name = "stream",
+    description = ["Stream facts from a store in real-time (similar to tail -f)"]
+)
+class StreamFactsCommand : Callable<Int> {
+
+    @Inject
+    lateinit var client: FactStoreClient
+
+    @Parameters(
+        index = "0",
+        arity = "1",
+        description = ["The name of the store to stream from"]
+    )
+    lateinit var storeName: String
+
+    @ArgGroup(
+        exclusive = true,
+        heading = "Start position options:%n"
+    )
+    var startPosition = StartPosition()
+
+    class StartPosition {
+
+        @Option(
+            names = ["--from"],
+            description = ["Start from: 'beginning' or 'end'"],
+            showDefaultValue = Help.Visibility.ALWAYS,
+            defaultValue = "end"
+        )
+        var from: FromOption? = null
+
+        @Option(
+            names = ["--after"],
+            description = ["Start after a specific Fact UUID"]
+        )
+        var after: UUID? = null
+
+    }
+
+    enum class FromOption { beginning, end }
+
+    override fun call(): Int = runBlocking {
+        val fromValue = startPosition.from?.name
+        val afterValue = startPosition.after
+
+        client.streamFacts(storeName, fromValue, afterValue)
+            .asFlow()
+            .catch { cause -> cause.handleStreamTermination() }
+            .collect { fact -> fact.print() }
+
+        ExitCode.OK
+    }
+
+    private fun Throwable.handleStreamTermination() {
+        val underlying = (this as? CancellationException)?.cause ?: this
+        when (underlying) {
+            is HttpClosedException -> return  // normal termination (user Ctrl+C or server closed stream)
+            else -> throw underlying
+        }
+    }
+
+    private fun FactHttp.print() {
+        println(
+            "[%s] %-15s | %s".format(
+                appendedAt?.truncatedTo(SECONDS),
+                type,
+                String(payload.data, charset = UTF_8)
+            )
+        )
+    }
+}
