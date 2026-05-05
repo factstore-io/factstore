@@ -1,0 +1,23 @@
+quarkus:
+  banner:
+    enabled: false
+  log:
+    level: WARN
+    category:
+      "io.factstore.cli":
+        level: INFO
+    console:
+      format: "%m%n"
+  package:
+    jar:
+      enabled: true
+
+"%dev":
+  quarkus:
+    log:
+      level: INFO
+      category:
+        "io.factstore.cli":
+          level: DEBUG
+      console:
+        format: "%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] (%t) %s%e%n"
