@@ -20,7 +20,8 @@ interface FactStore :
     FactFinder,
     FactStreamer,
     StoreFactory,
-    StoreFinder
+    StoreFinder,
+    StoreRemover
 
 /**
  * Factory function to create a [FactStore] from separate components.
@@ -42,6 +43,7 @@ interface FactStore :
  * @param factStreamer the component responsible for streaming facts
  * @param storeFactory the component responsible for creating fact stores
  * @param storeFinder the component responsible for finding fact stores
+ * @param storeRemover the component responsible for removing fact stores
  * @return a [FactStore] instance delegating operations to the provided components
  *
  * @author Domenic Cassisi
@@ -52,10 +54,12 @@ fun FactStore(
     factStreamer: FactStreamer,
     storeFactory: StoreFactory,
     storeFinder: StoreFinder,
+    storeRemover: StoreRemover,
 ): FactStore =
     object : FactStore,
         FactAppender by factAppender,
         FactFinder by factFinder,
         FactStreamer by factStreamer,
         StoreFactory by storeFactory,
-        StoreFinder by storeFinder {}
+        StoreFinder by storeFinder,
+        StoreRemover by storeRemover {}

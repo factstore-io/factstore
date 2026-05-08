@@ -11,6 +11,8 @@ quarkus:
   package:
     jar:
       enabled: true
+  rest-client:
+    user-agent: FactStore-CLI/1.0
 
 "%dev":
   quarkus:
@@ -21,3 +23,10 @@ quarkus:
           level: DEBUG
       console:
         format: "%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] (%t) %s%e%n"
+    rest-client:
+      logging:
+        scope: request-response
+        body-limit: 100
+      extensions-api:
+        logging:
+          scope: all

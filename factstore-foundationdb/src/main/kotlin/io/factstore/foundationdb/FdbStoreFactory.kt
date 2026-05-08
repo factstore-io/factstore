@@ -11,19 +11,21 @@ class FdbStoreFactory(
     override suspend fun handle(request: CreateStoreRequest): CreateStoreResult {
         // create...
         return store.db.runAsync { tr ->
-            // check if name is already taken
-            store.context.lookUpFactstoreIdByName(request.storeName, tr).thenApply { id ->
-                if (id != null) {
-                    return@thenApply CreateStoreResult.NameAlreadyExists(request.storeName)
-                } else {
-                    val id = StoreId.generate()
-                    val metadata = FdbStoreMetadata(
-                        storeId = id.uuid,
-                        name = request.storeName.value,
-                        createdAtEpochSeconds = Instant.now().epochSecond
-                    )
-                    store.context.saveMetadata(metadata, tr)
-                    CreateStoreResult.Created(id)
+            with(tr) {
+                // check if name is already taken
+                store.context.lookUpStoreIdByName(request.storeName).thenApply { id ->
+                    if (id != null) {
+                        return@thenApply CreateStoreResult.NameAlreadyExists(request.storeName)
+                    } else {
+                        val id = StoreId.generate()
+                        val metadata = FdbStoreMetadata(
+                            storeId = id.uuid,
+                            name = request.storeName.value,
+                            createdAtEpochSeconds = Instant.now().epochSecond
+                        )
+                        store.context.saveMetadata(metadata, tr)
+                        CreateStoreResult.Created(id)
+                    }
                 }
             }
         }.await()

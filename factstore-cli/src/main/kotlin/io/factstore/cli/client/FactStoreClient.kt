@@ -2,6 +2,7 @@ package io.factstore.cli.client
 
 import io.smallrye.mutiny.Multi
 import jakarta.ws.rs.Consumes
+import jakarta.ws.rs.DELETE
 import jakarta.ws.rs.GET
 import jakarta.ws.rs.POST
 import jakarta.ws.rs.Path
@@ -43,6 +44,14 @@ interface FactStoreClient {
         @PathParam("store") store: String,
         request: AppendHttpRequest
     )
+
+    @DELETE
+    @Consumes(APPLICATION_JSON)
+    @Produces(APPLICATION_JSON)
+    @Path("/stores/{store}")
+    fun removeStore(
+        @PathParam("store") storeName: String
+    ): Response
 
 }
 

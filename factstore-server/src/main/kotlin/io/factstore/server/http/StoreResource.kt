@@ -3,6 +3,8 @@ package io.factstore.server.http
 import io.factstore.core.CreateStoreRequest
 import io.factstore.core.CreateStoreResult
 import io.factstore.core.FactStore
+import io.factstore.core.RemoveStoreRequest
+import io.factstore.core.RemoveStoreResult
 import io.factstore.core.StoreMetadata
 import io.factstore.core.StoreName
 import jakarta.validation.Valid
@@ -63,4 +65,21 @@ class StoreResource(
         }
         return Response.ok(stores).build()
     }
+
+    @DELETE
+    @Consumes(APPLICATION_JSON)
+    @Produces(APPLICATION_JSON)
+    @Path("/{name}")
+    suspend fun removeStore(
+        @PathParam("name") name: String
+    ): Response =
+        store
+            .handle(RemoveStoreRequest(StoreName(name)))
+            .toResponse()
+
+    private fun RemoveStoreResult.toResponse(): Response = when (this) {
+        is RemoveStoreResult.StoreRemoved -> Response.ok().build()
+        is RemoveStoreResult.StoreNotFound -> storeNotFoundError(storeName)
+    }
+
 }

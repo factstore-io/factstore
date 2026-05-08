@@ -12,6 +12,8 @@ factstore store list
 factstore fact append orders order-placed '{"orderId": "12345", "amount": 100.0}'
 
 factstore fact stream orders --from=beginning
+
+factstore store delete orders
 ```
 
 
