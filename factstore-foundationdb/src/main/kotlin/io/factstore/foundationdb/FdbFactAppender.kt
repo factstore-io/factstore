@@ -35,7 +35,7 @@ class FdbFactAppender(
                 // check fact store exists
                 store.context.lookUpStoreIdByName(request.storeName).thenCompose { storeId ->
                     if (storeId == null) {
-                        CompletableFuture.completedFuture(AppendResult.StoreNotFound)
+                        CompletableFuture.completedFuture(AppendResult.StoreNotFound(request.storeName))
                     } else {
                         appendToStore(storeId, request)
                     }

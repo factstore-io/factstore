@@ -33,7 +33,7 @@ sealed interface AppendResult {
      * Indicates that the append operation failed because the specified fact store does not
      * exist. This result is returned when the fact store identified in the append request cannot be found.
      */
-    data object StoreNotFound : AppendResult
+    data class StoreNotFound(val storeName: StoreName) : AppendResult
 
     /**
      * Indicates that the append operation failed because at least one fact ID in the request

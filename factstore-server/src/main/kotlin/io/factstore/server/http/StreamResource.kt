@@ -1,6 +1,8 @@
 package io.factstore.server.http
 
 import io.factstore.core.*
+import io.factstore.server.http.StreamApiException.FactNotFoundException
+import io.factstore.server.http.StreamApiException.StoreNotFoundException
 import jakarta.ws.rs.*
 import jakarta.ws.rs.core.MediaType.APPLICATION_JSON
 import jakarta.ws.rs.core.MediaType.SERVER_SENT_EVENTS
@@ -45,18 +47,22 @@ class StreamResource(
 }
 
 private fun StreamResult.toResponse(): Flow<FactHttp> = when (this) {
-    is StreamResult.StoreNotFound -> throw NotFoundException("Fact store not found")
-    is StreamResult.InvalidStartPosition -> throw InvalidFactIdException(this.id)
+    is StreamResult.StoreNotFound -> throw StoreNotFoundException(storeName)
+    is StreamResult.FactIdNotFound -> throw FactNotFoundException(this.id)
     is StreamResult.FactStream -> this.stream.map { it.toFactHttp() }
 }
 
-class InvalidFactIdException(val factId: FactId) : RuntimeException()
+sealed class StreamApiException : RuntimeException() {
+    data class FactNotFoundException(val factId: FactId) : StreamApiException()
+    data class StoreNotFoundException(val storeName: StoreName) : StreamApiException()
+}
 
 @Provider
-class InvalidFactIdExceptionMapper : ExceptionMapper<InvalidFactIdException> {
+class StreamApiExceptionExceptionMapper : ExceptionMapper<StreamApiException> {
 
-    override fun toResponse(exception: InvalidFactIdException): Response? {
-        return Response.status(422).entity("${exception.factId.uuid} does not exist" ).build()
+    override fun toResponse(exception: StreamApiException): Response = when (exception) {
+        is StoreNotFoundException -> storeNotFoundError(exception.storeName)
+        is FactNotFoundException -> factNotFoundError(exception.factId)
     }
 
 }

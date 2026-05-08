@@ -2,5 +2,5 @@ package io.factstore.core
 
 sealed interface FindInTimeRangeResult {
     data class Found(val facts: List<Fact>): FindInTimeRangeResult
-    data object StoreNotFound: FindInTimeRangeResult
+    data class StoreNotFound(val storeName: StoreName): FindInTimeRangeResult
 }

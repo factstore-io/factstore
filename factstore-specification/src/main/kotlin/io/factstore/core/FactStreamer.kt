@@ -79,7 +79,8 @@ data class StreamingOptions(
 sealed interface StreamResult {
     @JvmInline
     value class FactStream(val stream: Flow<Fact>) : StreamResult
-    data object StoreNotFound : StreamResult
     @JvmInline
-    value class InvalidStartPosition(val id: FactId) : StreamResult
+    value class StoreNotFound(val storeName: StoreName) : StreamResult
+    @JvmInline
+    value class FactIdNotFound(val id: FactId) : StreamResult
 }

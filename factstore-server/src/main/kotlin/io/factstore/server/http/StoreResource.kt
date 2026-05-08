@@ -11,7 +11,7 @@ import jakarta.ws.rs.core.MediaType.APPLICATION_JSON
 import jakarta.ws.rs.core.Response
 
 @Path("/v1/stores")
-class FactStoreResource(
+class StoreResource(
     private val store: FactStore,
 ) {
 
@@ -19,22 +19,18 @@ class FactStoreResource(
     @Consumes(APPLICATION_JSON)
     @Produces(APPLICATION_JSON)
     suspend fun createStore(
-        @Valid request: CreateFactStoreHttpRequest
+        @Valid request: CreateStoreHttpRequest
     ): Response = store
         .handle(CreateStoreRequest(StoreName(request.name)))
         .toResponse()
 
-    private fun CreateStoreResult.toResponse(): Response {
-        return when (this) {
-            is CreateStoreResult.Created -> Response
-                .status(Response.Status.CREATED)
-                .entity(id.uuid)
-                .build()
-            is CreateStoreResult.NameAlreadyExists -> Response
-                .status(Response.Status.CONFLICT)
-                .entity("A fact store with the name '${storeName}' already exists.")
-                .build()
-        }
+    private fun CreateStoreResult.toResponse(): Response = when (this) {
+        is CreateStoreResult.Created -> Response
+            .status(Response.Status.CREATED)
+            .entity(mapOf("id" to id.uuid))
+            .build()
+
+        is CreateStoreResult.NameAlreadyExists -> storeAlreadyExistsError(storeName)
     }
 
     @HEAD

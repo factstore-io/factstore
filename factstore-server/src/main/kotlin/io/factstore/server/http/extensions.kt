@@ -21,8 +21,12 @@ import io.factstore.core.toTagValue
 import java.time.Instant
 
 
-fun AppendResult.toResponse(): Response {
-    return Response.ok(this::class.qualifiedName).build()
+fun AppendResult.toResponse(): Response = when(this) {
+    is AppendResult.Appended -> Response.ok().build()
+    is AppendResult.AlreadyApplied ->  Response.ok().build()
+    is AppendResult.AppendConditionViolated -> appendConditionViolatedError()
+    is AppendResult.StoreNotFound -> storeNotFoundError(storeName)
+    is AppendResult.DuplicateFactIds -> duplicateFactIdsError(factIds)
 }
 
 fun AppendHttpRequest.toAppendRequest(storeName: StoreName): AppendRequest = AppendRequest(
