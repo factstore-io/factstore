@@ -1,19 +1,10 @@
 package io.factstore.server.http
 
-import io.factstore.core.FactStore
-import io.factstore.core.FindByIdResult
-import io.factstore.core.FindBySubjectResult
-import io.factstore.core.FindByTagQueryResult
-import io.factstore.core.FindInTimeRangeResult
-import io.factstore.core.StoreName
-import io.factstore.core.SubjectRef
-import io.factstore.core.TimeRange
-import io.factstore.core.toFactId
+import io.factstore.core.*
 import jakarta.validation.Valid
 import jakarta.ws.rs.*
 import jakarta.ws.rs.core.MediaType.APPLICATION_JSON
 import jakarta.ws.rs.core.Response
-import jakarta.ws.rs.core.Response.Status.NOT_FOUND
 import java.time.Instant
 import java.util.*
 
@@ -77,31 +68,29 @@ class QueryResource(
 
 }
 
-private fun FindByIdResult.toResponse(): Response {
-    return when (this) {
-        is FindByIdResult.Found -> Response.ok(fact.toFactHttp()).build()
-        is FindByIdResult.NotFound -> Response.status(NOT_FOUND).build()
-        is FindByIdResult.StoreNotFound -> Response.status(NOT_FOUND).build()
-    }
+private fun FindByIdResult.toResponse(): Response = when (this) {
+    is FindByIdResult.Found -> Response.ok(fact.toFactHttp()).build()
+    is FindByIdResult.NotFound -> factNotFoundError(id)
+    is FindByIdResult.StoreNotFound -> storeNotFoundError(storeName)
 }
 
 private fun FindInTimeRangeResult.toResponse(): Response {
     return when (this) {
         is FindInTimeRangeResult.Found -> Response.ok(facts.map { it.toFactHttp() }).build()
-        is FindInTimeRangeResult.StoreNotFound -> Response.status(NOT_FOUND).build()
+        is FindInTimeRangeResult.StoreNotFound -> storeNotFoundError(storeName)
     }
 }
 
 private fun FindBySubjectResult.toResponse(): Response {
     return when (this) {
         is FindBySubjectResult.Found -> Response.ok(facts.map { it.toFactHttp() }).build()
-        is FindBySubjectResult.StoreNotFound -> Response.status(NOT_FOUND).build()
+        is FindBySubjectResult.StoreNotFound -> storeNotFoundError(storeName)
     }
 }
 
 private fun FindByTagQueryResult.toResponse(): Response {
     return when (this) {
         is FindByTagQueryResult.Found -> Response.ok(facts.map { it.toFactHttp() }).build()
-        is FindByTagQueryResult.StoreNotFound -> Response.status(NOT_FOUND).build()
+        is FindByTagQueryResult.StoreNotFound -> storeNotFoundError(storeName)
     }
 }

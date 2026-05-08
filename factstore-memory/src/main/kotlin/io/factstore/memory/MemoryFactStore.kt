@@ -86,7 +86,7 @@ class MemoryFactStore : FactStore {
     // ===== FactAppender Implementation =====
 
     override suspend fun append(request: AppendRequest): AppendResult = lock.withLock {
-        val storeId = resolveId(request.storeName) ?: return AppendResult.StoreNotFound
+        val storeId = resolveId(request.storeName) ?: return AppendResult.StoreNotFound(request.storeName)
 
         // Check idempotency
         val idempotencySet = idempotencyKeys[storeId] ?: throw IllegalStateException("Idempotency set should be initialized for store $storeId")
@@ -117,7 +117,7 @@ class MemoryFactStore : FactStore {
     // ===== FactFinder Implementation =====
 
     override suspend fun findById(storeName: StoreName, factId: FactId): FindByIdResult = lock.withLock {
-        val internalId = resolveId(storeName) ?: return FindByIdResult.StoreNotFound
+        val internalId = resolveId(storeName) ?: return FindByIdResult.StoreNotFound(storeName)
 
         val fact = facts[internalId]?.find { it.id == factId }
         fact?.let { FindByIdResult.Found(it) } ?: FindByIdResult.NotFound(factId)
@@ -131,14 +131,14 @@ class MemoryFactStore : FactStore {
     }
 
     override suspend fun findInTimeRange(storeName: StoreName, timeRange: TimeRange): FindInTimeRangeResult = lock.withLock {
-        val internalId = resolveId(storeName) ?: return FindInTimeRangeResult.StoreNotFound
+        val internalId = resolveId(storeName) ?: return FindInTimeRangeResult.StoreNotFound(storeName)
 
         val foundFacts = facts[internalId]?.filter { it.appendedAt in timeRange.start..timeRange.end } ?: emptyList()
         FindInTimeRangeResult.Found(foundFacts)
     }
 
     override suspend fun findBySubject(storeName: StoreName, subjectRef: SubjectRef): FindBySubjectResult = lock.withLock {
-        val internalId = resolveId(storeName) ?: return FindBySubjectResult.StoreNotFound
+        val internalId = resolveId(storeName) ?: return FindBySubjectResult.StoreNotFound(storeName)
 
         val foundFacts = facts[internalId]?.filter { it.subjectRef == subjectRef } ?: emptyList()
         FindBySubjectResult.Found(foundFacts)
@@ -154,7 +154,7 @@ class MemoryFactStore : FactStore {
     }
 
     override suspend fun findByTagQuery(storeName: StoreName, query: TagQuery): FindByTagQueryResult = lock.withLock {
-        val internalId = resolveId(storeName) ?: return FindByTagQueryResult.StoreNotFound
+        val internalId = resolveId(storeName) ?: return FindByTagQueryResult.StoreNotFound(storeName)
 
         val foundFacts = facts[internalId]?.filter { fact ->
             query.queryItems.any { it.matches(fact) }
@@ -165,16 +165,16 @@ class MemoryFactStore : FactStore {
     // ===== FactStreamer Implementation =====
 
     override suspend fun stream(storeName: StoreName, streamingOptions: StreamingOptions): StreamResult {
-        val internalId = lock.withLock { resolveId(storeName) } ?: return StreamResult.StoreNotFound
+        val internalId = lock.withLock { resolveId(storeName) } ?: return StreamResult.StoreNotFound(storeName)
 
         val startIndex = when (val position = streamingOptions.startPosition) {
             StartPosition.Beginning -> 0
             StartPosition.End -> lock.withLock { facts[internalId]?.size ?: 0 }
             is StartPosition.After -> {
                 lock.withLock {
-                    val store = facts[internalId] ?: return StreamResult.StoreNotFound
+                    val store = facts[internalId] ?: return StreamResult.StoreNotFound(storeName)
                     val index = store.indexOfFirst { it.id == position.factId }
-                    if (index == -1) return StreamResult.InvalidStartPosition(position.factId)
+                    if (index == -1) return StreamResult.FactIdNotFound(position.factId)
                     index + 1
                 }
             }

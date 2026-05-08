@@ -603,7 +603,7 @@ abstract class AbstractFactStoreTest {
             StreamingOptions(startPosition = StartPosition.After(nonExistingFactId))
         )
 
-        assertThat(streamResult).isInstanceOf(StreamResult.InvalidStartPosition::class.java)
+        assertThat(streamResult).isInstanceOf(StreamResult.FactIdNotFound::class.java)
     }
 
     @OptIn(FlowPreview::class)

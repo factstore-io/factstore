@@ -103,7 +103,7 @@ data class SubjectRefHttp(
     val id: String
 )
 
-data class CreateFactStoreHttpRequest(
+data class CreateStoreHttpRequest(
     val name: String
 )
 

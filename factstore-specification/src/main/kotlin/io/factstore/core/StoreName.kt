@@ -14,4 +14,8 @@ value class StoreName(val value: String) {
         require(value.length <= MAX_LENGTH) { "Name must not exceed $MAX_LENGTH characters." }
         require(value.matches(regex)) { "Name must contain only alphanumeric characters, hyphens, and underscores." }
     }
+
+    override fun toString(): String {
+        return value
+    }
 }

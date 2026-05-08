@@ -21,7 +21,7 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
             with(tr) {
                 fdbFactStore.context.lookUpStoreIdByName(storeName).thenCompose { storeId ->
                     if (storeId == null) {
-                        CompletableFuture.completedFuture(FindByIdResult.StoreNotFound)
+                        CompletableFuture.completedFuture(FindByIdResult.StoreNotFound(storeName))
                     } else {
                         factId.loadFact(storeId).thenApply { fact ->
                             if (fact != null) {
@@ -63,7 +63,7 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
             with(tr) {
                 fdbFactStore.context.lookUpStoreIdByName(storeName).thenCompose { storeId ->
                     if (storeId == null) {
-                        CompletableFuture.completedFuture(FindInTimeRangeResult.StoreNotFound)
+                        CompletableFuture.completedFuture(FindInTimeRangeResult.StoreNotFound(storeName))
                     } else {
                         val begin = createdAtIndexSubspace.getKey(storeId, start)
                         val endKey = createdAtIndexSubspace.getKey(storeId, end)
@@ -91,7 +91,7 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
             with(tr) {
                 fdbFactStore.context.lookUpStoreIdByName(storeName).thenCompose { storeId ->
                     if (storeId == null) {
-                        CompletableFuture.completedFuture(FindBySubjectResult.StoreNotFound)
+                        CompletableFuture.completedFuture(FindBySubjectResult.StoreNotFound(storeName))
                     } else {
                         val subjectRange = subjectIndexSubspace.range(storeId, subjectRef)
                         tr.getRange(subjectRange).asList().thenCompose { kvs ->
@@ -165,7 +165,7 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
             with(tr) {
                 fdbFactStore.context.lookUpStoreIdByName(storeName).thenCompose { storeId ->
                     if (storeId == null) {
-                        CompletableFuture.completedFuture(FindByTagQueryResult.StoreNotFound)
+                        CompletableFuture.completedFuture(FindByTagQueryResult.StoreNotFound(storeName))
                     } else {
                         with(tr.snapshot()) {
                             val queryItemFutures = query.queryItems

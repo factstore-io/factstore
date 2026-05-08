@@ -31,7 +31,7 @@ class FdbFactStreamer(
         }
 
         if (storeId == null) {
-            return StoreNotFound
+            return StoreNotFound(storeName)
         }
 
         // Resolve cursor safely
@@ -41,7 +41,7 @@ class FdbFactStreamer(
 
         val initialCursor = when (cursorResult) {
             is CursorResult.Found -> cursorResult.key
-            is CursorResult.FactNotFound -> return InvalidStartPosition(cursorResult.factId)
+            is CursorResult.FactNotFound -> return FactIdNotFound(cursorResult.factId)
             CursorResult.Beginning -> null
         }
 
