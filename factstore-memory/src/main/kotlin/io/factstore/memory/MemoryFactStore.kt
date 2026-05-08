@@ -245,6 +245,17 @@ class MemoryFactStore : FactStore {
             }
         }
     }
+
+    override suspend fun handle(request: RemoveStoreRequest): RemoveStoreResult {
+        val storeId = resolveId(request.storeName) ?: return RemoveStoreResult.StoreNotFound(request.storeName)
+        lock.withLock {
+            nameToId.remove(request.storeName.value)
+            stores.remove(storeId)
+            facts.remove(storeId)
+            idempotencyKeys.remove(storeId)
+        }
+        return RemoveStoreResult.StoreRemoved(request.storeName)
+    }
 }
 
 /**

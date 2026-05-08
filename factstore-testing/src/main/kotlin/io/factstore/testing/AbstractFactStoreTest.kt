@@ -1465,4 +1465,35 @@ abstract class AbstractFactStoreTest {
         }
     }
 
+    @Test
+    fun testRemoveStore(): Unit = runBlocking {
+        val storeName = StoreName("store-to-delete")
+        store.handle(CreateStoreRequest(storeName))
+
+        val fact = Fact(
+            id = FactId.generate(),
+            subjectRef = SubjectRef(
+                type = "TEST_TYPE",
+                id = "TEST_ID",
+            ),
+            type = "TEST_FACT_TYPE".toFactType(),
+            payload = """DATA""".toFactPayload(),
+            appendedAt = Instant.now(),
+            tags = emptyMap()
+        )
+
+        assertThat(store.append(storeName, fact))
+            .isInstanceOf(AppendResult.Appended::class.java)
+
+        assertThat(store.handle(RemoveStoreRequest(storeName)))
+            .isInstanceOf(RemoveStoreResult.StoreRemoved::class.java)
+
+        // a second time should result in StoreNotFound
+        assertThat(store.handle(RemoveStoreRequest(storeName)))
+            .isInstanceOf(RemoveStoreResult.StoreNotFound::class.java)
+
+        assertThat(store.append(storeName, fact))
+            .isInstanceOf(AppendResult.StoreNotFound::class.java)
+    }
+
 }

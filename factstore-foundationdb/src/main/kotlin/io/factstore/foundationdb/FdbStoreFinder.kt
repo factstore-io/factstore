@@ -35,24 +35,27 @@ class FdbStoreFinder(
 
     override suspend fun existsByName(name: StoreName): Boolean {
         return store.db.readAsync { tr ->
-            store.context.lookUpFactstoreIdByName(name, tr).thenApply { it != null }
+            with(tr) {
+                store.context.lookUpStoreIdByName(name).thenApply { it != null }
+            }
         }.await()
     }
 
     override suspend fun findByName(name: StoreName): StoreMetadata? {
         return store.db.readAsync { tr ->
-
-            store.context.lookUpFactstoreIdByName(name, tr).thenCompose { id ->
-                id?.let {
-                    store.context.getMetadata(id, tr)
-                } ?: CompletableFuture.completedFuture(null)
-            }.thenApply { fdbMetadata ->
-                fdbMetadata?.let {
-                    StoreMetadata(
-                        id = StoreId(it.storeId),
-                        name = StoreName(it.name),
-                        createdAt = Instant.ofEpochSecond(it.createdAtEpochSeconds)
-                    )
+            with(tr) {
+                store.context.lookUpStoreIdByName(name).thenCompose { id ->
+                    id?.let {
+                        store.context.getMetadata(id)
+                    } ?: CompletableFuture.completedFuture(null)
+                }.thenApply { fdbMetadata ->
+                    fdbMetadata?.let {
+                        StoreMetadata(
+                            id = StoreId(it.storeId),
+                            name = StoreName(it.name),
+                            createdAt = Instant.ofEpochSecond(it.createdAtEpochSeconds)
+                        )
+                    }
                 }
             }
         }.await()

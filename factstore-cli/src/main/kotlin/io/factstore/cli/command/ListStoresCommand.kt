@@ -10,6 +10,7 @@ import java.time.ZoneOffset
 
 @Command(
     name = "list",
+    aliases = [ "ls" ],
     description = ["List all available logical stores"]
 )
 class ListStoresCommand : Runnable {

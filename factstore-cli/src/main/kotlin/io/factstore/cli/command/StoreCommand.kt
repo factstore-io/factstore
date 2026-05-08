@@ -9,6 +9,7 @@ import picocli.CommandLine.Command
     subcommands = [
         CreateStoreCommand::class,
         ListStoresCommand::class,
+        RemoveStoreCommand::class,
     ]
 )
 class StoreCommand

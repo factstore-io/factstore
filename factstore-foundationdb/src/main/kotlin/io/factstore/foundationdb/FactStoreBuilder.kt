@@ -1,6 +1,5 @@
 package io.factstore.foundationdb
 
-import com.apple.foundationdb.Database
 import com.apple.foundationdb.FDB
 import com.apple.foundationdb.directory.DirectoryLayer
 import io.factstore.core.FactStore
@@ -22,18 +21,7 @@ suspend fun buildFdbFactStore(
         factStreamer = FdbFactStreamer(fdbFactStore),
         storeFactory = FdbStoreFactory(fdbFactStore),
         storeFinder = FdbStoreFinder(fdbFactStore),
+        storeRemover = FdbStoreRemover(fdbFactStore),
     )
 }
 
-fun initDatabase(
-    clusterFilePath: String = "/etc/foundationdb/fdb.cluster",
-    apiVersion: Int = 730
-): FoundationDBFactStoreContext {
-    FDB.selectAPIVersion(apiVersion)
-    val db = FDB.instance().open(clusterFilePath)
-    return FoundationDBFactStoreContext(database = db)
-}
-
-data class FoundationDBFactStoreContext(
-    val database: Database,
-)
