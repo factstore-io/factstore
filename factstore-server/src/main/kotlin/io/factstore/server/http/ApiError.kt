@@ -2,8 +2,8 @@ package io.factstore.server.http
 
 import io.factstore.core.FactId
 import io.factstore.core.StoreName
-import jakarta.ws.rs.core.HttpHeaders
-import jakarta.ws.rs.core.MediaType
+import jakarta.ws.rs.core.HttpHeaders.CONTENT_TYPE
+import jakarta.ws.rs.core.MediaType.APPLICATION_JSON
 import jakarta.ws.rs.core.Response
 import jakarta.ws.rs.core.Response.Status.CONFLICT
 import jakarta.ws.rs.core.Response.Status.NOT_FOUND
@@ -28,7 +28,7 @@ fun ApiError.toResponse(): Response =
     Response
         .status(code)
         .entity(this)
-        .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON)
+        .header(CONTENT_TYPE, APPLICATION_JSON)
         .build()
 
 
@@ -49,7 +49,7 @@ fun apiErrorResponse(
 fun storeNotFoundError(storeName: StoreName): Response = apiErrorResponse(
     status = NOT_FOUND,
     reason = Reason.NotFound,
-    message = "Store '${storeName.value}' not found.",
+    message = "Store '$storeName' not found.",
     details = mapOf("kind" to "store", "name" to storeName.value)
 )
 
