@@ -39,13 +39,12 @@ class StreamFactsCommand : Callable<Int> {
             names = ["--from"],
             description = ["Start from: 'beginning' or 'end'"],
             showDefaultValue = Help.Visibility.ALWAYS,
-            defaultValue = "end"
         )
         var from: FromOption? = null
 
         @Option(
             names = ["--after"],
-            description = ["Start after a specific Fact UUID"]
+            description = ["Start after a specific Fact ID (UUID)"]
         )
         var after: UUID? = null
 

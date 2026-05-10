@@ -13,6 +13,10 @@ factstore fact append orders order-placed '{"orderId": "12345", "amount": 100.0}
 
 factstore fact stream orders --from=beginning
 
+factstore find facts --store orders --subject order-1234
+
+factstore find facts --store orders --since 5m # Find facts from the last 5 minutes
+
 factstore store delete orders
 ```
 
@@ -22,7 +26,7 @@ factstore store delete orders
 Build the CLI using the following command:
 
 ```bash
-./gradlew :factstore-cli:build -Dquarkus.native.enabled=true
+./gradlew :factstore-cli:build -Dquarkus.native.enabled=true -Dquarkus.package.jar.enabled=false
 ```
 This will generate a native executable in the `build` directory of the `factstore-cli` module. 
 
