@@ -438,46 +438,41 @@ abstract class AbstractFactStoreTest {
 
         store.append(testStore, listOf(fact1, fact2, fact3))
 
-        // --- Query 1: Find all role=admin (OR semantics → fact1 + fact3)
+        // --- Query 1: Find all role=admin (AND semantics → fact1 + fact3, both have role=admin)
         val adminResult = store.findByTags(testStore, listOf(TagKey("role") to TagValue("admin")))
         assertThat(adminResult).isInstanceOf(FindByTagsResult.Found::class.java)
         assertThat((adminResult as FindByTagsResult.Found).facts).containsExactly(fact1, fact3)
 
-        // --- Query 2: Find all region=us (OR semantics → fact2 + fact3)
+        // --- Query 2: Find all region=us (AND semantics → fact2 + fact3, both have region=us)
         val usResult = store.findByTags(testStore, listOf(TagKey("region") to TagValue("us")))
         assertThat(usResult).isInstanceOf(FindByTagsResult.Found::class.java)
         assertThat((usResult as FindByTagsResult.Found).facts).containsExactly(fact2, fact3)
 
-        // --- Query 3: Find all role=admin OR region=eu (OR semantics → fact1 + fact3)
-        val adminOrEuResult = store.findByTags(
+        // --- Query 3: Find role=admin AND region=eu (AND semantics → fact1 only, the only fact with both tags)
+        val adminAndEuResult = store.findByTags(
             testStore,
             listOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("eu"))
         )
-        assertThat(adminOrEuResult).isInstanceOf(FindByTagsResult.Found::class.java)
-        assertThat((adminOrEuResult as FindByTagsResult.Found).facts).containsExactly(fact1, fact3)
+        assertThat(adminAndEuResult).isInstanceOf(FindByTagsResult.Found::class.java)
+        assertThat((adminAndEuResult as FindByTagsResult.Found).facts).containsExactly(fact1)
 
         // --- Query 4: Non-existent tag → empty
         val noFactsResult = store.findByTags(testStore, listOf(TagKey("region") to TagValue("asia")))
         assertThat(noFactsResult).isInstanceOf(FindByTagsResult.Found::class.java)
         assertThat((noFactsResult as FindByTagsResult.Found).facts).isEmpty()
 
-        // --- Query 5: Union of all queries (just to validate coverage)
+        // --- Query 5: Find role=admin AND region=us (AND semantics → fact3 only, the only fact with both tags)
+        val adminAndUsResult = store.findByTags(
+            testStore,
+            listOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("us"))
+        )
+        assertThat(adminAndUsResult).isInstanceOf(FindByTagsResult.Found::class.java)
+        assertThat((adminAndUsResult as FindByTagsResult.Found).facts).containsExactly(fact3)
 
+        // --- Query 6: Direct lookup still works as before
         val fact1Loaded = store.findById(testStore, fact1.id)
         assertThat(fact1Loaded).isInstanceOf(FindByIdResult.Found::class.java)
         println(fact1Loaded)
-
-        val allFactsResult = store.findByTags(
-            testStore,
-            listOf(
-                TagKey("role") to TagValue("admin"),
-                TagKey("role") to TagValue("user"),
-                TagKey("region") to TagValue("eu"),
-                TagKey("region") to TagValue("us")
-            )
-        )
-        assertThat(allFactsResult).isInstanceOf(FindByTagsResult.Found::class.java)
-        assertThat((allFactsResult as FindByTagsResult.Found).facts).containsExactly(fact1, fact2, fact3)
     }
 
     @Test

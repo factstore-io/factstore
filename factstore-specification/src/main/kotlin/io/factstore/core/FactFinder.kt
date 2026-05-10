@@ -63,7 +63,7 @@ interface FactFinder {
     suspend fun findBySubject(storeName: StoreName, subject: Subject): FindBySubjectResult
 
     /**
-     * Finds facts that match at least one of the provided tags (OR logic).
+     * Finds facts that match the provided tags (AND logic).
      *
      * @param storeName the logical name of the store.
      * @param tags a list of key-value pairs to match against.

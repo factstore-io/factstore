@@ -72,10 +72,11 @@ interface FactStoreClient {
     @GET
     @Produces(APPLICATION_JSON)
     @Path("/stores/{store}/facts")
-    fun findFactsInTimeRange(
+    fun findFacts(
         @PathParam("store") storeName: String,
         @QueryParam("from") from: Instant? = null,
         @QueryParam("to") to: Instant? = null,
+        @QueryParam("tag") tags: List<String> = emptyList(),
     ): List<FactHttp>
 
 }

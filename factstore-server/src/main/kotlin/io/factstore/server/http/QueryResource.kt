@@ -1,10 +1,12 @@
 package io.factstore.server.http
 
 import io.factstore.core.*
+import io.factstore.server.http.Reason.Conflict
 import jakarta.validation.Valid
 import jakarta.ws.rs.*
 import jakarta.ws.rs.core.MediaType.APPLICATION_JSON
 import jakarta.ws.rs.core.Response
+import jakarta.ws.rs.core.Response.Status.BAD_REQUEST
 import java.time.Instant
 import java.util.*
 
@@ -54,16 +56,33 @@ class QueryResource(
         @PathParam("storeName") storeName: String,
         @QueryParam("from") from: Instant? = null,
         @QueryParam("to") to: Instant? = null,
-    ): Response =
-        store
-            .findInTimeRange(
+        @QueryParam("tag") tags: List<String> = emptyList(),
+    ): Response {
+        return when {
+            tags.isNotEmpty() && (from != null || to != null) -> apiErrorResponse(
+                status = BAD_REQUEST,
+                reason = Conflict,
+                message = "Combining tag filters with time range is not yet supported.",
+            )
+            tags.isNotEmpty() -> {
+                val parsedTags = tags.map { it.toTagPair() }
+                store.findByTags(StoreName(storeName), parsedTags).toResponse()
+            }
+            else -> store.findInTimeRange(
                 storeName = StoreName(storeName),
                 TimeRange(
                     start = from ?: Instant.MIN,
                     end = to ?: Instant.now()
                 )
-            )
-            .toResponse()
+            ).toResponse()
+        }
+    }
+
+    private fun String.toTagPair(): Pair<TagKey, TagValue> {
+        val parts = split("=", limit = 2)
+        require(parts.size == 2) { "Tag must be in key=value format, got: '$this'" }
+        return TagKey(parts[0]) to TagValue(parts[1])
+    }
 
 }
 
@@ -92,4 +111,9 @@ private fun FindByTagQueryResult.toResponse(): Response {
         is FindByTagQueryResult.Found -> Response.ok(facts.map { it.toFactHttp() }).build()
         is FindByTagQueryResult.StoreNotFound -> storeNotFoundError(storeName)
     }
+}
+
+private fun FindByTagsResult.toResponse(): Response = when (this) {
+    is FindByTagsResult.Found -> Response.ok(facts.map { it.toFactHttp() }).build()
+    is FindByTagsResult.StoreNotFound -> storeNotFoundError(storeName)
 }

@@ -145,10 +145,10 @@ class MemoryFactStore : FactStore {
     }
 
     override suspend fun findByTags(storeName: StoreName, tags: List<Pair<TagKey, TagValue>>): FindByTagsResult = lock.withLock {
-        val internalId = resolveId(storeName) ?: return FindByTagsResult.StoreNotFound
+        val internalId = resolveId(storeName) ?: return FindByTagsResult.StoreNotFound(storeName)
 
         val foundFacts = facts[internalId]?.filter { fact ->
-            tags.any { (key, value) -> fact.tags[key] == value }
+            tags.all { (key, value) -> fact.tags[key] == value }
         } ?: emptyList()
         FindByTagsResult.Found(foundFacts)
     }

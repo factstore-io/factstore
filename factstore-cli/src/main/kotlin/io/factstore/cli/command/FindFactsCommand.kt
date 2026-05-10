@@ -28,7 +28,7 @@ class FindFactsCommand : Callable<Int> {
 
     @Option(
         names = ["--limit"],
-        description = [$$"Maximum number of facts to return (default: ${DEFAULT-VALUE})"],
+        description = ["Maximum number of facts to return (default: \${DEFAULT-VALUE})"],
         defaultValue = "100",
     )
     var limit: Int = 100
@@ -40,22 +40,7 @@ class FindFactsCommand : Callable<Int> {
     var reversed: Boolean = false
 
     override fun call(): Int {
-        val subject = filter?.subject
-        val timeRange = filter?.timeRange
-
-        val facts = when {
-            subject != null -> client.findFactsBySubject(storeName, subject)
-            timeRange != null -> client.findFactsInTimeRange(
-                storeName = storeName,
-                from = timeRange.since,
-                to = timeRange.until,
-            )
-            else -> client.findFactsInTimeRange(
-                storeName = storeName,
-                from = null,
-                to = null,
-            )
-        }
+        val facts = filter.toClientCall()
 
         if (facts.size >= limit) {
             System.err.println("Warning: results limited to $limit facts. Use --limit to retrieve more.")
@@ -65,6 +50,19 @@ class FindFactsCommand : Callable<Int> {
         return ExitCode.OK
     }
 
+    private fun FactFilter?.toClientCall() = when {
+        this == null -> client.findFacts(storeName = storeName)
+        subject != null -> client.findFactsBySubject(storeName, subject!!)
+        tags.isNotEmpty() -> client.findFacts(storeName = storeName, tags = tags)
+        else -> {
+            val range = timeRange
+            if (range != null) client.findFacts(
+                storeName = storeName,
+                from = range.since,
+                to = range.until,
+            ) else client.findFacts(storeName = storeName)
+        }
+    }
 }
 
 class FactFilter {
@@ -74,6 +72,12 @@ class FactFilter {
         description = ["Filter by subject (e.g. order/123)"]
     )
     var subject: String? = null
+
+    @Option(
+        names = ["--tag"],
+        description = ["Filter by tag in key=value format (e.g. env=prod). Repeatable — all tags must match (AND semantics)."],
+    )
+    var tags: List<String> = emptyList()
 
     @ArgGroup(exclusive = false)
     var timeRange: TimeRangeFilter? = null
