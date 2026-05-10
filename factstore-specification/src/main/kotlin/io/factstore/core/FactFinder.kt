@@ -56,11 +56,11 @@ interface FactFinder {
      * Retrieves the complete history of facts associated with a specific subject.
      *
      * @param storeName the logical name of the store.
-     * @param subjectRef the subject reference
+     * @param subject the subject for which to retrieve the fact history.
      * @return a [FindBySubjectResult.Found] containing the stream of facts for this subject,
      *         or [FindBySubjectResult.StoreNotFound] if the store is missing.
      */
-    suspend fun findBySubject(storeName: StoreName, subjectRef: SubjectRef): FindBySubjectResult
+    suspend fun findBySubject(storeName: StoreName, subject: Subject): FindBySubjectResult
 
     /**
      * Finds facts that match at least one of the provided tags (OR logic).

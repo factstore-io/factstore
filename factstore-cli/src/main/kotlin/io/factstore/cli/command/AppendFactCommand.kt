@@ -38,7 +38,7 @@ class AppendFactCommand : Callable<Int> {
             facts = listOf(
                 FactHttp(
                     type = type,
-                    subjectRef = SubjectRefHttp(type = "default", id = "default"), // To check...
+                    subject = "default",
                     payload = FactPayloadHttp(data = rawData.toByteArray(UTF_8)),
                 )
             ),

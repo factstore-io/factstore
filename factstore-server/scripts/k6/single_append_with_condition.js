@@ -16,7 +16,7 @@ export let options = {
 };
 
 export default function() {
-    const url = 'http://localhost:8080/api/v1/stores/my-fact-store/facts';
+    const url = 'http://localhost:8080/api/v1/stores/test/facts';
 
     const userId = uuidv4();
 
@@ -37,10 +37,7 @@ export default function() {
         facts: [{
             id: uuidv4(),
             type: 'UserCreated',
-            subjectRef: {
-                type: 'user',
-                id: `user-${__VU}`,
-            },
+            subject: `user-${__VU}`,
             payload: {
                 // "Hello world" base64-encoded
                 data: 'SGVsbG8gd29ybGQ='

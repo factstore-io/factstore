@@ -14,7 +14,7 @@ import java.util.*
  * - **Identity** ([id]) for uniqueness and idempotency
  * - **Classification** ([type]) describing what kind of fact occurred
  * - **Payload** ([payload]) containing the event data and its transport metadata
- * - **Subject association** ([subjectRef]) defining the entity or context
+ * - **Subject association** ([subject]) defining the entity or context
  *   the fact belongs to
  * - **Temporal information** ([appendedAt]) indicating when the fact occurred
  * - **Metadata** ([metadata]) for auxiliary, non-indexed information
@@ -27,7 +27,7 @@ import java.util.*
  * @property id the globally unique identifier of the fact
  * @property type the logical type of the fact
  * @property payload the serialized fact payload
- * @property subjectRef the subject the fact is associated with
+ * @property subject the subject the fact is associated with
  * @property appendedAt the time the fact was appended
  * @property metadata optional metadata associated with the fact
  * @property tags optional tags used for querying and classification
@@ -38,7 +38,7 @@ data class Fact(
     val id: FactId,
     val type: FactType,
     val payload: FactPayload,
-    val subjectRef: SubjectRef,
+    val subject: Subject,
     val appendedAt: Instant,
     val metadata: Map<String, String> = emptyMap(),
     val tags: Map<TagKey, TagValue> = emptyMap(),
@@ -129,21 +129,27 @@ value class PayloadSchemaRef(val value: String) {
     }
 }
 
+
 /**
- * Identifies the subject a fact belongs to.
+ * Identifies the logical entity, boundary, or concept a fact belongs to.
+ * Subjects are a modeling concept to group related facts together.
  *
- * Subjects define logical groupings of facts and are commonly used to model
- * entities, aggregates, or other consistency boundaries.
+ * All facts with the same subject are treated as part of the same history.
+ * FactStore treats the subject as a flat, opaque string, allowing you to use
+ * any naming convention that fits your domain (e.g., UUIDs, custom identifiers,
+ * or hierarchical paths).
  *
- * @property type the subject type
- * @property id the unique identifier of the subject within its type
- *
+ * @property value The string representation of the subject.
+ *                 Must not be blank and must not contain leading or trailing whitespace.
  * @author Domenic Cassisi
  */
-data class SubjectRef(
-    val type: String,
-    val id: String
-)
+@JvmInline
+value class Subject(val value: String) {
+    init {
+        require(value.isNotBlank()) { "Subject must not be blank" }
+        require(value == value.trim()) { "Subject must not contain leading or trailing whitespaces" }
+    }
+}
 
 /**
  * Globally unique identifier of a fact.

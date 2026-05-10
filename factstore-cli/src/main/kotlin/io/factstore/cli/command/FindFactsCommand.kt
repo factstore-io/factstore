@@ -3,16 +3,11 @@ package io.factstore.cli.command
 import io.factstore.cli.client.FactStoreClient
 import io.factstore.cli.converter.FlexibleInstantConverter
 import jakarta.inject.Inject
-import picocli.CommandLine
-import picocli.CommandLine.ArgGroup
-import picocli.CommandLine.Command
-import picocli.CommandLine.Model.CommandSpec
-import picocli.CommandLine.Option
-import picocli.CommandLine.Spec
+import picocli.CommandLine.*
 import java.time.Instant
 import java.util.concurrent.Callable
 
-@Command(name = "facts",)
+@Command(name = "facts")
 class FindFactsCommand : Callable<Int> {
 
     @Inject
@@ -33,7 +28,7 @@ class FindFactsCommand : Callable<Int> {
 
     @Option(
         names = ["--limit"],
-        description = ["Maximum number of facts to return (default: \${DEFAULT-VALUE})"],
+        description = [$$"Maximum number of facts to return (default: ${DEFAULT-VALUE})"],
         defaultValue = "100",
     )
     var limit: Int = 100
@@ -44,23 +39,12 @@ class FindFactsCommand : Callable<Int> {
     )
     var reversed: Boolean = false
 
-    @Spec
-    lateinit var spec: CommandSpec
-
     override fun call(): Int {
         val subject = filter?.subject
         val timeRange = filter?.timeRange
 
         val facts = when {
-            subject != null -> {
-                val parts = subject.split("/", limit = 2)
-                val subjectType = parts[0]
-                val subjectId = parts.getOrNull(1) ?: throw CommandLine.ParameterException(
-                    spec.commandLine(),
-                    "Subject must be in type/id format (e.g. order/123), got: '$subject'"
-                )
-                client.findFactsBySubject(storeName, subjectType, subjectId)
-            }
+            subject != null -> client.findFactsBySubject(storeName, subject)
             timeRange != null -> client.findFactsInTimeRange(
                 storeName = storeName,
                 from = timeRange.since,
@@ -78,10 +62,8 @@ class FindFactsCommand : Callable<Int> {
         }
 
         printTable(facts)
-        return CommandLine.ExitCode.OK
+        return ExitCode.OK
     }
-
-
 
 }
 

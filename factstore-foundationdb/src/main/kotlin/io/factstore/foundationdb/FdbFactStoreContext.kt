@@ -14,7 +14,7 @@ import io.factstore.core.StoreId
 import io.factstore.core.StoreName
 import io.factstore.core.FactType
 import io.factstore.core.IdempotencyKey
-import io.factstore.core.SubjectRef
+import io.factstore.core.Subject
 import io.factstore.core.TagKey
 import io.factstore.core.TagValue
 import kotlinx.serialization.decodeFromByteArray
@@ -255,12 +255,12 @@ value class CreatedAtIndexSubspace(val subspace: Subspace) {
 @JvmInline
 value class SubjectIndexSubspace(val subspace: Subspace) {
 
-    fun range(storeId: StoreId, subjectRef: SubjectRef): Range =
-        subspace.range(Tuple.from(storeId.uuid, subjectRef.type, subjectRef.id))
+    fun range(storeId: StoreId, subject: Subject): Range =
+        subspace.range(Tuple.from(storeId.uuid, subject.value))
 
     context(tr: Transaction)
-    fun save(storeId: StoreId, factId: FactId, subjectRef: SubjectRef, incompleteVersionstamp: Versionstamp) {
-        val keyTuple = Tuple.from(storeId.uuid, subjectRef.type, subjectRef.id, incompleteVersionstamp)
+    fun save(storeId: StoreId, factId: FactId, subject: Subject, incompleteVersionstamp: Versionstamp) {
+        val keyTuple = Tuple.from(storeId.uuid, subject.value, incompleteVersionstamp)
         val keyBytes = subspace.packWithVersionstamp(keyTuple)
         val factIdTuple = Tuple.from(factId.uuid).pack()
         tr.mutate(SET_VERSIONSTAMPED_KEY, keyBytes, factIdTuple)

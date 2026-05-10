@@ -22,7 +22,7 @@ fun printTable(facts: List<FactHttp>) {
 
     val idWidth       = 36
     val typeWidth     = facts.maxOf { it.type.length }.coerceAtLeast(4)
-    val subjectWidth  = facts.maxOf { (it.subjectRef.type + it.subjectRef.id).length }.coerceAtLeast(7)
+    val subjectWidth  = facts.maxOf { it.subject.length }.coerceAtLeast(7)
     val timeWidth     = 20
     val payloadWidth  = 40
 
@@ -43,7 +43,7 @@ fun printTable(facts: List<FactHttp>) {
             "%-${idWidth}s  %-${typeWidth}s  %-${subjectWidth}s  %-${timeWidth}s  %-${payloadWidth}s".format(
                 fact.id,
                 fact.type,
-                fact.subjectRef.type + ":" + fact.subjectRef.id,
+                fact.subject,
                 fact.appendedAt?.truncatedTo(SECONDS) ?: "",
                 payload,
             )

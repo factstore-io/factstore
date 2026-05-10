@@ -108,7 +108,7 @@ class FdbFactAppender(
 
     context(tr: Transaction, storeId: StoreId)
     private fun AppendCondition.ExpectedLastFact.isSatisfied(): CompletableFuture<Boolean> {
-        val actualLastFactId = subjectRef.getLastFactId()
+        val actualLastFactId = subject.getLastFactId()
         val isConditionSatisfied = actualLastFactId == expectedLastFactId
         return CompletableFuture.completedFuture(isConditionSatisfied)
     }
@@ -120,7 +120,7 @@ class FdbFactAppender(
     }
 
     context(tr: Transaction, storeId: StoreId)
-    private fun SubjectRef.getLastFactId(): FactId? {
+    private fun Subject.getLastFactId(): FactId? {
         val subjectRange = store.context.subjectIndexSubspace.range(storeId, this)
         val latestFactKeyValue = tr.getRange(subjectRange, LIMIT_ONE, REVERSED).firstOrNull()
         return latestFactKeyValue?.let {

@@ -84,7 +84,7 @@ data class FdbFactStore(
         context.headSubspace.save(storeId, incompleteVersionstamp)
         context.eventTypeIndexSubspace.save(storeId, id, type, incompleteVersionstamp)
         context.createdAtIndexSubspace.save(storeId, id, appendedAt, incompleteVersionstamp)
-        context.subjectIndexSubspace.save(storeId, id, subjectRef, incompleteVersionstamp)
+        context.subjectIndexSubspace.save(storeId, id, subject, incompleteVersionstamp)
         context.metadataIndexSubspace.save(storeId, id, metadata, incompleteVersionstamp)
         context.tagsIndexSubspace.save(storeId, id, tags, incompleteVersionstamp)
         context.tagsTypeIndexSubspace.save(storeId, id, type, tags, incompleteVersionstamp)
@@ -149,8 +149,7 @@ fun Tuple.getLastAsFactPosition(): FactPosition = getVersionstamp(size() - 1)
 fun Fact.toSerializableFdbFact() = SerializableFdbFact(
     id = id.uuid,
     type = type.value,
-    subjectType = subjectRef.type,
-    subjectId = subjectRef.id,
+    subject = subject.value,
     timeEpochSeconds = appendedAt.epochSecond,
     timeNanos = appendedAt.nano,
     metadata = metadata,
@@ -174,10 +173,7 @@ fun SerializableFdbFact.toFact() = Fact(
         format = payload.format?.toPayloadFormat(),
         schema = payload.format?.toPayloadSchemaRef()
     ),
-    subjectRef = SubjectRef(
-        type = subjectType,
-        id = subjectId
-    ),
+    subject = Subject(subject),
     appendedAt = Instant.ofEpochSecond(timeEpochSeconds, timeNanos.toLong()),
     metadata = metadata,
     tags = tags.entries.associate { it.key.toTagKey() to it.value.toTagValue() }

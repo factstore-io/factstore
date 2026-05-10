@@ -137,10 +137,10 @@ class MemoryFactStore : FactStore {
         FindInTimeRangeResult.Found(foundFacts)
     }
 
-    override suspend fun findBySubject(storeName: StoreName, subjectRef: SubjectRef): FindBySubjectResult = lock.withLock {
+    override suspend fun findBySubject(storeName: StoreName, subject: Subject): FindBySubjectResult = lock.withLock {
         val internalId = resolveId(storeName) ?: return FindBySubjectResult.StoreNotFound(storeName)
 
-        val foundFacts = facts[internalId]?.filter { it.subjectRef == subjectRef } ?: emptyList()
+        val foundFacts = facts[internalId]?.filter { it.subject == subject } ?: emptyList()
         FindBySubjectResult.Found(foundFacts)
     }
 
@@ -204,13 +204,13 @@ class MemoryFactStore : FactStore {
             AppendCondition.None -> true
             is AppendCondition.ExpectedLastFact -> {
                 val store = facts[storeId]?.toList() ?: return false
-                val lastFact = store.findLast { it.subjectRef == condition.subjectRef }
+                val lastFact = store.findLast { it.subject == condition.subject }
                 lastFact?.id == condition.expectedLastFactId
             }
             is AppendCondition.ExpectedMultiSubjectLastFact -> {
                 val store = facts[storeId]?.toList() ?: return false
-                condition.expectations.all { (subjectRef, expectedId) ->
-                    val lastFact = store.findLast { it.subjectRef == subjectRef }
+                condition.expectations.all { (subject, expectedId) ->
+                    val lastFact = store.findLast { it.subject == subject }
                     lastFact?.id == expectedId
                 }
             }

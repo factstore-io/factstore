@@ -9,8 +9,7 @@ data class SerializableFdbFact(
     @Contextual
     val id: UUID,
     val type: String,
-    val subjectType: String,
-    val subjectId: String,
+    val subject: String,
     val timeEpochSeconds: Long,
     val timeNanos: Int,
     val metadata: Map<String, String> = emptyMap(),

@@ -38,14 +38,13 @@ class QueryResource(
 
     @GET
     @Produces(APPLICATION_JSON)
-    @Path("/subjects/{subjectType}/{subjectId}/facts")
+    @Path("/subjects/{subject}/facts")
     suspend fun findBySubject(
         @PathParam("storeName") storeName: String,
-        @PathParam("subjectType") subjectType: String,
-        @PathParam("subjectId") subjectId: String,
+        @PathParam("subject") subject: String,
     ): Response =
         store
-            .findBySubject(StoreName(storeName), SubjectRef(subjectType, subjectId))
+            .findBySubject(StoreName(storeName), Subject(subject))
             .toResponse()
 
     @GET

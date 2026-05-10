@@ -9,7 +9,7 @@ import io.factstore.core.FactId
 import io.factstore.core.FactPayload
 import io.factstore.core.IdempotencyKey
 import io.factstore.core.StoreName
-import io.factstore.core.SubjectRef
+import io.factstore.core.Subject
 import io.factstore.core.TagOnlyQueryItem
 import io.factstore.core.TagQuery
 import io.factstore.core.TagQueryItem
@@ -43,14 +43,14 @@ fun AppendConditionHttp.toAppendCondition(): AppendCondition =
 
         is AppendConditionHttp.ExpectedLastFact ->
             AppendCondition.ExpectedLastFact(
-                subjectRef = subjectRef.toSubjectRef(),
+                subject = Subject(subject),
                 expectedLastFactId = expectedLastFactId?.toFactId()
             )
 
         is AppendConditionHttp.ExpectedMultiSubjectLastFact ->
             AppendCondition.ExpectedMultiSubjectLastFact(
                 expectations = expectations.mapKeys { (subject, _) ->
-                    subject.toSubjectRef()
+                    Subject(subject)
                 }.mapValues { (_, factId) ->
                     factId?.toFactId()
                 }
@@ -93,7 +93,7 @@ fun FactHttp.toFact() = Fact(
     id = id?.toFactId() ?: FactId.generate(),
     type = type.toFactType(),
     payload = payload.toPayload(),
-    subjectRef = subjectRef.toSubjectRef(),
+    subject = Subject(subject),
     appendedAt = appendedAt ?: Instant.now(),
     metadata = metadata,
     tags = tags.entries.associate { Pair(it.key.toTagKey(), it.value.toTagValue()) }
@@ -103,24 +103,14 @@ private fun FactPayloadHttp.toPayload(): FactPayload = FactPayload(
     data = data,
 )
 
-private fun SubjectRefHttp.toSubjectRef() = SubjectRef(
-    type = type,
-    id = id
-)
-
 fun Fact.toFactHttp() = FactHttp(
     id = id.uuid,
     type = type.value,
-    subjectRef = subjectRef.toSubjectRefHttp(),
+    subject = subject.value,
     appendedAt = appendedAt,
     payload = payload.toFactPayloadHttp(),
     metadata = metadata,
     tags = tags.entries.associate { Pair(it.key.value, it.value.value) }
-)
-
-fun SubjectRef.toSubjectRefHttp() = SubjectRefHttp(
-    type = type,
-    id = id
 )
 
 fun FactPayload.toFactPayloadHttp() = FactPayloadHttp(
