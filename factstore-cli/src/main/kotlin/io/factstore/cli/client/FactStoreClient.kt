@@ -63,11 +63,10 @@ interface FactStoreClient {
 
     @GET
     @Produces(APPLICATION_JSON)
-    @Path("/stores/{store}/subjects/{subjectType}/{subjectId}/facts")
+    @Path("/stores/{store}/subjects/{subject}/facts")
     fun findFactsBySubject(
         @PathParam("store") storeName: String,
-        @PathParam("subjectType") subjectType: String,
-        @PathParam("subjectId") subjectId: String,
+        @PathParam("subject") subject: String,
     ): List<FactHttp>
 
     @GET
@@ -92,7 +91,7 @@ data class StoreMetadata(
 data class FactHttp(
     val id: UUID? = null,
     val type: String,
-    val subjectRef: SubjectRefHttp,
+    val subject: String,
     val appendedAt: Instant? = null,
     val payload: FactPayloadHttp,
     val metadata: Map<String, String> = emptyMap(),
@@ -101,11 +100,6 @@ data class FactHttp(
 
 data class FactPayloadHttp(
     val data: ByteArray,
-)
-
-data class SubjectRefHttp(
-    val type: String,
-    val id: String
 )
 
 data class AppendHttpRequest(

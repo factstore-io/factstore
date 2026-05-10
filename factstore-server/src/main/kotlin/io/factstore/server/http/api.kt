@@ -39,12 +39,12 @@ sealed interface AppendConditionHttp {
     data object None : AppendConditionHttp
 
     data class ExpectedLastFact(
-        val subjectRef: SubjectRefHttp,
+        val subject: String,
         val expectedLastFactId: UUID?
     ) : AppendConditionHttp
 
     data class ExpectedMultiSubjectLastFact(
-        val expectations: Map<SubjectRefHttp, UUID?>
+        val expectations: Map<String, UUID?>
     ) : AppendConditionHttp
 
     data class TagQueryBased(
@@ -87,7 +87,7 @@ sealed interface TagQueryItemHttp {
 data class FactHttp(
     val id: UUID?,
     val type: String,
-    val subjectRef: SubjectRefHttp,
+    val subject: String,
     val appendedAt: Instant?,
     val payload: FactPayloadHttp,
     val metadata: Map<String, String> = emptyMap(),
@@ -96,11 +96,6 @@ data class FactHttp(
 
 data class FactPayloadHttp(
     val data: ByteArray,
-)
-
-data class SubjectRefHttp(
-    val type: String,
-    val id: String
 )
 
 data class CreateStoreHttpRequest(

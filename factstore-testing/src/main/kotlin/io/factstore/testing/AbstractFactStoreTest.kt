@@ -15,6 +15,10 @@ import java.time.Instant
 import java.util.UUID
 import kotlin.system.measureTimeMillis
 
+private const val ALICE_SUBJECT_VALUE = "USER:ALICE"
+private const val BOB_SUBJECT_VALUE = "USER:BOB"
+private const val CHARLIE_SUBJECT_VALUE = "USER:CHARLIE"
+
 abstract class AbstractFactStoreTest {
 
     private var testStore = StoreName("default-test-store")
@@ -85,10 +89,7 @@ abstract class AbstractFactStoreTest {
 
         val fact = Fact(
             id = id,
-            subjectRef = SubjectRef(
-                type = "USER",
-                id = "ALICE",
-            ),
+            subject = Subject(ALICE_SUBJECT_VALUE),
             type = "USER_ONBOARDED".toFactType(),
             payload = payload,
             appendedAt = createdAt
@@ -138,10 +139,7 @@ abstract class AbstractFactStoreTest {
 
         val fact1 = Fact(
             id = FactId.generate(),
-            subjectRef = SubjectRef(
-                type = "USER",
-                id = "ALICE",
-            ),
+            subject = Subject(ALICE_SUBJECT_VALUE),
             type = "USER_CREATED".toFactType(),
             payload = alicePayload,
             appendedAt = now.minusSeconds(60) // 1 minute ago
@@ -149,10 +147,7 @@ abstract class AbstractFactStoreTest {
 
         val fact2 = Fact(
             id = FactId.generate(),
-            subjectRef = SubjectRef(
-                type = "USER",
-                id = "ALICE",
-            ),
+            subject = Subject(ALICE_SUBJECT_VALUE),
             type = "USER_UPDATED".toFactType(),
             payload = """{ "username": "Alice", "status": "active" }""".toFactPayload(),
             appendedAt = now
@@ -160,10 +155,7 @@ abstract class AbstractFactStoreTest {
 
         val fact3 = Fact(
             id = FactId.generate(),
-            subjectRef = SubjectRef(
-                type = "USER",
-                id = "BOB",
-            ),
+            subject = Subject(BOB_SUBJECT_VALUE),
             type = "USER_DELETED".toFactType(),
             payload = bobPayload,
             appendedAt = now.plusSeconds(60) // 1 minute in the future
@@ -206,10 +198,7 @@ abstract class AbstractFactStoreTest {
         val fact1Id = FactId.generate()
         val fact1 = Fact(
             id = fact1Id,
-            subjectRef = SubjectRef(
-                type = "USER",
-                id = "ALICE",
-            ),
+            subject = Subject(ALICE_SUBJECT_VALUE),
             type = "USER_CREATED".toFactType(),
             payload = alicePayload,
             appendedAt = Instant.now()
@@ -221,10 +210,7 @@ abstract class AbstractFactStoreTest {
             facts = listOf(fact1),
             idempotencyKey = IdempotencyKey(),
             condition = AppendCondition.ExpectedLastFact(
-                subjectRef = SubjectRef(
-                    type = "USER",
-                    id = "ALICE"
-                ),
+                subject = Subject(ALICE_SUBJECT_VALUE),
                 expectedLastFactId = null
             )
         )
@@ -238,10 +224,7 @@ abstract class AbstractFactStoreTest {
         val fact2Id = FactId.generate()
         val fact2 = Fact(
             id = fact2Id,
-            subjectRef = SubjectRef(
-                type = "USER",
-                id = "ALICE",
-            ),
+            subject = Subject(ALICE_SUBJECT_VALUE),
             type = "USER_LOCKED".toFactType(),
             payload = alicePayload,
             appendedAt = Instant.now()
@@ -252,10 +235,7 @@ abstract class AbstractFactStoreTest {
             facts = listOf(fact2),
             idempotencyKey = IdempotencyKey(),
             condition = AppendCondition.ExpectedLastFact(
-                subjectRef = SubjectRef(
-                    type = "USER",
-                    id = "ALICE"
-                ),
+                subject = Subject(ALICE_SUBJECT_VALUE),
                 expectedLastFactId = fact1Id
             )
         )
@@ -272,10 +252,7 @@ abstract class AbstractFactStoreTest {
             facts = listOf(fact3),
             idempotencyKey = IdempotencyKey(),
             condition = AppendCondition.ExpectedLastFact(
-                subjectRef = SubjectRef(
-                    type = "USER",
-                    id = "ALICE"
-                ),
+                subject = Subject(ALICE_SUBJECT_VALUE),
                 expectedLastFactId = fact1Id // <-- this will cause the violation
             )
         )
@@ -294,10 +271,7 @@ abstract class AbstractFactStoreTest {
 
         val fact1 = Fact(
             id = fact1Id,
-            subjectRef = SubjectRef(
-                type = "USER",
-                id = "ALICE",
-            ),
+            subject = Subject(ALICE_SUBJECT_VALUE),
             type = "USER_CREATED".toFactType(),
             payload = alicePayload,
             appendedAt = Instant.now()
@@ -305,10 +279,7 @@ abstract class AbstractFactStoreTest {
 
         val fact2 = Fact(
             id = fact2Id,
-            subjectRef = SubjectRef(
-                type = "USER",
-                id = "BOB",
-            ),
+            subject = Subject(BOB_SUBJECT_VALUE),
             type = "USER_CREATED".toFactType(),
             payload = bobPayload,
             appendedAt = Instant.now()
@@ -316,10 +287,7 @@ abstract class AbstractFactStoreTest {
 
         val fact3 = Fact(
             id = fact3Id,
-            subjectRef = SubjectRef(
-                type = "USER",
-                id = "ALICE",
-            ),
+            subject = Subject(ALICE_SUBJECT_VALUE),
             type = "USER_LOCKED".toFactType(),
             payload = alicePayload,
             appendedAt = Instant.now()
@@ -331,8 +299,8 @@ abstract class AbstractFactStoreTest {
             idempotencyKey = IdempotencyKey(),
             condition = AppendCondition.ExpectedMultiSubjectLastFact(
                 expectations = mapOf(
-                    SubjectRef("USER", "ALICE") to null,
-                    SubjectRef("USER", "BOB") to null,
+                    Subject(ALICE_SUBJECT_VALUE) to null,
+                    Subject(BOB_SUBJECT_VALUE) to null,
                 )
             )
         )
@@ -352,10 +320,7 @@ abstract class AbstractFactStoreTest {
 
         val fact1 = Fact(
             id = fact1Id,
-            subjectRef = SubjectRef(
-                type = "USER",
-                id = "ALICE",
-            ),
+            subject = Subject(ALICE_SUBJECT_VALUE),
             type = "USER_CREATED".toFactType(),
             payload = alicePayload,
             appendedAt = Instant.now()
@@ -363,10 +328,7 @@ abstract class AbstractFactStoreTest {
 
         val fact2 = Fact(
             id = fact2Id,
-            subjectRef = SubjectRef(
-                type = "USER",
-                id = "BOB",
-            ),
+            subject = Subject(BOB_SUBJECT_VALUE),
             type = "USER_CREATED".toFactType(),
             payload = bobPayload,
             appendedAt = Instant.now()
@@ -374,10 +336,7 @@ abstract class AbstractFactStoreTest {
 
         val fact3 = Fact(
             id = fact3Id,
-            subjectRef = SubjectRef(
-                type = "USER",
-                id = "ALICE",
-            ),
+            subject = Subject(ALICE_SUBJECT_VALUE),
             type = "USER_LOCKED".toFactType(),
             payload = alicePayload,
             appendedAt = Instant.now()
@@ -387,28 +346,28 @@ abstract class AbstractFactStoreTest {
 
         store.append(testStore, factsToAppend)
 
-        val aliceResult = store.findBySubject(testStore, SubjectRef("USER", "ALICE"))
+        val aliceResult = store.findBySubject(testStore, Subject(ALICE_SUBJECT_VALUE))
         assertThat(aliceResult).isInstanceOf(FindBySubjectResult.Found::class.java)
         assertThat((aliceResult as FindBySubjectResult.Found).facts)
             .containsExactly(fact1, fact3)
 
-        val bobResult = store.findBySubject(testStore, SubjectRef("USER", "BOB"))
+        val bobResult = store.findBySubject(testStore, Subject(BOB_SUBJECT_VALUE))
         assertThat(bobResult).isInstanceOf(FindBySubjectResult.Found::class.java)
         assertThat((bobResult as FindBySubjectResult.Found).facts)
             .containsExactly(fact2)
 
-        val peterResult = store.findBySubject(testStore, SubjectRef("USER", "PETER"))
+        val peterResult = store.findBySubject(testStore, Subject("USER:PETER"))
         assertThat(peterResult).isInstanceOf(FindBySubjectResult.Found::class.java)
         assertThat((peterResult as FindBySubjectResult.Found).facts).isEmpty()
 
-        val unknownResult = store.findBySubject(testStore, SubjectRef("UNKNOWN", "UNKNOWN"))
+        val unknownResult = store.findBySubject(testStore, Subject("UNKNOWN:UNKNOWN"))
         assertThat(unknownResult).isInstanceOf(FindBySubjectResult.Found::class.java)
         assertThat((unknownResult as FindBySubjectResult.Found).facts).isEmpty()
     }
 
     @Test
     fun findBySubjectForNonExistingFactstore(): Unit = runBlocking {
-        val result = store.findBySubject(nonExistingStore, SubjectRef("SOME_TYPE", "SOME_ID"))
+        val result = store.findBySubject(nonExistingStore, Subject("SOME_TYPE:SOME_ID"))
         assertThat(result).isInstanceOf(FindBySubjectResult.StoreNotFound::class.java)
     }
 
@@ -420,10 +379,7 @@ abstract class AbstractFactStoreTest {
 
         val fact1 = Fact(
             id = fact1Id,
-            subjectRef = SubjectRef(
-                type = "USER",
-                id = "ALICE",
-            ),
+            subject = Subject(ALICE_SUBJECT_VALUE),
             type = "USER_CREATED".toFactType(),
             payload = alicePayload,
             appendedAt = Instant.now(),
@@ -432,10 +388,7 @@ abstract class AbstractFactStoreTest {
 
         val fact2 = Fact(
             id = fact2Id,
-            subjectRef = SubjectRef(
-                type = "USER",
-                id = "BOB",
-            ),
+            subject = Subject(BOB_SUBJECT_VALUE),
             type = "USER_CREATED".toFactType(),
             payload = bobPayload,
             appendedAt = Instant.now()
@@ -455,10 +408,7 @@ abstract class AbstractFactStoreTest {
     fun appendEventsWithTagsAndFindThem(): Unit = runBlocking {
         val fact1 = Fact(
             id = FactId.generate(),
-            subjectRef = SubjectRef(
-                type = "USER",
-                id = "ALICE",
-            ),
+            subject = Subject(ALICE_SUBJECT_VALUE),
             type = "USER_CREATED".toFactType(),
             payload = alicePayload,
             appendedAt = Instant.now(),
@@ -468,10 +418,7 @@ abstract class AbstractFactStoreTest {
 
         val fact2 = Fact(
             id = FactId.generate(),
-            subjectRef = SubjectRef(
-                type = "USER",
-                id = "BOB",
-            ),
+            subject = Subject(BOB_SUBJECT_VALUE),
             type = "USER_CREATED".toFactType(),
             payload = bobPayload,
             appendedAt = Instant.now(),
@@ -481,10 +428,7 @@ abstract class AbstractFactStoreTest {
 
         val fact3 = Fact(
             id = FactId.generate(),
-            subjectRef = SubjectRef(
-                type = "USER",
-                id = "CHARLIE",
-            ),
+            subject = Subject(CHARLIE_SUBJECT_VALUE),
             type = "USER_CREATED".toFactType(),
             payload = charliePayload,
             appendedAt = Instant.now(),
@@ -665,7 +609,7 @@ abstract class AbstractFactStoreTest {
     ): Fact =
         Fact(
             id = FactId.generate(),
-            subjectRef = SubjectRef(type = "USER", id = subjectId),
+            subject = Subject("USER:$subjectId"),
             type = "USER_CREATED".toFactType(),
             payload = """{ "username": "$username" }""".toFactPayload(),
             appendedAt = Instant.now(),
@@ -689,10 +633,7 @@ abstract class AbstractFactStoreTest {
 
         val fact1 = Fact(
             id = FactId.generate(),
-            subjectRef = SubjectRef(
-                type = "USER",
-                id = "ALICE",
-            ),
+            subject = Subject(ALICE_SUBJECT_VALUE),
             type = "USER_CREATED".toFactType(),
             payload = alicePayload,
             appendedAt = Instant.now(),
@@ -702,10 +643,7 @@ abstract class AbstractFactStoreTest {
 
         val fact2 = Fact(
             id = FactId.generate(),
-            subjectRef = SubjectRef(
-                type = "USER",
-                id = "BOB",
-            ),
+            subject = Subject(BOB_SUBJECT_VALUE),
             type = "USER_CREATED".toFactType(),
             payload = bobPayload,
             appendedAt = Instant.now(),
@@ -715,10 +653,7 @@ abstract class AbstractFactStoreTest {
 
         val fact3 = Fact(
             id = FactId.generate(),
-            subjectRef = SubjectRef(
-                type = "USER",
-                id = "CHARLIE",
-            ),
+            subject = Subject(CHARLIE_SUBJECT_VALUE),
             type = "USER_CREATED".toFactType(),
             payload = charliePayload,
             appendedAt = Instant.now(),
@@ -862,7 +797,7 @@ abstract class AbstractFactStoreTest {
         // Create facts with different types
         val fact1 = Fact(
             id = FactId.generate(),
-            subjectRef = SubjectRef(type = "USER", id = "ALICE"),
+            subject = Subject(ALICE_SUBJECT_VALUE),
             type = "USER_CREATED".toFactType(),
             payload = alicePayload,
             appendedAt = Instant.now(),
@@ -872,7 +807,7 @@ abstract class AbstractFactStoreTest {
 
         val fact2 = Fact(
             id = FactId.generate(),
-            subjectRef = SubjectRef(type = "USER", id = "BOB"),
+            subject = Subject(BOB_SUBJECT_VALUE),
             type = "USER_UPDATED".toFactType(),
             payload = bobPayload,
             appendedAt = Instant.now(),
@@ -882,7 +817,7 @@ abstract class AbstractFactStoreTest {
 
         val fact3 = Fact(
             id = FactId.generate(),
-            subjectRef = SubjectRef(type = "USER", id = "CHARLIE"),
+            subject = Subject(CHARLIE_SUBJECT_VALUE),
             type = "USER_CREATED".toFactType(),
             payload = charliePayload,
             appendedAt = Instant.now(),
@@ -914,7 +849,7 @@ abstract class AbstractFactStoreTest {
         // Create facts with different types and tags
         val fact1 = Fact(
             id = FactId.generate(),
-            subjectRef = SubjectRef(type = "USER", id = "ALICE"),
+            subject = Subject(ALICE_SUBJECT_VALUE),
             type = "USER_CREATED".toFactType(),
             payload = alicePayload,
             appendedAt = Instant.now(),
@@ -924,7 +859,7 @@ abstract class AbstractFactStoreTest {
 
         val fact2 = Fact(
             id = FactId.generate(),
-            subjectRef = SubjectRef(type = "USER", id = "BOB"),
+            subject = Subject(BOB_SUBJECT_VALUE),
             type = "USER_UPDATED".toFactType(),
             payload = bobPayload,
             appendedAt = Instant.now(),
@@ -934,7 +869,7 @@ abstract class AbstractFactStoreTest {
 
         val fact3 = Fact(
             id = FactId.generate(),
-            subjectRef = SubjectRef(type = "USER", id = "CHARLIE"),
+            subject = Subject(CHARLIE_SUBJECT_VALUE),
             type = "USER_CREATED".toFactType(),
             payload = charliePayload,
             appendedAt = Instant.now(),
@@ -972,7 +907,7 @@ abstract class AbstractFactStoreTest {
         // Create facts with different types and tags
         val fact1 = Fact(
             id = FactId.generate(),
-            subjectRef = SubjectRef(type = "USER", id = "ALICE"),
+            subject = Subject(ALICE_SUBJECT_VALUE),
             type = "USER_CREATED".toFactType(),
             payload = alicePayload,
             appendedAt = Instant.now(),
@@ -982,7 +917,7 @@ abstract class AbstractFactStoreTest {
 
         val fact2 = Fact(
             id = FactId.generate(),
-            subjectRef = SubjectRef(type = "USER", id = "BOB"),
+            subject = Subject(BOB_SUBJECT_VALUE),
             type = "USER_UPDATED".toFactType(),
             payload = bobPayload,
             appendedAt = Instant.now(),
@@ -992,7 +927,7 @@ abstract class AbstractFactStoreTest {
 
         val fact3 = Fact(
             id = FactId.generate(),
-            subjectRef = SubjectRef(type = "USER", id = "CHARLIE"),
+            subject = Subject(CHARLIE_SUBJECT_VALUE),
             type = "USER_CREATED".toFactType(),
             payload = charliePayload,
             appendedAt = Instant.now(),
@@ -1029,7 +964,7 @@ abstract class AbstractFactStoreTest {
         // Create facts with different types and tags
         val fact1 = Fact(
             id = FactId.generate(),
-            subjectRef = SubjectRef(type = "USER", id = "ALICE"),
+            subject = Subject(ALICE_SUBJECT_VALUE),
             type = "USER_CREATED".toFactType(),
             payload = alicePayload,
             appendedAt = Instant.now(),
@@ -1065,10 +1000,7 @@ abstract class AbstractFactStoreTest {
 
             Fact(
                 id = FactId.generate(),
-                subjectRef = SubjectRef(
-                    type = "USER",
-                    id = "user-$index"
-                ),
+                subject = Subject("USER:user-$index"),
                 type = "USER_CREATED".toFactType(),
                 payload = """{ "username": "user$index" }""".toFactPayload(),
                 appendedAt = Instant.now(),
@@ -1090,10 +1022,7 @@ abstract class AbstractFactStoreTest {
             testStore,
             Fact(
                 id = FactId.generate(),
-                subjectRef = SubjectRef(
-                    type = "USER",
-                    id = "user-${FactId.generate()}"
-                ),
+                subject = Subject("USER:user-${FactId.generate()}"),
                 type = "USER_CREATED".toFactType(),
                 payload = """{ "username": "user" }""".toFactPayload(),
                 appendedAt = Instant.now(),
@@ -1180,10 +1109,7 @@ abstract class AbstractFactStoreTest {
         val fact1Id = FactId.generate()
         val fact1 = Fact(
             id = fact1Id,
-            subjectRef = SubjectRef(
-                type = "USER",
-                id = "ALICE",
-            ),
+            subject = Subject(ALICE_SUBJECT_VALUE),
             type = "USER_CREATED".toFactType(),
             payload = alicePayload,
             appendedAt = Instant.now(),
@@ -1218,10 +1144,7 @@ abstract class AbstractFactStoreTest {
         val fact2Id = FactId.generate()
         val fact2 = Fact(
             id = fact2Id,
-            subjectRef = SubjectRef(
-                type = "USER",
-                id = "ALICE",
-            ),
+            subject = Subject(ALICE_SUBJECT_VALUE),
             type = "USER_LOCKED".toFactType(),
             payload = alicePayload,
             appendedAt = Instant.now(),
@@ -1261,10 +1184,7 @@ abstract class AbstractFactStoreTest {
         val fact3Id = FactId.generate()
         val fact3 = Fact(
             id = fact3Id,
-            subjectRef = SubjectRef(
-                type = "USER",
-                id = "BOB",
-            ),
+            subject = Subject(BOB_SUBJECT_VALUE),
             type = "USER_CREATED".toFactType(),
             payload = bobPayload,
             appendedAt = Instant.now(),
@@ -1297,10 +1217,7 @@ abstract class AbstractFactStoreTest {
         val fact4Id = FactId.generate()
         val fact4 = Fact(
             id = fact4Id,
-            subjectRef = SubjectRef(
-                type = "USER",
-                id = "BOB",
-            ),
+            subject = Subject(BOB_SUBJECT_VALUE),
             type = "USER_LOCKED".toFactType(),
             payload = bobPayload,
             appendedAt = Instant.now(),
@@ -1341,10 +1258,7 @@ abstract class AbstractFactStoreTest {
 
         val fact1 = Fact(
             id = FactId.generate(),
-            subjectRef = SubjectRef(
-                type = "USER",
-                id = "BOB",
-            ),
+            subject = Subject(BOB_SUBJECT_VALUE),
             type = "USER_LOCKED".toFactType(),
             payload = bobPayload,
             appendedAt = Instant.now(),
@@ -1353,10 +1267,7 @@ abstract class AbstractFactStoreTest {
 
         val fact2 = Fact(
             id = FactId.generate(),
-            subjectRef = SubjectRef(
-                type = "USER",
-                id = "ALICE",
-            ),
+            subject = Subject(ALICE_SUBJECT_VALUE),
             type = "USER_LOCKED".toFactType(),
             payload = alicePayload,
             appendedAt = Instant.now(),
@@ -1384,10 +1295,7 @@ abstract class AbstractFactStoreTest {
 
         val fact1 = Fact(
             id = FactId.generate(),
-            subjectRef = SubjectRef(
-                type = "USER",
-                id = "DOMI",
-            ),
+            subject = Subject("USER:DOMI"),
             type = "USER_LOCKED".toFactType(),
             payload = """{ "username": "DOMI" }""".toFactPayload(),
             appendedAt = Instant.now(),
@@ -1399,10 +1307,7 @@ abstract class AbstractFactStoreTest {
             facts = listOf(fact1),
             idempotencyKey = idempotencyKey,
             condition = AppendCondition.ExpectedLastFact(
-                subjectRef = SubjectRef(
-                    type = "USER",
-                    id = "DOMI",
-                ),
+                subject = Subject("USER:DOMI"),
                 expectedLastFactId = null
             )
         )
@@ -1426,10 +1331,7 @@ abstract class AbstractFactStoreTest {
 
         val fact1 = Fact(
             id = factId,
-            subjectRef = SubjectRef(
-                type = "TEST_TYPE",
-                id = "TEST_ID",
-            ),
+            subject = Subject("TEST_SUBJECT"),
             type = "TEST_FACT_TYPE".toFactType(),
             payload = """DATA""".toFactPayload(),
             appendedAt = Instant.now(),
@@ -1472,10 +1374,7 @@ abstract class AbstractFactStoreTest {
 
         val fact = Fact(
             id = FactId.generate(),
-            subjectRef = SubjectRef(
-                type = "TEST_TYPE",
-                id = "TEST_ID",
-            ),
+            subject = Subject("TEST_SUBJECT"),
             type = "TEST_FACT_TYPE".toFactType(),
             payload = """DATA""".toFactPayload(),
             appendedAt = Instant.now(),

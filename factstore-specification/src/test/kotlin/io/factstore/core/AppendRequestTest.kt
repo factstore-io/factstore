@@ -11,10 +11,7 @@ class AppendRequestTest {
 
         val fact1 = Fact(
             id = FactId.generate(),
-            subjectRef = SubjectRef(
-                type = "TEST_TYPE",
-                id = "TEST_ID",
-            ),
+            subject = Subject("TEST_SUBJECT"),
             type = FactType("TEST_FACT_TYPE"),
             payload = """DATA""".toFactPayload(),
             appendedAt = Instant.now(),

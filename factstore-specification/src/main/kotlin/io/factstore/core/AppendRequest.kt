@@ -67,12 +67,12 @@ sealed interface AppendCondition {
      * Requires that the last fact associated with the given subject matches
      * the expected fact identifier.
      *
-     * @property subjectRef the subject whose last fact is checked
+     * @property subject the subject whose last fact is checked
      * @property expectedLastFactId the expected identifier of the last fact,
      *         or `null` if no fact is expected to exist
      */
     data class ExpectedLastFact(
-        val subjectRef: SubjectRef,
+        val subject: Subject,
         val expectedLastFactId: FactId?
     ) : AppendCondition
 
@@ -84,7 +84,7 @@ sealed interface AppendCondition {
      *         last fact identifiers
      */
     data class ExpectedMultiSubjectLastFact(
-        val expectations: Map<SubjectRef, FactId?>
+        val expectations: Map<Subject, FactId?>
     ) : AppendCondition
 
     /**

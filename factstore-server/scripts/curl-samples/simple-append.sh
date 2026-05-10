@@ -6,10 +6,7 @@ curl -X 'POST' \
    "facts":[
       {
          "type":"UserCreated",
-         "subjectRef":{
-            "type":"user",
-            "id":"user-3"
-         },
+         "subject":"user-4",
          "payload":{
             "data":"SGVsbG8gd29ybGQ="
          },
