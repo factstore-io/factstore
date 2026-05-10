@@ -53,6 +53,32 @@ interface FactStoreClient {
         @PathParam("store") storeName: String
     ): Response
 
+    @GET
+    @Produces(APPLICATION_JSON)
+    @Path("/stores/{store}/facts/{factId}")
+    fun findFact(
+        @PathParam("store") store: String,
+        @PathParam("factId") factId: UUID,
+    ): FactHttp
+
+    @GET
+    @Produces(APPLICATION_JSON)
+    @Path("/stores/{store}/subjects/{subjectType}/{subjectId}/facts")
+    fun findFactsBySubject(
+        @PathParam("store") storeName: String,
+        @PathParam("subjectType") subjectType: String,
+        @PathParam("subjectId") subjectId: String,
+    ): List<FactHttp>
+
+    @GET
+    @Produces(APPLICATION_JSON)
+    @Path("/stores/{store}/facts")
+    fun findFactsInTimeRange(
+        @PathParam("store") storeName: String,
+        @QueryParam("from") from: Instant? = null,
+        @QueryParam("to") to: Instant? = null,
+    ): List<FactHttp>
+
 }
 
 data class CreateStoreRequest(val name: String)

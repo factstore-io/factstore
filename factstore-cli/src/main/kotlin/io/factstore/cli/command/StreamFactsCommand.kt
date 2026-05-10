@@ -1,6 +1,5 @@
 package io.factstore.cli.command
 
-import io.factstore.cli.client.FactHttp
 import io.factstore.cli.client.FactStoreClient
 import io.smallrye.mutiny.coroutines.asFlow
 import io.vertx.core.http.HttpClosedException
@@ -8,11 +7,9 @@ import jakarta.inject.Inject
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.runBlocking
 import picocli.CommandLine.*
-import java.time.temporal.ChronoUnit.SECONDS
 import java.util.*
 import java.util.concurrent.Callable
 import kotlin.coroutines.cancellation.CancellationException
-import kotlin.text.Charsets.UTF_8
 
 @Command(
     name = "stream",
@@ -76,13 +73,4 @@ class StreamFactsCommand : Callable<Int> {
         }
     }
 
-    private fun FactHttp.print() {
-        println(
-            "[%s] %-15s | %s".format(
-                appendedAt?.truncatedTo(SECONDS),
-                type,
-                String(payload.data, charset = UTF_8)
-            )
-        )
-    }
 }

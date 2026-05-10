@@ -17,6 +17,7 @@ import picocli.CommandLine.Spec
     subcommands = [
         StoreCommand::class,
         FactCommand::class,
+        FindCommand::class,
     ]
 )
 class FactStoreCommand : Runnable {
