@@ -17,6 +17,10 @@ factstore find facts --store orders --subject order-1234
 
 factstore find facts --store orders --since 5m # Find facts from the last 5 minutes
 
+# find by tag
+factstore find facts --store orders --tag key=value
+factstore find facts --store orders --tag key=value --tag key2=value2
+
 factstore store delete orders
 ```
 
