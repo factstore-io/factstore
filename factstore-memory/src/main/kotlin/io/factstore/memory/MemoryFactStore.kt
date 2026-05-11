@@ -130,26 +130,54 @@ class MemoryFactStore : FactStore {
         if (exists) ExistsByIdResult.Exists else ExistsByIdResult.DoesNotExist
     }
 
-    override suspend fun findInTimeRange(storeName: StoreName, timeRange: TimeRange): FindInTimeRangeResult = lock.withLock {
+    override suspend fun findInTimeRange(
+        storeName: StoreName,
+        timeRange: TimeRange,
+        limit: Limit,
+        direction: ReadDirection,
+    ): FindInTimeRangeResult = lock.withLock {
         val internalId = resolveId(storeName) ?: return FindInTimeRangeResult.StoreNotFound(storeName)
 
-        val foundFacts = facts[internalId]?.filter { it.appendedAt in timeRange.start..timeRange.end } ?: emptyList()
+        val foundFacts = facts[internalId]
+            ?.filter { it.appendedAt in timeRange.start..timeRange.end }
+            ?.applyDirection(direction)
+            ?.applyLimit(limit)
+            ?: emptyList()
+
         FindInTimeRangeResult.Found(foundFacts)
     }
 
-    override suspend fun findBySubject(storeName: StoreName, subject: Subject): FindBySubjectResult = lock.withLock {
+    override suspend fun findBySubject(
+        storeName: StoreName,
+        subject: Subject,
+        limit: Limit,
+        direction: ReadDirection,
+    ): FindBySubjectResult = lock.withLock {
         val internalId = resolveId(storeName) ?: return FindBySubjectResult.StoreNotFound(storeName)
 
-        val foundFacts = facts[internalId]?.filter { it.subject == subject } ?: emptyList()
+        val foundFacts = facts[internalId]
+            ?.filter { it.subject == subject }
+            ?.applyDirection(direction)
+            ?.applyLimit(limit)
+            ?: emptyList()
+
         FindBySubjectResult.Found(foundFacts)
     }
 
-    override suspend fun findByTags(storeName: StoreName, tags: List<Pair<TagKey, TagValue>>): FindByTagsResult = lock.withLock {
+    override suspend fun findByTags(
+        storeName: StoreName,
+        tags: List<Pair<TagKey, TagValue>>,
+        limit: Limit,
+        direction: ReadDirection,
+    ): FindByTagsResult = lock.withLock {
         val internalId = resolveId(storeName) ?: return FindByTagsResult.StoreNotFound(storeName)
 
-        val foundFacts = facts[internalId]?.filter { fact ->
-            tags.all { (key, value) -> fact.tags[key] == value }
-        } ?: emptyList()
+        val foundFacts = facts[internalId]
+            ?.filter { fact -> tags.all { (key, value) -> fact.tags[key] == value } }
+            ?.applyDirection(direction)
+            ?.applyLimit(limit)
+            ?: emptyList()
+
         FindByTagsResult.Found(foundFacts)
     }
 
@@ -255,6 +283,16 @@ class MemoryFactStore : FactStore {
             idempotencyKeys.remove(storeId)
         }
         return RemoveStoreResult.StoreRemoved(request.storeName)
+    }
+
+    private fun List<Fact>.applyDirection(direction: ReadDirection): List<Fact> = when (direction) {
+        ReadDirection.Forward -> this
+        ReadDirection.Backward -> asReversed()
+    }
+
+    private fun List<Fact>.applyLimit(limit: Limit): List<Fact> = when (val cap = limit.value) {
+        null -> this
+        else -> take(cap)
     }
 }
 

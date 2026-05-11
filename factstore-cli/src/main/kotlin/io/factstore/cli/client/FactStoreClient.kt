@@ -67,6 +67,8 @@ interface FactStoreClient {
     fun findFactsBySubject(
         @PathParam("store") storeName: String,
         @PathParam("subject") subject: String,
+        @QueryParam("limit") limit: Int? = null,
+        @QueryParam("direction") direction: String? = null,
     ): List<FactHttp>
 
     @GET
@@ -77,6 +79,8 @@ interface FactStoreClient {
         @QueryParam("from") from: Instant? = null,
         @QueryParam("to") to: Instant? = null,
         @QueryParam("tag") tags: List<String> = emptyList(),
+        @QueryParam("limit") limit: Int? = null,
+        @QueryParam("direction") direction: String? = null,
     ): List<FactHttp>
 
 }

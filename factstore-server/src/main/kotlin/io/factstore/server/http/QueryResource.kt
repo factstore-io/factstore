@@ -44,9 +44,16 @@ class QueryResource(
     suspend fun findBySubject(
         @PathParam("storeName") storeName: String,
         @PathParam("subject") subject: String,
+        @QueryParam("limit") limit: Int? = null,
+        @QueryParam("direction") direction: String? = null,
     ): Response =
         store
-            .findBySubject(StoreName(storeName), Subject(subject))
+            .findBySubject(
+                storeName = StoreName(storeName),
+                subject = Subject(subject),
+                limit = limit.toLimit(),
+                direction = direction.toReadDirection(),
+            )
             .toResponse()
 
     @GET
@@ -57,6 +64,8 @@ class QueryResource(
         @QueryParam("from") from: Instant? = null,
         @QueryParam("to") to: Instant? = null,
         @QueryParam("tag") tags: List<String> = emptyList(),
+        @QueryParam("limit") limit: Int? = null,
+        @QueryParam("direction") direction: String? = null,
     ): Response {
         return when {
             tags.isNotEmpty() && (from != null || to != null) -> apiErrorResponse(
@@ -64,17 +73,25 @@ class QueryResource(
                 reason = Conflict,
                 message = "Combining tag filters with time range is not yet supported.",
             )
-            tags.isNotEmpty() -> {
-                val parsedTags = tags.map { it.toTagPair() }
-                store.findByTags(StoreName(storeName), parsedTags).toResponse()
-            }
-            else -> store.findInTimeRange(
-                storeName = StoreName(storeName),
-                TimeRange(
-                    start = from ?: Instant.MIN,
-                    end = to ?: Instant.now()
+            tags.isNotEmpty() -> store
+                .findByTags(
+                    storeName = StoreName(storeName),
+                    tags = tags.map { it.toTagPair() },
+                    limit = limit.toLimit(),
+                    direction = direction.toReadDirection(),
                 )
-            ).toResponse()
+                .toResponse()
+            else -> store
+                .findInTimeRange(
+                    storeName = StoreName(storeName),
+                    timeRange = TimeRange(
+                        start = from ?: Instant.MIN,
+                        end = to ?: Instant.now()
+                    ),
+                    limit = limit.toLimit(),
+                    direction = direction.toReadDirection(),
+                )
+                .toResponse()
         }
     }
 
@@ -82,6 +99,14 @@ class QueryResource(
         val parts = split("=", limit = 2)
         require(parts.size == 2) { "Tag must be in key=value format, got: '$this'" }
         return TagKey(parts[0]) to TagValue(parts[1])
+    }
+
+    private fun Int?.toLimit(): Limit = if (this != null) Limit.of(this) else Limit.None
+
+    private fun String?.toReadDirection(): ReadDirection = when (this?.lowercase()) {
+        "backward" -> ReadDirection.Backward
+        "forward", null -> ReadDirection.Forward
+        else -> throw IllegalArgumentException("Invalid direction '$this'. Must be 'forward' or 'backward'.")
     }
 
 }
