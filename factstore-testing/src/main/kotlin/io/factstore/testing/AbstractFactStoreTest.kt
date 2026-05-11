@@ -193,6 +193,124 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
+    fun testFindInTimeRangeWithLimit(): Unit = runBlocking {
+        val now = Instant.now()
+
+        val fact1 = Fact(
+            id = FactId.generate(),
+            subject = Subject(ALICE_SUBJECT_VALUE),
+            type = "USER_CREATED".toFactType(),
+            payload = alicePayload,
+            appendedAt = now.minusSeconds(120),
+        )
+        val fact2 = Fact(
+            id = FactId.generate(),
+            subject = Subject(BOB_SUBJECT_VALUE),
+            type = "USER_CREATED".toFactType(),
+            payload = bobPayload,
+            appendedAt = now.minusSeconds(60),
+        )
+        val fact3 = Fact(
+            id = FactId.generate(),
+            subject = Subject(CHARLIE_SUBJECT_VALUE),
+            type = "USER_CREATED".toFactType(),
+            payload = charliePayload,
+            appendedAt = now,
+        )
+
+        store.append(testStore, listOf(fact1, fact2, fact3))
+
+        val result = store.findInTimeRange(
+            storeName = testStore,
+            timeRange = TimeRange(start = Instant.MIN, end = now.plusSeconds(10)),
+            limit = Limit.of(2),
+        )
+
+        assertThat(result).isInstanceOf(FindInTimeRangeResult.Found::class.java)
+        // Forward + limit 2 → oldest two facts
+        assertThat((result as FindInTimeRangeResult.Found).facts).containsExactly(fact1, fact2)
+    }
+
+    @Test
+    fun testFindInTimeRangeWithReadDirectionBackward(): Unit = runBlocking {
+        val now = Instant.now()
+
+        val fact1 = Fact(
+            id = FactId.generate(),
+            subject = Subject(ALICE_SUBJECT_VALUE),
+            type = "USER_CREATED".toFactType(),
+            payload = alicePayload,
+            appendedAt = now.minusSeconds(120),
+        )
+        val fact2 = Fact(
+            id = FactId.generate(),
+            subject = Subject(BOB_SUBJECT_VALUE),
+            type = "USER_CREATED".toFactType(),
+            payload = bobPayload,
+            appendedAt = now.minusSeconds(60),
+        )
+        val fact3 = Fact(
+            id = FactId.generate(),
+            subject = Subject(CHARLIE_SUBJECT_VALUE),
+            type = "USER_CREATED".toFactType(),
+            payload = charliePayload,
+            appendedAt = now,
+        )
+
+        store.append(testStore, listOf(fact1, fact2, fact3))
+
+        val result = store.findInTimeRange(
+            storeName = testStore,
+            timeRange = TimeRange(start = Instant.MIN, end = now.plusSeconds(10)),
+            direction = ReadDirection.Backward,
+        )
+
+        assertThat(result).isInstanceOf(FindInTimeRangeResult.Found::class.java)
+        // Backward, no limit → newest first
+        assertThat((result as FindInTimeRangeResult.Found).facts).containsExactly(fact3, fact2, fact1)
+    }
+
+    @Test
+    fun testFindInTimeRangeWithLimitAndBackwardDirection(): Unit = runBlocking {
+        val now = Instant.now()
+
+        val fact1 = Fact(
+            id = FactId.generate(),
+            subject = Subject(ALICE_SUBJECT_VALUE),
+            type = "USER_CREATED".toFactType(),
+            payload = alicePayload,
+            appendedAt = now.minusSeconds(120),
+        )
+        val fact2 = Fact(
+            id = FactId.generate(),
+            subject = Subject(BOB_SUBJECT_VALUE),
+            type = "USER_CREATED".toFactType(),
+            payload = bobPayload,
+            appendedAt = now.minusSeconds(60),
+        )
+        val fact3 = Fact(
+            id = FactId.generate(),
+            subject = Subject(CHARLIE_SUBJECT_VALUE),
+            type = "USER_CREATED".toFactType(),
+            payload = charliePayload,
+            appendedAt = now,
+        )
+
+        store.append(testStore, listOf(fact1, fact2, fact3))
+
+        val result = store.findInTimeRange(
+            storeName = testStore,
+            timeRange = TimeRange(start = Instant.MIN, end = now.plusSeconds(10)),
+            limit = Limit.of(2),
+            direction = ReadDirection.Backward,
+        )
+
+        assertThat(result).isInstanceOf(FindInTimeRangeResult.Found::class.java)
+        // Backward + limit 2 → the 2 most recent facts, newest first
+        assertThat((result as FindInTimeRangeResult.Found).facts).containsExactly(fact3, fact2)
+    }
+
+    @Test
     fun testConditionalAppendWithSubject(): Unit = runBlocking {
         // append first event without an append condition
         val fact1Id = FactId.generate()
@@ -372,6 +490,119 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
+    fun testFindBySubjectWithLimit(): Unit = runBlocking {
+        val fact1 = Fact(
+            id = FactId.generate(),
+            subject = Subject(ALICE_SUBJECT_VALUE),
+            type = "USER_CREATED".toFactType(),
+            payload = alicePayload,
+            appendedAt = Instant.now(),
+        )
+        val fact2 = Fact(
+            id = FactId.generate(),
+            subject = Subject(ALICE_SUBJECT_VALUE),
+            type = "USER_UPDATED".toFactType(),
+            payload = alicePayload,
+            appendedAt = Instant.now(),
+        )
+        val fact3 = Fact(
+            id = FactId.generate(),
+            subject = Subject(ALICE_SUBJECT_VALUE),
+            type = "USER_LOCKED".toFactType(),
+            payload = alicePayload,
+            appendedAt = Instant.now(),
+        )
+
+        store.append(testStore, listOf(fact1, fact2, fact3))
+
+        val result = store.findBySubject(
+            storeName = testStore,
+            subject = Subject(ALICE_SUBJECT_VALUE),
+            limit = Limit.of(2),
+        )
+
+        assertThat(result).isInstanceOf(FindBySubjectResult.Found::class.java)
+        // Forward + limit 2 → first two facts appended
+        assertThat((result as FindBySubjectResult.Found).facts).containsExactly(fact1, fact2)
+    }
+
+    @Test
+    fun testFindBySubjectWithReadDirectionBackward(): Unit = runBlocking {
+        val fact1 = Fact(
+            id = FactId.generate(),
+            subject = Subject(ALICE_SUBJECT_VALUE),
+            type = "USER_CREATED".toFactType(),
+            payload = alicePayload,
+            appendedAt = Instant.now(),
+        )
+        val fact2 = Fact(
+            id = FactId.generate(),
+            subject = Subject(ALICE_SUBJECT_VALUE),
+            type = "USER_UPDATED".toFactType(),
+            payload = alicePayload,
+            appendedAt = Instant.now(),
+        )
+        val fact3 = Fact(
+            id = FactId.generate(),
+            subject = Subject(ALICE_SUBJECT_VALUE),
+            type = "USER_LOCKED".toFactType(),
+            payload = alicePayload,
+            appendedAt = Instant.now(),
+        )
+
+        store.append(testStore, listOf(fact1, fact2, fact3))
+
+        val result = store.findBySubject(
+            storeName = testStore,
+            subject = Subject(ALICE_SUBJECT_VALUE),
+            direction = ReadDirection.Backward,
+        )
+
+        assertThat(result).isInstanceOf(FindBySubjectResult.Found::class.java)
+        // Backward, no limit → newest first
+        assertThat((result as FindBySubjectResult.Found).facts).containsExactly(fact3, fact2, fact1)
+    }
+
+    @Test
+    fun testFindBySubjectWithLimitAndBackwardDirection(): Unit = runBlocking {
+        val fact1 = Fact(
+            id = FactId.generate(),
+            subject = Subject(ALICE_SUBJECT_VALUE),
+            type = "USER_CREATED".toFactType(),
+            payload = alicePayload,
+            appendedAt = Instant.now(),
+        )
+        val fact2 = Fact(
+            id = FactId.generate(),
+            subject = Subject(ALICE_SUBJECT_VALUE),
+            type = "USER_UPDATED".toFactType(),
+            payload = alicePayload,
+            appendedAt = Instant.now(),
+        )
+        val fact3 = Fact(
+            id = FactId.generate(),
+            subject = Subject(ALICE_SUBJECT_VALUE),
+            type = "USER_LOCKED".toFactType(),
+            payload = alicePayload,
+            appendedAt = Instant.now(),
+        )
+
+        store.append(testStore, listOf(fact1, fact2, fact3))
+
+        val result = store.findBySubject(
+            storeName = testStore,
+            subject = Subject(ALICE_SUBJECT_VALUE),
+            limit = Limit.of(2),
+            direction = ReadDirection.Backward,
+        )
+
+        assertThat(result).isInstanceOf(FindBySubjectResult.Found::class.java)
+        // Backward + limit 2 → the 2 most recently appended facts, newest first
+        assertThat((result as FindBySubjectResult.Found).facts).containsExactly(fact3, fact2)
+    }
+
+
+    @Test
     fun testWithMetadata(): Unit = runBlocking {
 
         val fact1Id = FactId.generate()
@@ -483,6 +714,199 @@ abstract class AbstractFactStoreTest {
         )
 
         assertThat(result).isInstanceOf(FindByTagsResult.StoreNotFound::class.java)
+    }
+
+    @Test
+    fun testFindByTagsWithLimit(): Unit = runBlocking {
+        val fact1 = Fact(
+            id = FactId.generate(),
+            subject = Subject(ALICE_SUBJECT_VALUE),
+            type = "USER_CREATED".toFactType(),
+            payload = alicePayload,
+            appendedAt = Instant.now(),
+            tags = mapOf(TagKey("role") to TagValue("admin")),
+        )
+        val fact2 = Fact(
+            id = FactId.generate(),
+            subject = Subject(BOB_SUBJECT_VALUE),
+            type = "USER_CREATED".toFactType(),
+            payload = bobPayload,
+            appendedAt = Instant.now(),
+            tags = mapOf(TagKey("role") to TagValue("admin")),
+        )
+        val fact3 = Fact(
+            id = FactId.generate(),
+            subject = Subject(CHARLIE_SUBJECT_VALUE),
+            type = "USER_CREATED".toFactType(),
+            payload = charliePayload,
+            appendedAt = Instant.now(),
+            tags = mapOf(TagKey("role") to TagValue("admin")),
+        )
+
+        store.append(testStore, listOf(fact1, fact2, fact3))
+
+        val result = store.findByTags(
+            storeName = testStore,
+            tags = listOf(TagKey("role") to TagValue("admin")),
+            limit = Limit.of(2),
+        )
+
+        assertThat(result).isInstanceOf(FindByTagsResult.Found::class.java)
+        // Forward + limit 2 → first two matching facts
+        assertThat((result as FindByTagsResult.Found).facts).containsExactly(fact1, fact2)
+    }
+
+    @Test
+    fun testFindByTagsWithReadDirectionBackward(): Unit = runBlocking {
+        val fact1 = Fact(
+            id = FactId.generate(),
+            subject = Subject(ALICE_SUBJECT_VALUE),
+            type = "USER_CREATED".toFactType(),
+            payload = alicePayload,
+            appendedAt = Instant.now(),
+            tags = mapOf(TagKey("role") to TagValue("admin")),
+        )
+        val fact2 = Fact(
+            id = FactId.generate(),
+            subject = Subject(BOB_SUBJECT_VALUE),
+            type = "USER_CREATED".toFactType(),
+            payload = bobPayload,
+            appendedAt = Instant.now(),
+            tags = mapOf(TagKey("role") to TagValue("admin")),
+        )
+        val fact3 = Fact(
+            id = FactId.generate(),
+            subject = Subject(CHARLIE_SUBJECT_VALUE),
+            type = "USER_CREATED".toFactType(),
+            payload = charliePayload,
+            appendedAt = Instant.now(),
+            tags = mapOf(TagKey("role") to TagValue("admin")),
+        )
+
+        store.append(testStore, listOf(fact1, fact2, fact3))
+
+        val result = store.findByTags(
+            storeName = testStore,
+            tags = listOf(TagKey("role") to TagValue("admin")),
+            direction = ReadDirection.Backward,
+        )
+
+        assertThat(result).isInstanceOf(FindByTagsResult.Found::class.java)
+        // Backward, no limit → newest first
+        assertThat((result as FindByTagsResult.Found).facts).containsExactly(fact3, fact2, fact1)
+    }
+
+    @Test
+    fun testFindByTagsWithLimitAndBackwardDirection(): Unit = runBlocking {
+        val fact1 = Fact(
+            id = FactId.generate(),
+            subject = Subject(ALICE_SUBJECT_VALUE),
+            type = "USER_CREATED".toFactType(),
+            payload = alicePayload,
+            appendedAt = Instant.now(),
+            tags = mapOf(TagKey("role") to TagValue("admin")),
+        )
+        val fact2 = Fact(
+            id = FactId.generate(),
+            subject = Subject(BOB_SUBJECT_VALUE),
+            type = "USER_CREATED".toFactType(),
+            payload = bobPayload,
+            appendedAt = Instant.now(),
+            tags = mapOf(TagKey("role") to TagValue("admin")),
+        )
+        val fact3 = Fact(
+            id = FactId.generate(),
+            subject = Subject(CHARLIE_SUBJECT_VALUE),
+            type = "USER_CREATED".toFactType(),
+            payload = charliePayload,
+            appendedAt = Instant.now(),
+            tags = mapOf(TagKey("role") to TagValue("admin")),
+        )
+
+        store.append(testStore, listOf(fact1, fact2, fact3))
+
+        val result = store.findByTags(
+            storeName = testStore,
+            tags = listOf(TagKey("role") to TagValue("admin")),
+            limit = Limit.of(2),
+            direction = ReadDirection.Backward,
+        )
+
+        assertThat(result).isInstanceOf(FindByTagsResult.Found::class.java)
+        // Backward + limit 2 → the 2 most recently appended matching facts, newest first
+        assertThat((result as FindByTagsResult.Found).facts).containsExactly(fact3, fact2)
+    }
+
+    @Test
+    fun testFindByTagsWithLimitAndBackwardDirectionMultipleTags(): Unit = runBlocking {
+        // Verifies that limit + direction work correctly on the multi-tag intersection path
+        val fact1 = Fact(
+            id = FactId.generate(),
+            subject = Subject(ALICE_SUBJECT_VALUE),
+            type = "USER_CREATED".toFactType(),
+            payload = alicePayload,
+            appendedAt = Instant.now(),
+            tags = mapOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("eu")),
+        )
+        val fact2 = Fact(
+            id = FactId.generate(),
+            subject = Subject(BOB_SUBJECT_VALUE),
+            type = "USER_CREATED".toFactType(),
+            payload = bobPayload,
+            appendedAt = Instant.now(),
+            tags = mapOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("eu")),
+        )
+        val fact3 = Fact(
+            id = FactId.generate(),
+            subject = Subject(CHARLIE_SUBJECT_VALUE),
+            type = "USER_CREATED".toFactType(),
+            payload = charliePayload,
+            appendedAt = Instant.now(),
+            tags = mapOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("eu")),
+        )
+
+        store.append(testStore, listOf(fact1, fact2, fact3))
+
+        val result = store.findByTags(
+            storeName = testStore,
+            tags = listOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("eu")),
+            limit = Limit.of(2),
+            direction = ReadDirection.Backward,
+        )
+
+        assertThat(result).isInstanceOf(FindByTagsResult.Found::class.java)
+        // Backward + limit 2 on multi-tag intersection → the 2 most recently appended matching facts
+        assertThat((result as FindByTagsResult.Found).facts).containsExactly(fact3, fact2)
+    }
+
+    @Test
+    fun testLimitLargerThanResultSetReturnsAll(): Unit = runBlocking {
+        val fact1 = Fact(
+            id = FactId.generate(),
+            subject = Subject(ALICE_SUBJECT_VALUE),
+            type = "USER_CREATED".toFactType(),
+            payload = alicePayload,
+            appendedAt = Instant.now(),
+        )
+        val fact2 = Fact(
+            id = FactId.generate(),
+            subject = Subject(ALICE_SUBJECT_VALUE),
+            type = "USER_UPDATED".toFactType(),
+            payload = alicePayload,
+            appendedAt = Instant.now(),
+        )
+
+        store.append(testStore, listOf(fact1, fact2))
+
+        val result = store.findBySubject(
+            storeName = testStore,
+            subject = Subject(ALICE_SUBJECT_VALUE),
+            limit = Limit.of(100),
+        )
+
+        assertThat(result).isInstanceOf(FindBySubjectResult.Found::class.java)
+        // Limit larger than actual result set → all facts returned
+        assertThat((result as FindBySubjectResult.Found).facts).containsExactly(fact1, fact2)
     }
 
     @OptIn(FlowPreview::class)

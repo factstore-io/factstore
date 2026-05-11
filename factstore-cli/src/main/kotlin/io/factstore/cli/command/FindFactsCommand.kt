@@ -1,5 +1,6 @@
 package io.factstore.cli.command
 
+import io.factstore.cli.client.FactHttp
 import io.factstore.cli.client.FactStoreClient
 import io.factstore.cli.converter.FlexibleInstantConverter
 import jakarta.inject.Inject
@@ -34,10 +35,11 @@ class FindFactsCommand : Callable<Int> {
     var limit: Int = 100
 
     @Option(
-        names = ["--reversed"],
-        description = ["Return facts in reverse chronological order (newest first)"]
+        names = ["--direction"],
+        description = ["Read direction: \${COMPLETION-CANDIDATES} (default: \${DEFAULT-VALUE})"],
+        defaultValue = "forward",
     )
-    var reversed: Boolean = false
+    lateinit var direction: ReadDirection
 
     override fun call(): Int {
         val facts = filter.toClientCall()
@@ -50,19 +52,39 @@ class FindFactsCommand : Callable<Int> {
         return ExitCode.OK
     }
 
-    private fun FactFilter?.toClientCall() = when {
-        this == null -> client.findFacts(storeName = storeName)
-        subject != null -> client.findFactsBySubject(storeName, subject!!)
-        tags.isNotEmpty() -> client.findFacts(storeName = storeName, tags = tags)
+    private fun FactFilter?.toClientCall(): List<FactHttp> = when {
+        this == null -> client.findFacts(storeName = storeName, limit = limit, direction = direction.name)
+        subject != null -> client.findFactsBySubject(
+            storeName = storeName,
+            subject = subject!!,
+            limit = limit,
+            direction = direction.name,
+        )
+        tags.isNotEmpty() -> client.findFacts(
+            storeName = storeName,
+            tags = tags,
+            limit = limit,
+            direction = direction.name,
+        )
         else -> {
             val range = timeRange
             if (range != null) client.findFacts(
                 storeName = storeName,
                 from = range.since,
                 to = range.until,
-            ) else client.findFacts(storeName = storeName)
+                limit = limit,
+                direction = direction.name,
+            ) else client.findFacts(
+                storeName = storeName,
+                limit = limit,
+                direction = direction.name,
+            )
         }
     }
+}
+
+enum class ReadDirection {
+    forward, backward;
 }
 
 class FactFilter {

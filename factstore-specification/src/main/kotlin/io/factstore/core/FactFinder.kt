@@ -47,30 +47,51 @@ interface FactFinder {
      *
      * @param storeName the logical name of the store.
      * @param timeRange the inclusive temporal boundaries for the search.
+     * @param limit the maximum number of facts to return. Use [Limit.None] for no limit.
+     * @param direction the direction of the read operation.
      * @return a [FindInTimeRangeResult] containing the list of facts, or
      *         [FindInTimeRangeResult.StoreNotFound] if the store does not exist.
      */
-    suspend fun findInTimeRange(storeName: StoreName, timeRange: TimeRange): FindInTimeRangeResult
+    suspend fun findInTimeRange(
+        storeName: StoreName,
+        timeRange: TimeRange,
+        limit: Limit = Limit.None,
+        direction: ReadDirection = ReadDirection.Forward,
+    ): FindInTimeRangeResult
 
     /**
      * Retrieves the complete history of facts associated with a specific subject.
      *
      * @param storeName the logical name of the store.
      * @param subject the subject for which to retrieve the fact history.
+     * @param limit the maximum number of facts to return. Use [Limit.None] for no limit.
+     * @param direction the direction of the read operation.
      * @return a [FindBySubjectResult.Found] containing the stream of facts for this subject,
      *         or [FindBySubjectResult.StoreNotFound] if the store is missing.
      */
-    suspend fun findBySubject(storeName: StoreName, subject: Subject): FindBySubjectResult
+    suspend fun findBySubject(
+        storeName: StoreName,
+        subject: Subject,
+        limit: Limit = Limit.None,
+        direction: ReadDirection = ReadDirection.Forward,
+    ): FindBySubjectResult
 
     /**
      * Finds facts that match the provided tags (AND logic).
      *
      * @param storeName the logical name of the store.
      * @param tags a list of key-value pairs to match against.
+     * @param limit the maximum number of facts to return. Use [Limit.None] for no limit.
+     * @param direction the direction of the read operation.
      * @return a [FindByTagsResult.Found] with matching facts, or
      *         [FindByTagsResult.StoreNotFound] if the store does not exist.
      */
-    suspend fun findByTags(storeName: StoreName, tags: List<Pair<TagKey, TagValue>>): FindByTagsResult
+    suspend fun findByTags(
+        storeName: StoreName,
+        tags: List<Pair<TagKey, TagValue>>,
+        limit: Limit = Limit.None,
+        direction: ReadDirection = ReadDirection.Forward,
+    ): FindByTagsResult
 
     /**
      * Performs an expressive search for facts using a structured tag query.

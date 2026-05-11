@@ -55,7 +55,12 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
             }
         }.await()
 
-    override suspend fun findInTimeRange(storeName: StoreName, timeRange: TimeRange): FindInTimeRangeResult {
+    override suspend fun findInTimeRange(
+        storeName: StoreName,
+        timeRange: TimeRange,
+        limit: Limit,
+        direction: ReadDirection,
+    ): FindInTimeRangeResult {
         val start = timeRange.start
         val end = timeRange.end
 
@@ -68,25 +73,30 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
                         val begin = createdAtIndexSubspace.getKey(storeId, start)
                         val endKey = createdAtIndexSubspace.getKey(storeId, end)
 
-                        tr.getRange(begin, endKey).asList().thenCompose { kvs ->
-                            val factFutures: List<CompletableFuture<FdbFact?>> = kvs.map { kv ->
-                                val factPosition = createdAtIndexSubspace.unpackPosition(kv.key)
-                                tr.run { factPosition.lookupFact(storeId) }
-                            }
+                        tr.getRange(begin, endKey, limit.toFdbLimit(), direction.isReverse())
+                            .asList().thenCompose { kvs ->
+                                val factFutures: List<CompletableFuture<FdbFact?>> = kvs.map { kv ->
+                                    val factPosition = createdAtIndexSubspace.unpackPosition(kv.key)
+                                    tr.run { factPosition.lookupFact(storeId) }
+                                }
 
-                            // wait for all facts to complete
-                            CompletableFuture.allOf(*factFutures.toTypedArray()).thenApply {
-                                val facts = factFutures.mapNotNull { it.resultNow()?.fact }
-                                FindInTimeRangeResult.Found(facts)
+                                CompletableFuture.allOf(*factFutures.toTypedArray()).thenApply {
+                                    val facts = factFutures.mapNotNull { it.resultNow()?.fact }
+                                    FindInTimeRangeResult.Found(facts)
+                                }
                             }
-                        }
                     }
                 }
             }
         }.await()
     }
 
-    override suspend fun findBySubject(storeName: StoreName, subject: Subject): FindBySubjectResult {
+    override suspend fun findBySubject(
+        storeName: StoreName,
+        subject: Subject,
+        limit: Limit,
+        direction: ReadDirection,
+    ): FindBySubjectResult {
         return db.readAsync { tr ->
             with(tr) {
                 fdbFactStore.context.lookUpStoreIdByName(storeName).thenCompose { storeId ->
@@ -94,59 +104,84 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
                         CompletableFuture.completedFuture(FindBySubjectResult.StoreNotFound(storeName))
                     } else {
                         val subjectRange = subjectIndexSubspace.range(storeId, subject)
-                        tr.getRange(subjectRange).asList().thenCompose { kvs ->
-                            val factFutures: List<CompletableFuture<FdbFact?>> = kvs.map { kv ->
-                                val factPosition = subjectIndexSubspace.unpackPosition(kv.key)
-                                tr.run { factPosition.lookupFact(storeId) }
-                            }
 
-                            CompletableFuture.allOf(*factFutures.toTypedArray()).thenApply {
-                                val facts = factFutures.mapNotNull { it.resultNow()?.fact }
-                                FindBySubjectResult.Found(facts)
+                        tr.getRange(subjectRange, limit.toFdbLimit(), direction.isReverse())
+                            .asList().thenCompose { kvs ->
+                                val factFutures: List<CompletableFuture<FdbFact?>> = kvs.map { kv ->
+                                    val factPosition = subjectIndexSubspace.unpackPosition(kv.key)
+                                    tr.run { factPosition.lookupFact(storeId) }
+                                }
+
+                                CompletableFuture.allOf(*factFutures.toTypedArray()).thenApply {
+                                    val facts = factFutures.mapNotNull { it.resultNow()?.fact }
+                                    FindBySubjectResult.Found(facts)
+                                }
                             }
-                        }
                     }
                 }
             }
         }.await()
     }
 
-    override suspend fun findByTags(storeName: StoreName, tags: List<Pair<TagKey, TagValue>>): FindByTagsResult {
+    override suspend fun findByTags(
+        storeName: StoreName,
+        tags: List<Pair<TagKey, TagValue>>,
+        limit: Limit,
+        direction: ReadDirection,
+    ): FindByTagsResult {
         return db.readAsync { tr ->
             with(tr) {
                 fdbFactStore.context.lookUpStoreIdByName(storeName).thenCompose { storeId ->
                     if (storeId == null) {
                         CompletableFuture.completedFuture(FindByTagsResult.StoreNotFound(storeName))
                     } else {
-                        if (tags.isEmpty()) return@thenCompose CompletableFuture.completedFuture(
-                            FindByTagsResult.Found(emptyList())
-                        )
-
-                        // For each (key, value) pair, get matching factPositions
-                        val tagFutures: List<CompletableFuture<Set<FactPosition>>> = tags.map { (key, value) ->
-                            val range = tagsIndexSubspace.range(storeId, key, value)
-                            tr.getRange(range).asList().thenApply { kvs ->
-                                kvs.mapTo(mutableSetOf()) { kv ->
-                                    tagsIndexSubspace.unpackPosition(kv.key)
-                                }
+                        when {
+                            tags.isEmpty() -> CompletableFuture.completedFuture(FindByTagsResult.Found(emptyList()))
+                            tags.size == 1 -> {
+                                // Single tag — no intersection needed, push limit and direction into FDB
+                                val (key, value) = tags.first()
+                                val range = tagsIndexSubspace.range(storeId, key, value)
+                                tr.getRange(range, limit.toFdbLimit(), direction.isReverse())
+                                    .asList().thenCompose { kvs ->
+                                        val loadFutures = kvs.map { kv ->
+                                            val factPosition = tagsIndexSubspace.unpackPosition(kv.key)
+                                            factPosition.lookupFact(storeId)
+                                        }
+                                        CompletableFuture.allOf(*loadFutures.toTypedArray()).thenApply {
+                                            val facts = loadFutures.mapNotNull { it.resultNow()?.fact }
+                                            FindByTagsResult.Found(facts)
+                                        }
+                                    }
                             }
-                        }
+                            else -> {
+                                // Multiple tags — intersection must happen in application code first,
+                                // so limit and direction cannot be pushed into FDB natively
+                                val tagFutures: List<CompletableFuture<Set<FactPosition>>> = tags.map { (key, value) ->
+                                    val range = tagsIndexSubspace.range(storeId, key, value)
+                                    tr.getRange(range).asList().thenApply { kvs ->
+                                        kvs.mapTo(mutableSetOf()) { kv ->
+                                            tagsIndexSubspace.unpackPosition(kv.key)
+                                        }
+                                    }
+                                }
 
-                        // Once all tag lookups finish, intersect them and load facts
-                        CompletableFuture.allOf(*tagFutures.toTypedArray()).thenCompose {
-                            val allFactPositions: Set<FactPosition> = tagFutures
-                                .map { it.getNow(emptySet()) }
-                                .reduce { acc, positions -> acc intersect positions } // AND semantics = intersection
+                                CompletableFuture.allOf(*tagFutures.toTypedArray()).thenCompose {
+                                    val intersectedPositions: List<FactPosition> = tagFutures
+                                        .map { it.getNow(emptySet()) }
+                                        .reduce { acc, positions -> acc intersect positions }
+                                        .sortedWith(direction.toComparator())
+                                        .let { sorted -> limit.value?.let { sorted.take(it) } ?: sorted }
 
-                            val loadFutures: List<CompletableFuture<FdbFact?>> =
-                                allFactPositions.map { it.lookupFact(storeId) }
+                                    val loadFutures = intersectedPositions.map { it.lookupFact(storeId) }
 
-                            CompletableFuture.allOf(*loadFutures.toTypedArray()).thenApply {
-                                val facts = loadFutures
-                                    .mapNotNull { it.resultNow() }
-                                    .sortedBy { it.factPosition }
-                                    .map { it.fact }
-                                FindByTagsResult.Found(facts)
+                                    CompletableFuture.allOf(*loadFutures.toTypedArray()).thenApply {
+                                        val facts = loadFutures
+                                            .mapNotNull { it.resultNow() }
+                                            .sortedWith(direction.toFdbFactComparator())
+                                            .map { it.fact }
+                                        FindByTagsResult.Found(facts)
+                                    }
+                                }
                             }
                         }
                     }
