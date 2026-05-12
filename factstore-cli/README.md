@@ -30,7 +30,7 @@ export FACTSTORE_URL=http://localhost:8080
 
 # Create a store and append your first fact
 factstore store create orders
-factstore fact append orders '{"orderId": "12345", "amount": 100.0}' --subject order/12345 --type ORDER_PLACED
+factstore fact append '{"orderId": "12345", "amount": 100.0}' --store orders --subject order-12345 --type ORDER_PLACED
 
 # Stream facts in real time
 factstore fact stream orders --from beginning
@@ -59,12 +59,14 @@ factstore store delete orders
 
 ```bash
 # Append a fact to a store
-factstore fact append orders '{"orderId": "12345", "amount": 100.0}' \
+factstore fact append '{"orderId": "12345", "amount": 100.0}' \
+  --store orders \
   --subject order/12345 \
   --type ORDER_PLACED
 
 # Append with tags for richer querying
-factstore fact append orders '{"orderId": "12345", "amount": 100.0}' \
+factstore fact append '{"orderId": "12345", "amount": 100.0}' \
+  --store orders \
   --subject order/12345 \
   --type ORDER_PLACED \
   --tag region=eu \
@@ -87,7 +89,7 @@ All filters are optional and mutually exclusive. Results default to **oldest fir
 
 ```bash
 # Find facts for a specific subject
-factstore find facts --store orders --subject order/12345
+factstore find facts --store orders --subject order-12345
 
 # Find facts in the last 5 minutes
 factstore find facts --store orders --since 5m
