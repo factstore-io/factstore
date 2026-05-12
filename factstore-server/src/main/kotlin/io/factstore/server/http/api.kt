@@ -2,10 +2,19 @@ package io.factstore.server.http
 
 import com.fasterxml.jackson.annotation.JsonSubTypes
 import com.fasterxml.jackson.annotation.JsonTypeInfo
+import io.factstore.core.StoreName
+import io.factstore.server.http.validation.ValidStoreName
+import jakarta.validation.Valid
+import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.NotEmpty
+import jakarta.validation.constraints.Pattern
+import jakarta.validation.constraints.Size
 import java.time.Instant
 import java.util.UUID
 
 data class AppendHttpRequest(
+    @field:NotEmpty
+    @field:Valid
     val facts: List<FactHttp>,
     val idempotencyKey: UUID? = null,
     val condition: AppendConditionHttp? = null
@@ -86,19 +95,24 @@ sealed interface TagQueryItemHttp {
 
 data class FactHttp(
     val id: UUID?,
+    @field:NotBlank
     val type: String,
+    @field:NotBlank
     val subject: String,
     val appendedAt: Instant?,
+    @field:Valid
     val payload: FactPayloadHttp,
-    val metadata: Map<String, String> = emptyMap(),
-    val tags: Map<String, String> = emptyMap()
+    val metadata: Map<String, String>?,
+    val tags: Map<String, String>?
 )
 
 data class FactPayloadHttp(
+    @field:NotEmpty
     val data: ByteArray,
 )
 
 data class CreateStoreHttpRequest(
+    @field:ValidStoreName
     val name: String
 )
 

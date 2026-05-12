@@ -95,8 +95,8 @@ fun FactHttp.toFact() = Fact(
     payload = payload.toPayload(),
     subject = Subject(subject),
     appendedAt = appendedAt ?: Instant.now(),
-    metadata = metadata,
-    tags = tags.entries.associate { Pair(it.key.toTagKey(), it.value.toTagValue()) }
+    metadata = metadata ?: emptyMap(),
+    tags = tags?.entries?.associate { Pair(it.key.toTagKey(), it.value.toTagValue()) } ?: emptyMap()
 )
 
 private fun FactPayloadHttp.toPayload(): FactPayload = FactPayload(

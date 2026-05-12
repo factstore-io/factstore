@@ -7,7 +7,10 @@ import io.factstore.core.RemoveStoreRequest
 import io.factstore.core.RemoveStoreResult
 import io.factstore.core.StoreMetadata
 import io.factstore.core.StoreName
+import io.factstore.server.http.validation.ValidStoreName
 import jakarta.validation.Valid
+import jakarta.validation.constraints.Pattern
+import jakarta.validation.constraints.Size
 import jakarta.ws.rs.*
 import jakarta.ws.rs.core.MediaType.APPLICATION_JSON
 import jakarta.ws.rs.core.Response
@@ -38,7 +41,7 @@ class StoreResource(
     @HEAD
     @Path("/{name}")
     suspend fun existsByName(
-        @PathParam("name") name: String
+        @PathParam("name") @ValidStoreName name: String
     ): Response {
         store.existsByName(StoreName(name)).let { exists ->
             return if (exists) {
@@ -71,7 +74,7 @@ class StoreResource(
     @Produces(APPLICATION_JSON)
     @Path("/{name}")
     suspend fun removeStore(
-        @PathParam("name") name: String
+        @PathParam("name") @ValidStoreName name: String
     ): Response =
         store
             .handle(RemoveStoreRequest(StoreName(name)))
