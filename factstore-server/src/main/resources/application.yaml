@@ -1,4 +1,6 @@
 quarkus:
+  application:
+    name: factstore-server
   http:
     root-path: "/api"
   banner:
