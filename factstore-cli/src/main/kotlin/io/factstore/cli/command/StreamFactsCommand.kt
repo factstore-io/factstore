@@ -50,6 +50,13 @@ class StreamFactsCommand : Callable<Int> {
 
     }
 
+    @Option(
+        names = ["--output", "-o"],
+        description = ["Output format (default: \${DEFAULT-VALUE})"],
+        defaultValue = "table",
+    )
+    var outputFormat: OutputFormat = OutputFormat.Table
+
     enum class FromOption { beginning, end }
 
     override fun call(): Int = runBlocking {
@@ -59,7 +66,7 @@ class StreamFactsCommand : Callable<Int> {
         client.streamFacts(storeName, fromValue, afterValue)
             .asFlow()
             .catch { cause -> cause.handleStreamTermination() }
-            .collect { fact -> fact.print() }
+            .collect { fact -> fact.printSingle(outputFormat) }
 
         ExitCode.OK
     }

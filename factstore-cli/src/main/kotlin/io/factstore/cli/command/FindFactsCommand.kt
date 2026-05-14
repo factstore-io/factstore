@@ -41,6 +41,13 @@ class FindFactsCommand : Callable<Int> {
     )
     lateinit var direction: ReadDirection
 
+    @Option(
+        names = ["--output", "-o"],
+        description = ["Output format (default: \${DEFAULT-VALUE})"],
+        defaultValue = "table",
+    )
+    var outputFormat: OutputFormat = OutputFormat.Table
+
     override fun call(): Int {
         val facts = filter.toClientCall()
 
@@ -48,7 +55,7 @@ class FindFactsCommand : Callable<Int> {
             System.err.println("Warning: results limited to $limit facts. Use --limit to retrieve more.")
         }
 
-        printTable(facts)
+        facts.print(outputFormat)
         return ExitCode.OK
     }
 

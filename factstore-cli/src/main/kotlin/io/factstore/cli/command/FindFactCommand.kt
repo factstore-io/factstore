@@ -33,9 +33,16 @@ class FindFactCommand : Callable<Int> {
     )
     lateinit var storeName: String
 
+    @Option(
+        names = ["--output", "-o"],
+        description = ["Output format (default: \${DEFAULT-VALUE})"],
+        defaultValue = "table",
+    )
+    var outputFormat: OutputFormat = OutputFormat.Table
+
     override fun call(): Int {
         val fact = client.findFact(storeName, factId)
-        fact.print()
+        fact.printSingle(outputFormat)
         return ExitCode.OK
     }
 
