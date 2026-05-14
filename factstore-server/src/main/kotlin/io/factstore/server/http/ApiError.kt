@@ -17,6 +17,7 @@ data class ApiError(
 )
 
 enum class Reason {
+    InvalidInput,
     NotFound,
     AlreadyExists,
     Conflict,

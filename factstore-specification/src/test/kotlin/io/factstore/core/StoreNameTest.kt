@@ -8,22 +8,6 @@ import org.junit.jupiter.api.Test
 class StoreNameTest {
 
     @Test
-    fun `create should reject empty names`(): Unit = runBlocking {
-        listOf(
-            "",
-            " "
-        ).forEach { invalidName ->
-            val exception = catchThrowable {
-                runBlocking { StoreName(invalidName) }
-            }
-
-            assertThat(exception)
-                .isInstanceOf(IllegalArgumentException::class.java)
-                .hasMessage("Name must not be empty or blank.")
-        }
-    }
-
-    @Test
     fun `create should reject names with invalid characters`(): Unit = runBlocking {
         listOf(
             "my store", // space
@@ -33,6 +17,14 @@ class StoreNameTest {
             "my:store", // colon
             "my\$store", // dollar
             "Mÿ_store", // non-ASCII
+            " ",
+            "",
+            "s a",
+            "-",
+            "-a",
+            "_",
+            "a-",
+            "lk-",
         ).forEach { invalidName ->
             val exception = catchThrowable {
                 runBlocking { StoreName(invalidName) }
@@ -54,8 +46,8 @@ class StoreNameTest {
             "store123",
             "a",
             "A",
-            "0",
             "abc123_-def",
+            "a".repeat(255)
         )
 
         validNames.forEach { validName ->

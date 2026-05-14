@@ -2,6 +2,7 @@ package io.factstore.server.http
 
 import io.factstore.core.*
 import io.factstore.server.http.Reason.Conflict
+import io.factstore.server.http.validation.ValidStoreName
 import jakarta.validation.Valid
 import jakarta.ws.rs.*
 import jakarta.ws.rs.core.MediaType.APPLICATION_JSON
@@ -19,7 +20,7 @@ class QueryResource(
     @Produces(APPLICATION_JSON)
     @Path("/facts/{factId}")
     suspend fun findById(
-        @PathParam("storeName") storeName: String,
+        @PathParam("storeName") @ValidStoreName storeName: String,
         @PathParam("factId") factId: UUID,
     ): Response =
         store
@@ -31,7 +32,7 @@ class QueryResource(
     @Produces(APPLICATION_JSON)
     @Path("/facts/query")
     suspend fun findByQuery(
-        @PathParam("storeName") storeName: String,
+        @PathParam("storeName") @ValidStoreName storeName: String,
         @Valid factQueryHttp: FactQueryHttp
     ): Response =
         store
@@ -42,17 +43,17 @@ class QueryResource(
     @Produces(APPLICATION_JSON)
     @Path("/subjects/{subject}/facts")
     suspend fun findBySubject(
-        @PathParam("storeName") storeName: String,
+        @PathParam("storeName") @ValidStoreName storeName: String,
         @PathParam("subject") subject: String,
         @QueryParam("limit") limit: Int? = null,
-        @QueryParam("direction") direction: String? = null,
+        @DefaultValue("forward") @QueryParam("direction") direction: ReadDirection,
     ): Response =
         store
             .findBySubject(
                 storeName = StoreName(storeName),
                 subject = Subject(subject),
                 limit = limit.toLimit(),
-                direction = direction.toReadDirection(),
+                direction = direction,
             )
             .toResponse()
 
@@ -60,12 +61,12 @@ class QueryResource(
     @Produces(APPLICATION_JSON)
     @Path("/facts")
     suspend fun findFacts(
-        @PathParam("storeName") storeName: String,
+        @PathParam("storeName") @ValidStoreName storeName: String,
         @QueryParam("from") from: Instant? = null,
         @QueryParam("to") to: Instant? = null,
         @QueryParam("tag") tags: List<String> = emptyList(),
-        @QueryParam("limit") limit: Int? = null,
-        @QueryParam("direction") direction: String? = null,
+        @DefaultValue("0") @QueryParam("limit") limit: Int? = null,
+        @DefaultValue("forward") @QueryParam("direction") direction: ReadDirection,
     ): Response {
         return when {
             tags.isNotEmpty() && (from != null || to != null) -> apiErrorResponse(
@@ -78,7 +79,7 @@ class QueryResource(
                     storeName = StoreName(storeName),
                     tags = tags.map { it.toTagPair() },
                     limit = limit.toLimit(),
-                    direction = direction.toReadDirection(),
+                    direction = direction,
                 )
                 .toResponse()
             else -> store
@@ -89,7 +90,7 @@ class QueryResource(
                         end = to ?: Instant.now()
                     ),
                     limit = limit.toLimit(),
-                    direction = direction.toReadDirection(),
+                    direction = direction,
                 )
                 .toResponse()
         }
@@ -101,13 +102,7 @@ class QueryResource(
         return TagKey(parts[0]) to TagValue(parts[1])
     }
 
-    private fun Int?.toLimit(): Limit = if (this != null) Limit.of(this) else Limit.None
-
-    private fun String?.toReadDirection(): ReadDirection = when (this?.lowercase()) {
-        "backward" -> ReadDirection.Backward
-        "forward", null -> ReadDirection.Forward
-        else -> throw IllegalArgumentException("Invalid direction '$this'. Must be 'forward' or 'backward'.")
-    }
+    private fun Int?.toLimit(): Limit = if (this != null && this > 0) Limit.of(this) else Limit.None
 
 }
 
