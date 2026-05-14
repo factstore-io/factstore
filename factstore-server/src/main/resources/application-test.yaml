@@ -1,3 +1,6 @@
+quarkus:
+  application:
+    name: factstore-server-test
 factstore:
   storage:
     type: memory
