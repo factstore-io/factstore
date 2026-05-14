@@ -16,5 +16,6 @@ class FactStorePicoliCustomizer(
         factory
             .create()
             .setExecutionExceptionHandler(exceptionHandler)
+            .setCaseInsensitiveEnumValuesAllowed(true)
 
 }
