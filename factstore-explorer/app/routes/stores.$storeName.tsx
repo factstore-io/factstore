@@ -1,8 +1,9 @@
 import { NavLink, Outlet, useParams } from "react-router"
 import { LayoutDashboard, Search, Radio } from "lucide-react"
 import { cn } from "~/lib/utils"
+import type { Route } from "./+types/stores.$storeName"
 
-export function meta({ params }: { params: { storeName: string } }) {
+export function meta({ params }: Route.MetaArgs) {
   return [{ title: `${params.storeName} — FactStore Explorer` }]
 }
 

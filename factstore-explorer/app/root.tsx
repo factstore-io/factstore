@@ -125,6 +125,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
   )
 }
 
+export function HydrateFallback() {
+  return (
+    <div className="flex min-h-screen items-center justify-center">
+      <div className="size-6 animate-spin rounded-full border-2 border-border border-t-foreground" />
+    </div>
+  )
+}
+
 export default function App() {
   return (
     <div className="flex min-h-screen flex-col">

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react"
 import { useParams } from "react-router"
 import { Play, Pause, Trash2, AlertCircle, WifiOff } from "lucide-react"
+import type { Route } from "./+types/stores.$storeName.stream"
 import { Button } from "~/components/ui/button"
 import { Input } from "~/components/ui/input"
 import { Label } from "~/components/ui/label"
@@ -9,7 +10,7 @@ import { Alert, AlertDescription } from "~/components/ui/alert"
 import { FactTable } from "~/components/FactTable"
 import { createFactStream, type Fact, type StreamPosition } from "~/lib/api"
 
-export function meta({ params }: { params: { storeName: string } }) {
+export function meta({ params }: Route.MetaArgs) {
   return [{ title: `Stream — ${params.storeName} — FactStore Explorer` }]
 }
 

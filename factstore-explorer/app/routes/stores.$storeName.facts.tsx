@@ -1,6 +1,7 @@
 import { useState, useCallback } from "react"
 import { useParams } from "react-router"
 import { Search, X, Plus, AlertCircle } from "lucide-react"
+import type { Route } from "./+types/stores.$storeName.facts"
 import { Button } from "~/components/ui/button"
 import { Input } from "~/components/ui/input"
 import { Label } from "~/components/ui/label"
@@ -15,7 +16,7 @@ import {
 import { FactTable } from "~/components/FactTable"
 import { queryFacts, type Fact } from "~/lib/api"
 
-export function meta({ params }: { params: { storeName: string } }) {
+export function meta({ params }: Route.MetaArgs) {
   return [{ title: `Facts — ${params.storeName} — FactStore Explorer` }]
 }
 

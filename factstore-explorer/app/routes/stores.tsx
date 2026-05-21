@@ -1,10 +1,9 @@
-import { useState, useEffect, useCallback } from "react"
-import { Link } from "react-router"
+import { useState, useEffect } from "react"
+import { Link, useFetcher, useRevalidator } from "react-router"
 import {
   Database,
   Plus,
   Calendar,
-  ArrowRight,
   AlertCircle,
   RefreshCw,
 } from "lucide-react"
@@ -20,46 +19,59 @@ import {
   DialogDescription,
 } from "~/components/ui/dialog"
 import { Alert, AlertDescription } from "~/components/ui/alert"
-import { Skeleton } from "~/components/ui/skeleton"
-import { listStores, createStore, type StoreMetadata } from "~/lib/api"
+import { listStores, createStore } from "~/lib/api"
+import type { Route } from "./+types/stores"
 
-export function meta() {
+export function meta(_: Route.MetaArgs) {
   return [{ title: "Stores — FactStore Explorer" }]
 }
+
+// ─── Loader ──────────────────────────────────────────────────────────────────
+
+export async function clientLoader() {
+  return { stores: await listStores() }
+}
+
+clientLoader.hydrate = true as const
+
+// ─── Action ──────────────────────────────────────────────────────────────────
+
+export async function clientAction({ request }: Route.ClientActionArgs) {
+  const formData = await request.formData()
+  const name = String(formData.get("name")).trim()
+  try {
+    await createStore(name)
+    return { ok: true as const }
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Failed to create store" }
+  }
+}
+
+// ─── Create dialog ────────────────────────────────────────────────────────────
 
 function CreateStoreDialog({
   open,
   onClose,
-  onCreated,
 }: {
   open: boolean
   onClose: () => void
-  onCreated: () => void
 }) {
+  const fetcher = useFetcher<typeof clientAction>()
   const [name, setName] = useState("")
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const isCreating = fetcher.state !== "idle"
+  const error = fetcher.data && "error" in fetcher.data ? fetcher.data.error : null
+
+  // Close and reset when action succeeds
+  useEffect(() => {
+    if (fetcher.state === "idle" && fetcher.data && "ok" in fetcher.data) {
+      setName("")
+      onClose()
+    }
+  }, [fetcher.state, fetcher.data, onClose])
 
   function handleClose() {
     setName("")
-    setError(null)
     onClose()
-  }
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (!name.trim()) return
-    setLoading(true)
-    setError(null)
-    try {
-      await createStore(name.trim())
-      handleClose()
-      onCreated()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create store")
-    } finally {
-      setLoading(false)
-    }
   }
 
   return (
@@ -71,11 +83,12 @@ function CreateStoreDialog({
             Give your new fact store a unique name.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <fetcher.Form method="post" className="space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="store-name">Name</Label>
             <Input
               id="store-name"
+              name="name"
               placeholder="e.g. orders, events, audit-log"
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -94,20 +107,22 @@ function CreateStoreDialog({
             </Alert>
           )}
           <DialogFooter>
-            <Button type="button" variant="ghost" onClick={handleClose} disabled={loading}>
+            <Button type="button" variant="ghost" onClick={handleClose} disabled={isCreating}>
               Cancel
             </Button>
-            <Button type="submit" disabled={loading || !name.trim()}>
-              {loading ? "Creating…" : "Create"}
+            <Button type="submit" disabled={isCreating || !name.trim()}>
+              {isCreating ? "Creating…" : "Create"}
             </Button>
           </DialogFooter>
-        </form>
+        </fetcher.Form>
       </DialogContent>
     </Dialog>
   )
 }
 
-function StoreCard({ store }: { store: StoreMetadata }) {
+// ─── Store card ───────────────────────────────────────────────────────────────
+
+function StoreCard({ store }: { store: { id: string; name: string; createdAt: string } }) {
   const created = new Date(store.createdAt)
 
   return (
@@ -148,27 +163,12 @@ function StoreCard({ store }: { store: StoreMetadata }) {
   )
 }
 
-export default function StoresPage() {
-  const [stores, setStores] = useState<StoreMetadata[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
+export default function StoresPage({ loaderData }: Route.ComponentProps) {
+  const { stores } = loaderData
+  const { revalidate, state: revalidateState } = useRevalidator()
   const [showCreate, setShowCreate] = useState(false)
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      setStores(await listStores())
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load stores")
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    load()
-  }, [load])
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
@@ -183,8 +183,13 @@ export default function StoresPage() {
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <Button variant="outline" size="sm" onClick={load} disabled={loading}>
-            <RefreshCw className={`size-3.5 ${loading ? "animate-spin" : ""}`} />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={revalidate}
+            disabled={revalidateState === "loading"}
+          >
+            <RefreshCw className={`size-3.5 ${revalidateState === "loading" ? "animate-spin" : ""}`} />
             Refresh
           </Button>
           <Button size="sm" onClick={() => setShowCreate(true)}>
@@ -194,20 +199,7 @@ export default function StoresPage() {
         </div>
       </div>
 
-      {error && (
-        <Alert variant="destructive" className="mb-6">
-          <AlertCircle className="size-4" />
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-
-      {loading ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-40 rounded-xl" />
-          ))}
-        </div>
-      ) : stores.length === 0 ? (
+      {stores.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border py-20 gap-4">
           <div className="flex size-12 items-center justify-center rounded-xl bg-muted">
             <Database className="size-6 text-muted-foreground" />
@@ -231,11 +223,7 @@ export default function StoresPage() {
         </div>
       )}
 
-      <CreateStoreDialog
-        open={showCreate}
-        onClose={() => setShowCreate(false)}
-        onCreated={load}
-      />
+      <CreateStoreDialog open={showCreate} onClose={() => setShowCreate(false)} />
     </div>
   )
 }

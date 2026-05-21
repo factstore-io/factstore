@@ -1,96 +1,58 @@
-import { useState, useEffect } from "react"
 import { Link } from "react-router"
 import {
   Database,
   Plus,
   Server,
   HardDrive,
-  Tag,
   CheckCircle2,
   XCircle,
-  Loader2,
   ArrowRight,
 } from "lucide-react"
 import { Button } from "~/components/ui/button"
-import { Skeleton } from "~/components/ui/skeleton"
 import { Badge } from "~/components/ui/badge"
-import { getServerInfo, listStores, type ServerInfo, type StoreMetadata } from "~/lib/api"
+import { getServerInfo, listStores } from "~/lib/api"
+import type { Route } from "./+types/index"
 
-export function meta() {
+export function meta(_: Route.MetaArgs) {
   return [{ title: "FactStore Explorer" }]
 }
 
-type Status = "loading" | "ok" | "error"
-
-function StatusBadge({ status }: { status: Status }) {
-  if (status === "loading")
-    return (
-      <Badge variant="secondary" className="gap-1.5">
-        <Loader2 className="size-3 animate-spin" />
-        Connecting…
-      </Badge>
-    )
-  if (status === "ok")
-    return (
-      <Badge className="bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20 gap-1.5">
-        <CheckCircle2 className="size-3" />
-        Connected
-      </Badge>
-    )
-  return (
-    <Badge className="bg-destructive/10 text-destructive border border-destructive/20 gap-1.5">
-      <XCircle className="size-3" />
-      Unreachable
-    </Badge>
-  )
+export async function clientLoader() {
+  const [infoResult, storesResult] = await Promise.allSettled([
+    getServerInfo(),
+    listStores(),
+  ])
+  return {
+    info: infoResult.status === "fulfilled" ? infoResult.value : null,
+    stores: storesResult.status === "fulfilled" ? storesResult.value : [],
+  }
 }
+
+clientLoader.hydrate = true as const
 
 function InfoTile({
   icon: Icon,
   label,
   value,
-  loading,
 }: {
   icon: React.ElementType
   label: string
   value: string | number | undefined
-  loading: boolean
 }) {
   return (
     <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/30 px-4 py-3">
       <Icon className="size-4 text-muted-foreground shrink-0" />
       <div className="min-w-0">
         <p className="text-xs text-muted-foreground">{label}</p>
-        {loading ? (
-          <Skeleton className="mt-1 h-4 w-24" />
-        ) : (
-          <p className="text-sm font-medium truncate">{value ?? "—"}</p>
-        )}
+        <p className="text-sm font-medium truncate">{value ?? "—"}</p>
       </div>
     </div>
   )
 }
 
-export default function LandingPage() {
-  const [status, setStatus] = useState<Status>("loading")
-  const [info, setInfo] = useState<ServerInfo | null>(null)
-  const [stores, setStores] = useState<StoreMetadata[]>([])
-  const [storesLoading, setStoresLoading] = useState(true)
-
-  useEffect(() => {
-    let cancelled = false
-
-    getServerInfo()
-      .then((i) => { if (!cancelled) { setInfo(i); setStatus("ok") } })
-      .catch(() => { if (!cancelled) setStatus("error") })
-
-    listStores()
-      .then((s) => { if (!cancelled) setStores(s) })
-      .catch(() => {})
-      .finally(() => { if (!cancelled) setStoresLoading(false) })
-
-    return () => { cancelled = true }
-  }, [])
+export default function LandingPage({ loaderData }: Route.ComponentProps) {
+  const { info, stores } = loaderData
+  const connected = info !== null
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-16 space-y-10">
@@ -108,41 +70,37 @@ export default function LandingPage() {
         </p>
       </div>
 
-      {/* Server status card */}
+      {/* Server status */}
       <div className="rounded-xl border border-border bg-card overflow-hidden">
         <div className="flex items-center justify-between gap-4 px-5 py-4 border-b border-border">
           <h2 className="text-sm font-semibold">Server</h2>
-          <StatusBadge status={status} />
+          {connected ? (
+            <Badge className="bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/20 gap-1.5">
+              <CheckCircle2 className="size-3" />
+              Connected
+            </Badge>
+          ) : (
+            <Badge className="bg-destructive/10 text-destructive border border-destructive/20 gap-1.5">
+              <XCircle className="size-3" />
+              Unreachable
+            </Badge>
+          )}
         </div>
         <div className="grid grid-cols-1 gap-3 p-5 sm:grid-cols-3">
-          <InfoTile
-            icon={Server}
-            label="Version"
-            value={info?.version}
-            loading={status === "loading"}
-          />
-          <InfoTile
-            icon={HardDrive}
-            label="Storage backend"
-            value={info?.storageBackend}
-            loading={status === "loading"}
-          />
-          <InfoTile
-            icon={Database}
-            label="Stores"
-            value={storesLoading ? undefined : stores.length}
-            loading={storesLoading}
-          />
+          <InfoTile icon={Server} label="Version" value={info?.version} />
+          <InfoTile icon={HardDrive} label="Storage backend" value={info?.storageBackend} />
+          <InfoTile icon={Database} label="Stores" value={stores.length} />
         </div>
-        {status === "error" && (
+        {!connected && (
           <p className="px-5 pb-4 text-xs text-muted-foreground">
-            Could not reach the server at <span className="font-mono">/api/v1/info</span>.
-            Make sure the FactStore server is running.
+            Could not reach the server at{" "}
+            <span className="font-mono">/api/v1/info</span>. Make sure the
+            FactStore server is running.
           </p>
         )}
       </div>
 
-      {/* Recent stores */}
+      {/* Stores */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold">Stores</h2>
@@ -154,11 +112,7 @@ export default function LandingPage() {
           </Button>
         </div>
 
-        {storesLoading ? (
-          <div className="space-y-2">
-            {[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 rounded-lg" />)}
-          </div>
-        ) : stores.length === 0 ? (
+        {stores.length === 0 ? (
           <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-border py-10">
             <p className="text-sm text-muted-foreground">No stores yet.</p>
             <Button asChild size="sm">
