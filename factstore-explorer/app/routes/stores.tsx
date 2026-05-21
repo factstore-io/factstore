@@ -129,7 +129,7 @@ function StoreCard({ store }: { store: StoreMetadata }) {
         <span>Created {created.toLocaleDateString()}</span>
       </div>
 
-      <div className="flex gap-2 pt-1 border-t border-border">
+      <div className="relative z-10 flex gap-2 pt-1 border-t border-border">
         <Button asChild variant="ghost" size="sm" className="flex-1 text-xs">
           <Link to={`/stores/${store.name}/facts`}>Browse Facts</Link>
         </Button>
