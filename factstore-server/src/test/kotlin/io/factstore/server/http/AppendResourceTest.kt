@@ -24,7 +24,7 @@ class AppendResourceTest {
         given()
             .contentType(ContentType.JSON)
             .body(mapOf("name" to storeName))
-            .post("/v1/stores")
+            .post("/api/v1/stores")
     }
 
     @Test
@@ -46,7 +46,7 @@ class AppendResourceTest {
             .contentType(ContentType.JSON)
             .body(request)
             .`when`()
-            .post("/v1/stores/{storeName}/facts")
+            .post("/api/v1/stores/{storeName}/facts")
             .then()
             .statusCode(200)
     }
@@ -64,7 +64,7 @@ class AppendResourceTest {
             .contentType(ContentType.JSON)
             .body(request)
             .`when`()
-            .post("/v1/stores/{storeName}/facts")
+            .post("/api/v1/stores/{storeName}/facts")
             .then()
             .statusCode(400)
             .extract().`as`(ApiError::class.java)
@@ -97,7 +97,7 @@ class AppendResourceTest {
             .contentType(ContentType.JSON)
             .body(request)
             .`when`()
-            .post("/v1/stores/{storeName}/facts")
+            .post("/api/v1/stores/{storeName}/facts")
             .then()
             .statusCode(409)
             .extract().`as`(ApiError::class.java)
@@ -117,7 +117,7 @@ class AppendResourceTest {
             .contentType(ContentType.JSON)
             .body(mapOf("facts" to listOf(mapOf("type" to "t", "subject" to "s", "payload" to mapOf("data" to "data".toByteArray())))))
             .`when`()
-            .post("/v1/stores/{storeName}/facts")
+            .post("/api/v1/stores/{storeName}/facts")
             .then()
             .statusCode(404)
             .extract().`as`(ApiError::class.java)

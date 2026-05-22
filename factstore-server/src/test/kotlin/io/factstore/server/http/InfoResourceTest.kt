@@ -24,7 +24,7 @@ class InfoResourceTest {
 
         val actualServerInfo = given()
             .`when`()
-            .get("/v1/info")
+            .get("/api/v1/info")
             .then()
             .statusCode(200)
             .extract().`as`(ServerInfo::class.java)

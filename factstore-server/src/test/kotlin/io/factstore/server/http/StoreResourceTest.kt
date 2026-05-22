@@ -20,7 +20,7 @@ class StoreResourceTest {
             .contentType(JSON)
             .body(mapOf("name" to "production-logs"))
             .`when`()
-            .post("/v1/stores")
+            .post("/api/v1/stores")
             .then()
             .statusCode(201)
             .body("id", notNullValue())
@@ -36,7 +36,7 @@ class StoreResourceTest {
             .contentType(JSON)
             .body(mapOf("name" to invalidName))
             .`when`()
-            .post("/v1/stores")
+            .post("/api/v1/stores")
             .then()
             .statusCode(400)
             .extract().`as`(ApiError::class.java)
@@ -53,7 +53,7 @@ class StoreResourceTest {
     fun verifyExistence() {
         given()
             .`when`()
-            .head("/v1/stores/production-logs")
+            .head("/api/v1/stores/production-logs")
             .then()
             .statusCode(200)
     }
@@ -64,7 +64,7 @@ class StoreResourceTest {
     fun validationBorder() {
         given()
             .`when`()
-            .head("/v1/stores/!!invalid!!")
+            .head("/api/v1/stores/!!invalid!!")
             .then()
             .statusCode(400)
     }
@@ -78,14 +78,14 @@ class StoreResourceTest {
         given()
             .contentType(JSON)
             .body(mapOf("name" to name))
-            .post("/v1/stores")
+            .post("/api/v1/stores")
             .then().statusCode(201)
 
         val error = given()
             .contentType(JSON)
             .body(mapOf("name" to name))
             .`when`()
-            .post("/v1/stores")
+            .post("/api/v1/stores")
             .then()
             .statusCode(409)
             .extract().`as`(ApiError::class.java)
@@ -103,13 +103,13 @@ class StoreResourceTest {
     fun deleteStore() {
         given()
             .`when`()
-            .delete("/v1/stores/production-logs")
+            .delete("/api/v1/stores/production-logs")
             .then()
             .statusCode(200)
 
         given()
             .`when`()
-            .head("/v1/stores/production-logs")
+            .head("/api/v1/stores/production-logs")
             .then()
             .statusCode(404)
     }
@@ -122,7 +122,7 @@ class StoreResourceTest {
 
         val error = given()
             .`when`()
-            .delete("/v1/stores/$name")
+            .delete("/api/v1/stores/$name")
             .then()
             .statusCode(404)
             .extract().`as`(ApiError::class.java)
