@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Link, redirect, useFetcher } from "react-router"
+import { Link, redirect, useFetcher, useRouteLoaderData } from "react-router"
 import { Search, Radio, Tag, AlertCircle, ArrowRight, Trash2 } from "lucide-react"
 import { Button } from "~/components/ui/button"
 import { Alert, AlertDescription } from "~/components/ui/alert"
@@ -12,21 +12,12 @@ import {
   DialogFooter,
   DialogDescription,
 } from "~/components/ui/dialog"
-import { listStores, deleteStore } from "~/lib/api"
+import { deleteStore, type StoreMetadata } from "~/lib/api"
 import type { Route } from "./+types/stores.$storeName._index"
 
 export function meta({ params }: Route.MetaArgs) {
   return [{ title: `${params.storeName} — FactStore Explorer` }]
 }
-
-// ─── Loader ──────────────────────────────────────────────────────────────────
-
-export async function clientLoader({ params }: Route.ClientLoaderArgs) {
-  const stores = await listStores()
-  return { store: stores.find((s) => s.name === params.storeName) ?? null }
-}
-
-clientLoader.hydrate = true as const
 
 // ─── Action ──────────────────────────────────────────────────────────────────
 
@@ -101,8 +92,8 @@ function InfoRow({ label, children }: { label: string; children: React.ReactNode
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
-export default function StoreIndexPage({ loaderData, params }: Route.ComponentProps) {
-  const { store } = loaderData
+export default function StoreIndexPage({ params }: Route.ComponentProps) {
+  const { store } = useRouteLoaderData("routes/stores.$storeName") as { store: StoreMetadata }
   const storeName = params.storeName
   const [showDelete, setShowDelete] = useState(false)
 
@@ -121,21 +112,15 @@ export default function StoreIndexPage({ loaderData, params }: Route.ComponentPr
           <h2 className="text-sm font-semibold">Details</h2>
         </div>
         <div className="px-5">
-          {store ? (
-            <>
-              <InfoRow label="Name">
-                <span className="font-mono">{store.name}</span>
-              </InfoRow>
-              <InfoRow label="ID">
-                <span className="font-mono text-muted-foreground">{store.id}</span>
-              </InfoRow>
-              <InfoRow label="Created">
-                <span>{new Date(store.createdAt).toLocaleString()}</span>
-              </InfoRow>
-            </>
-          ) : (
-            <p className="py-4 text-sm text-muted-foreground">Store not found.</p>
-          )}
+          <InfoRow label="Name">
+            <span className="font-mono">{store.name}</span>
+          </InfoRow>
+          <InfoRow label="ID">
+            <span className="font-mono text-muted-foreground">{store.id}</span>
+          </InfoRow>
+          <InfoRow label="Created">
+            <span>{new Date(store.createdAt).toLocaleString()}</span>
+          </InfoRow>
         </div>
       </div>
 

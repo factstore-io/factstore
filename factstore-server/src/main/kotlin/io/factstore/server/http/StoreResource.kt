@@ -9,8 +9,6 @@ import io.factstore.core.StoreMetadata
 import io.factstore.core.StoreName
 import io.factstore.server.http.validation.ValidStoreName
 import jakarta.validation.Valid
-import jakarta.validation.constraints.Pattern
-import jakarta.validation.constraints.Size
 import jakarta.ws.rs.*
 import jakarta.ws.rs.core.MediaType.APPLICATION_JSON
 import jakarta.ws.rs.core.Response
