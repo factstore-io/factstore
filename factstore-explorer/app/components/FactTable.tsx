@@ -30,8 +30,8 @@ function getTypeColor(type: string): string {
 }
 
 interface FactRowProps {
-  fact: Fact
-  highlightNew?: boolean
+  readonly fact: Fact
+  readonly highlightNew?: boolean
 }
 
 function FactRow({ fact, highlightNew }: FactRowProps) {
@@ -161,14 +161,14 @@ function FactRow({ fact, highlightNew }: FactRowProps) {
 }
 
 interface FactTableProps {
-  facts: Fact[]
-  loading?: boolean
-  emptyMessage?: string
-  highlightNew?: boolean
+  readonly facts: Fact[]
+  readonly loading?: boolean
+  readonly emptyMessage?: string
+  readonly highlightNew?: boolean
 }
 
 function useTick(intervalMs: number) {
-  const [, setTick] = useState(0)
+  const [_, setTick] = useState(0)
   useEffect(() => {
     const id = setInterval(() => setTick((n) => n + 1), intervalMs)
     return () => clearInterval(id)
@@ -180,8 +180,8 @@ export function FactTable({ facts, loading, emptyMessage = "No facts found.", hi
   if (loading) {
     return (
       <div className="space-y-2 p-4">
-        {Array.from({ length: 5 }).map((_, i) => (
-          <Skeleton key={i} className="h-10 w-full rounded-md" />
+        {["sk-1", "sk-2", "sk-3", "sk-4", "sk-5"].map((id) => (
+          <Skeleton key={id} className="h-10 w-full rounded-md" />
         ))}
       </div>
     )

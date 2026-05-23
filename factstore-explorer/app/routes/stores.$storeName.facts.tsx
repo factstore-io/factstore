@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react"
+import { useState, useCallback, useRef } from "react"
 import { useParams } from "react-router"
 import { Search, X, Plus, AlertCircle } from "lucide-react"
 import type { Route } from "./+types/stores.$storeName.facts"
@@ -23,6 +23,15 @@ export function meta({ params }: Route.MetaArgs) {
 type QueryMode = "timeRange" | "tags" | "subject"
 
 type TimePreset = "5m" | "15m" | "1h" | "6h" | "24h" | "custom"
+
+const PRESET_LABELS: Record<TimePreset, string> = {
+  "5m": "Last 5 min",
+  "15m": "Last 15 min",
+  "1h": "Last 1h",
+  "6h": "Last 6h",
+  "24h": "Last 24h",
+  "custom": "Custom",
+}
 
 function resolvePreset(preset: TimePreset): { from: string; to: string } | null {
   if (preset === "custom") return null
@@ -51,7 +60,8 @@ export default function FactsPage() {
   const [customTo, setCustomTo] = useState("")
 
   // tags
-  const [tagInputs, setTagInputs] = useState<{ key: string; value: string }[]>([{ key: "", value: "" }])
+  const tagIdRef = useRef(1)
+  const [tagInputs, setTagInputs] = useState<{ id: number; key: string; value: string }[]>([{ id: 0, key: "", value: "" }])
 
   // subject
   const [subject, setSubject] = useState("")
@@ -153,17 +163,7 @@ export default function FactsPage() {
                       : "border-border text-muted-foreground hover:border-foreground hover:text-foreground"
                   }`}
                 >
-                  {p === "custom"
-                    ? "Custom"
-                    : p === "5m"
-                    ? "Last 5 min"
-                    : p === "15m"
-                    ? "Last 15 min"
-                    : p === "1h"
-                    ? "Last 1h"
-                    : p === "6h"
-                    ? "Last 6h"
-                    : "Last 24h"}
+                  {PRESET_LABELS[p]}
                 </button>
               ))}
             </div>
@@ -204,7 +204,7 @@ export default function FactsPage() {
               </div>
             )}
             {tagInputs.map((tag, i) => (
-              <div key={i} className="grid grid-cols-[1fr_auto_1fr_auto] items-center gap-2">
+              <div key={tag.id} className="grid grid-cols-[1fr_auto_1fr_auto] items-center gap-2">
                 <Input
                   value={tag.key}
                   onChange={(e) => {
@@ -240,7 +240,7 @@ export default function FactsPage() {
               variant="ghost"
               size="sm"
               className="text-xs h-7"
-              onClick={() => setTagInputs([...tagInputs, { key: "", value: "" }])}
+              onClick={() => setTagInputs([...tagInputs, { id: tagIdRef.current++, key: "", value: "" }])}
             >
               <Plus className="size-3" />
               Add tag filter

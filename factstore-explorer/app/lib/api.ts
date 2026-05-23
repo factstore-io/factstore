@@ -94,16 +94,10 @@ export async function queryFacts(storeName: string, opts: QueryOptions): Promise
   if (opts.direction) params.set("direction", opts.direction)
 
   if (opts.mode === "subject" && opts.subject) {
-    const url = `${BASE_URL}/v1/stores/${encodeURIComponent(storeName)}/subjects/${encodeURIComponent(opts.subject)}/facts?${params}`
-    const res = await fetch(url)
-    if (!res.ok) throw await toApiError(res)
-    return res.json()
+    return fetchJson(`${BASE_URL}/v1/stores/${encodeURIComponent(storeName)}/subjects/${encodeURIComponent(opts.subject)}/facts?${params}`)
   }
 
-  const url = `${BASE_URL}/v1/stores/${encodeURIComponent(storeName)}/facts?${params}`
-  const res = await fetch(url)
-  if (!res.ok) throw await toApiError(res)
-  return res.json()
+  return fetchJson(`${BASE_URL}/v1/stores/${encodeURIComponent(storeName)}/facts?${params}`)
 }
 
 // ─── Streaming ───────────────────────────────────────────────────────────────
@@ -144,6 +138,12 @@ export function createFactStream(
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+async function fetchJson<T>(url: string): Promise<T> {
+  const res = await fetch(url)
+  if (!res.ok) throw await toApiError(res)
+  return res.json() as Promise<T>
+}
 
 async function toApiError(res: Response): Promise<Error> {
   try {

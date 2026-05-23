@@ -53,8 +53,8 @@ function CreateStoreDialog({
   open,
   onClose,
 }: {
-  open: boolean
-  onClose: () => void
+  readonly open: boolean
+  readonly onClose: () => void
 }) {
   const fetcher = useFetcher<typeof clientAction>()
   const [name, setName] = useState("")
@@ -122,7 +122,7 @@ function CreateStoreDialog({
 
 // ─── Store card ───────────────────────────────────────────────────────────────
 
-function StoreCard({ store }: { store: { id: string; name: string; createdAt: string } }) {
+function StoreCard({ store }: { readonly store: { readonly id: string; readonly name: string; readonly createdAt: string } }) {
   const created = new Date(store.createdAt)
 
   return (

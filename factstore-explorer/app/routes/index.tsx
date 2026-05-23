@@ -35,9 +35,9 @@ function InfoTile({
   label,
   value,
 }: {
-  icon: React.ElementType
-  label: string
-  value: string | number | undefined
+  readonly icon: React.ElementType
+  readonly label: string
+  readonly value: string | number | undefined
 }) {
   return (
     <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/30 px-4 py-3">

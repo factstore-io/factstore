@@ -11,7 +11,6 @@ import {
 import { useEffect, useState } from "react"
 import { Database, Moon, Sun, ChevronRight } from "lucide-react"
 import { Button } from "~/components/ui/button"
-import { cn } from "~/lib/utils"
 import type { Route } from "./+types/root"
 import "./app.css"
 
@@ -102,7 +101,7 @@ function Breadcrumbs() {
   )
 }
 
-export function Layout({ children }: { children: React.ReactNode }) {
+export function Layout({ children }: { readonly children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
