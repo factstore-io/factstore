@@ -1,7 +1,37 @@
-import { NavLink, Outlet, useParams } from "react-router"
+import { isRouteErrorResponse, Link, NavLink, Outlet, useParams } from "react-router"
 import { LayoutDashboard, Search, Radio } from "lucide-react"
 import { cn } from "~/lib/utils"
+import { getStore } from "~/lib/api"
+import { Button } from "~/components/ui/button"
 import type { Route } from "./+types/stores.$storeName"
+
+export async function clientLoader({ params }: Route.ClientLoaderArgs) {
+  try {
+    const store = await getStore(params.storeName!)
+    return { store }
+  } catch {
+    throw new Response("Not Found", { status: 404 })
+  }
+}
+
+clientLoader.hydrate = true as const
+
+export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+  const { storeName } = useParams<{ storeName: string }>()
+  const is404 = isRouteErrorResponse(error) && error.status === 404
+
+  return (
+    <div className="flex h-64 flex-col items-center justify-center gap-3 p-8 text-center">
+      <p className="text-4xl font-bold text-muted-foreground">404</p>
+      <p className="text-sm text-muted-foreground">
+        {is404 ? `Store "${storeName}" was not found.` : "Something went wrong."}
+      </p>
+      <Button asChild variant="ghost" size="sm">
+        <Link to="/stores">← Back to Stores</Link>
+      </Button>
+    </div>
+  )
+}
 
 export function meta({ params }: Route.MetaArgs) {
   return [{ title: `${params.storeName} — FactStore Explorer` }]

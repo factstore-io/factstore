@@ -38,6 +38,15 @@ class StoreResource(
         is CreateStoreResult.NameAlreadyExists -> storeAlreadyExistsError(storeName)
     }
 
+    @GET
+    @Path("/{name}")
+    @Produces(APPLICATION_JSON)
+    suspend fun findStore(
+        @PathParam("name") @ValidStoreName name: String
+    ): Response = StoreName(name).let { storeName ->
+        store.findByName(storeName)?.toResponse() ?: storeNotFoundError(storeName)
+    }
+
     @HEAD
     @Path("/{name}")
     suspend fun existsByName(
@@ -58,16 +67,11 @@ class StoreResource(
         return store.listAll().toResponse()
     }
 
-    private fun List<StoreMetadata>.toResponse(): Response {
-        val stores = this.map { store ->
-            StoreMetadataHttp(
-                id = store.id.uuid,
-                name = store.name.value,
-                createdAt = store.createdAt
-            )
-        }
-        return Response.ok(stores).build()
-    }
+    private fun StoreMetadata.toHttp() = StoreMetadataHttp(id = id.uuid, name = name.value, createdAt = createdAt)
+
+    private fun StoreMetadata.toResponse(): Response = Response.ok(toHttp()).build()
+
+    private fun List<StoreMetadata>.toResponse(): Response = Response.ok(map { it.toHttp() }).build()
 
     @DELETE
     @Consumes(APPLICATION_JSON)

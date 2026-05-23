@@ -55,6 +55,12 @@ export async function createStore(name: string): Promise<{ id: string }> {
   return res.json()
 }
 
+export async function getStore(name: string): Promise<StoreMetadata> {
+  const res = await fetch(`${BASE_URL}/v1/stores/${encodeURIComponent(name)}`)
+  if (!res.ok) throw await toApiError(res)
+  return res.json()
+}
+
 export async function deleteStore(name: string): Promise<void> {
   const res = await fetch(`${BASE_URL}/v1/stores/${encodeURIComponent(name)}`, {
     method: "DELETE",
