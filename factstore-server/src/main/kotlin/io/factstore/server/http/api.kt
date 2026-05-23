@@ -2,20 +2,16 @@ package io.factstore.server.http
 
 import com.fasterxml.jackson.annotation.JsonSubTypes
 import com.fasterxml.jackson.annotation.JsonTypeInfo
-import io.factstore.core.StoreName
 import io.factstore.server.http.validation.ValidStoreName
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotEmpty
-import jakarta.validation.constraints.Pattern
-import jakarta.validation.constraints.Size
 import java.time.Instant
-import java.util.UUID
+import java.util.*
 
 data class AppendHttpRequest(
     @field:NotEmpty
-    @field:Valid
-    val facts: List<FactHttp>,
+    val facts: List<@Valid FactHttp>,
     val idempotencyKey: UUID? = null,
     val condition: AppendConditionHttp? = null
 )
