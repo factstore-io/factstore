@@ -1,11 +1,40 @@
 quarkus:
   application:
     name: factstore-server
-  http:
-    root-path: "/api"
   banner:
     path: factstore-banner.txt
 
+  #############################
+  #   REST API CONFIGURATION  #
+  #############################
+  rest:
+    path: "/api"
+
+  ###########################
+  #   QUINOA CONFIGURATION  #
+  ###########################
+  quinoa:
+    ~: true
+    ui-root-path: "/"
+    build-dir: build/client
+    ui-dir: ../factstore-explorer/
+    enable-spa-routing: true
+    package-manager: npm
+    package-manager-install:
+      ~: true
+      node-version: "22.22.1"
+    package-manager-command:
+      dev: "run dev"
+      build: "run build"
+    dev-server:
+      ~: true
+      managed: true
+      port: 3000
+      index-page: /
+
+##############################
+#   FACTSTORE CONFIGURATION  #
+##############################
 factstore:
   storage:
     type: foundationdb

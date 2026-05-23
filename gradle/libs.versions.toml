@@ -12,6 +12,7 @@ testcontainers-foundationdb = "1.1.0"
 fmodel = "3.7.0"
 quarkusVersion = "3.35.2"
 kotlin-logging = "8.0.02"
+quarkusQuinoa = "2.8.1"
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
@@ -35,3 +36,4 @@ com-fraktalio-fmodel-domain = { module = "com.fraktalio.fmodel:domain", version.
 com-fraktalio-fmodel-application-vanilla = { module = "com.fraktalio.fmodel:application-vanilla", version.ref = "fmodel" }
 io-quarkus-platform-quarkus-bom = { module = "io.quarkus.platform:quarkus-bom", version.ref = "quarkusVersion" }
 io-github-oshai-kotlin-logging = {module = 'io.github.oshai:kotlin-logging-jvm', version.ref = "kotlin-logging" }
+quarkus-quinoa = { module = "io.quarkiverse.quinoa:quarkus-quinoa", version.ref = "quarkusQuinoa" }

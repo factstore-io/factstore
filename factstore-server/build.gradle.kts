@@ -15,6 +15,7 @@ dependencies {
     implementation("io.quarkus:quarkus-hibernate-validator")
     implementation("io.quarkus:quarkus-smallrye-openapi")
     implementation("io.quarkus:quarkus-smallrye-health")
+    implementation(libs.quarkus.quinoa)
 
     // factstore libs
     implementation(project(":factstore-specification"))

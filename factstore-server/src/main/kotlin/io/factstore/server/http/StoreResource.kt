@@ -9,8 +9,6 @@ import io.factstore.core.StoreMetadata
 import io.factstore.core.StoreName
 import io.factstore.server.http.validation.ValidStoreName
 import jakarta.validation.Valid
-import jakarta.validation.constraints.Pattern
-import jakarta.validation.constraints.Size
 import jakarta.ws.rs.*
 import jakarta.ws.rs.core.MediaType.APPLICATION_JSON
 import jakarta.ws.rs.core.Response
@@ -38,6 +36,15 @@ class StoreResource(
         is CreateStoreResult.NameAlreadyExists -> storeAlreadyExistsError(storeName)
     }
 
+    @GET
+    @Path("/{name}")
+    @Produces(APPLICATION_JSON)
+    suspend fun findStore(
+        @PathParam("name") @ValidStoreName name: String
+    ): Response = StoreName(name).let { storeName ->
+        store.findByName(storeName)?.toResponse() ?: storeNotFoundError(storeName)
+    }
+
     @HEAD
     @Path("/{name}")
     suspend fun existsByName(
@@ -58,16 +65,11 @@ class StoreResource(
         return store.listAll().toResponse()
     }
 
-    private fun List<StoreMetadata>.toResponse(): Response {
-        val stores = this.map { store ->
-            StoreMetadataHttp(
-                id = store.id.uuid,
-                name = store.name.value,
-                createdAt = store.createdAt
-            )
-        }
-        return Response.ok(stores).build()
-    }
+    private fun StoreMetadata.toHttp() = StoreMetadataHttp(id = id.uuid, name = name.value, createdAt = createdAt)
+
+    private fun StoreMetadata.toResponse(): Response = Response.ok(toHttp()).build()
+
+    private fun List<StoreMetadata>.toResponse(): Response = Response.ok(map { it.toHttp() }).build()
 
     @DELETE
     @Consumes(APPLICATION_JSON)

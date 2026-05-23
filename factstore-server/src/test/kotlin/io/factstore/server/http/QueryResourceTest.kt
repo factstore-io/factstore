@@ -30,7 +30,7 @@ class QueryResourceTest {
             .pathParam("storeName", storeName)
             .pathParam("factId", factId)
             .`when`()
-            .get("/v1/stores/{storeName}/facts/{factId}")
+            .get("/api/v1/stores/{storeName}/facts/{factId}")
             .then()
             .statusCode(200)
             .extract().`as`(FactHttp::class.java)
@@ -49,7 +49,7 @@ class QueryResourceTest {
             .queryParam("limit", 10)
             .queryParam("direction", "forward")
             .`when`()
-            .get("/v1/stores/{storeName}/subjects/{subject}/facts")
+            .get("/api/v1/stores/{storeName}/subjects/{subject}/facts")
             .then()
             .statusCode(200)
             .body("$", hasSize<Any>(1))
@@ -64,7 +64,7 @@ class QueryResourceTest {
             .queryParam("tag", "category=books")
             .queryParam("from", "2024-01-01T00:00:00Z")
             .`when`()
-            .get("/v1/stores/{storeName}/facts")
+            .get("/api/v1/stores/{storeName}/facts")
             .then()
             .statusCode(400)
             .extract().`as`(ApiError::class.java)
@@ -84,7 +84,7 @@ class QueryResourceTest {
             .pathParam("storeName", storeName)
             .queryParam("tag", "region=europe")
             .`when`()
-            .get("/v1/stores/{storeName}/facts")
+            .get("/api/v1/stores/{storeName}/facts")
             .then()
             .statusCode(200)
             .extract().jsonPath().getList(".", FactHttp::class.java)
@@ -102,7 +102,7 @@ class QueryResourceTest {
             .pathParam("storeName", storeName)
             .pathParam("factId", randomId)
             .`when`()
-            .get("/v1/stores/{storeName}/facts/{factId}")
+            .get("/api/v1/stores/{storeName}/facts/{factId}")
             .then()
             .statusCode(404)
             .extract().`as`(ApiError::class.java)
@@ -114,7 +114,7 @@ class QueryResourceTest {
     // Helper to seed data via the already tested Store and Append APIs
     private fun seedFact(id: UUID, sub: String, tags: Map<String, String> = emptyMap()) {
         // Ensure store exists
-        given().contentType(JSON).body(mapOf("name" to storeName)).post("/v1/stores")
+        given().contentType(JSON).body(mapOf("name" to storeName)).post("/api/v1/stores")
 
         val base64Data = Base64.getEncoder().encodeToString("test-payload".toByteArray())
         val appendRequest = mapOf(
@@ -132,7 +132,7 @@ class QueryResourceTest {
             .pathParam("storeName", storeName)
             .contentType(JSON)
             .body(appendRequest)
-            .post("/v1/stores/{storeName}/facts")
+            .post("/api/v1/stores/{storeName}/facts")
             .then().statusCode(200)
     }
 

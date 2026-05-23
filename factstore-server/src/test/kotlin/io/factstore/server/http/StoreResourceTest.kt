@@ -4,6 +4,7 @@ import io.quarkus.test.junit.QuarkusTest
 import io.restassured.RestAssured.given
 import io.restassured.http.ContentType.JSON
 import org.assertj.core.api.Assertions.assertThat
+import org.hamcrest.Matchers.equalTo
 import org.hamcrest.Matchers.notNullValue
 import org.junit.jupiter.api.*
 import org.junit.jupiter.api.MethodOrderer.OrderAnnotation
@@ -20,7 +21,7 @@ class StoreResourceTest {
             .contentType(JSON)
             .body(mapOf("name" to "production-logs"))
             .`when`()
-            .post("/v1/stores")
+            .post("/api/v1/stores")
             .then()
             .statusCode(201)
             .body("id", notNullValue())
@@ -36,7 +37,7 @@ class StoreResourceTest {
             .contentType(JSON)
             .body(mapOf("name" to invalidName))
             .`when`()
-            .post("/v1/stores")
+            .post("/api/v1/stores")
             .then()
             .statusCode(400)
             .extract().`as`(ApiError::class.java)
@@ -53,7 +54,7 @@ class StoreResourceTest {
     fun verifyExistence() {
         given()
             .`when`()
-            .head("/v1/stores/production-logs")
+            .head("/api/v1/stores/production-logs")
             .then()
             .statusCode(200)
     }
@@ -64,7 +65,7 @@ class StoreResourceTest {
     fun validationBorder() {
         given()
             .`when`()
-            .head("/v1/stores/!!invalid!!")
+            .head("/api/v1/stores/!!invalid!!")
             .then()
             .statusCode(400)
     }
@@ -78,14 +79,14 @@ class StoreResourceTest {
         given()
             .contentType(JSON)
             .body(mapOf("name" to name))
-            .post("/v1/stores")
+            .post("/api/v1/stores")
             .then().statusCode(201)
 
         val error = given()
             .contentType(JSON)
             .body(mapOf("name" to name))
             .`when`()
-            .post("/v1/stores")
+            .post("/api/v1/stores")
             .then()
             .statusCode(409)
             .extract().`as`(ApiError::class.java)
@@ -103,26 +104,72 @@ class StoreResourceTest {
     fun deleteStore() {
         given()
             .`when`()
-            .delete("/v1/stores/production-logs")
+            .delete("/api/v1/stores/production-logs")
             .then()
             .statusCode(200)
 
         given()
             .`when`()
-            .head("/v1/stores/production-logs")
+            .head("/api/v1/stores/production-logs")
             .then()
             .statusCode(404)
     }
 
     @Test
     @Order(7)
+    @DisplayName("GET /v1/stores/{name} - Should return 200 with store details when exists")
+    fun findStore() {
+        given()
+            .`when`()
+            .get("/api/v1/stores/duplicate-store")
+            .then()
+            .statusCode(200)
+            .body("name", equalTo("duplicate-store"))
+            .body("id", notNullValue())
+    }
+
+    @Test
+    @Order(8)
+    @DisplayName("GET /v1/stores/{name} - Should return 404 ApiError when store does not exist")
+    fun findStoreNotFound() {
+        val name = "no-such-store"
+
+        val error = given()
+            .`when`()
+            .get("/api/v1/stores/$name")
+            .then()
+            .statusCode(404)
+            .extract().`as`(ApiError::class.java)
+
+        assertThat(error).apply {
+            extracting(ApiError::reason).isEqualTo(Reason.NotFound)
+            extracting(ApiError::details).isEqualTo(mapOf("kind" to "store", "name" to name))
+        }
+    }
+
+    @Test
+    @Order(9)
+    @DisplayName("GET /v1/stores/{name} - Should return 400 ApiError when name is invalid")
+    fun findStoreInvalidName() {
+        val error = given()
+            .`when`()
+            .get("/api/v1/stores/!!invalid!!")
+            .then()
+            .statusCode(400)
+            .extract().`as`(ApiError::class.java)
+
+        assertThat(error.reason).isEqualTo(Reason.InvalidInput)
+    }
+
+    @Test
+    @Order(10)
     @DisplayName("DELETE /v1/stores/{name} - Should return 404 ApiError when missing")
     fun deleteStoreNotFound() {
         val name = "non-existent-store"
 
         val error = given()
             .`when`()
-            .delete("/v1/stores/$name")
+            .delete("/api/v1/stores/$name")
             .then()
             .statusCode(404)
             .extract().`as`(ApiError::class.java)
