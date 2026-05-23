@@ -11,6 +11,7 @@ class FactStoreClientFactory {
         return QuarkusRestClientBuilder
             .newBuilder()
             .baseUri(url)
+            .userAgent("FactStore-CLI/1.0")
             .build(FactStoreClient::class.java)
     }
 

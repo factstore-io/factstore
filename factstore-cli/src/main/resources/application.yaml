@@ -11,8 +11,6 @@ quarkus:
   package:
     jar:
       enabled: true
-  rest-client:
-    user-agent: FactStore-CLI/1.0
 
 "%dev":
   quarkus:
