@@ -25,7 +25,7 @@ class FactStoreCommand : Runnable {
     @Option(
         names = ["--url"],
         scope = INHERIT,
-        description = ["Server URL"]
+        description = ["Server URL (env: FACTSTORE_URL, config: url)"]
     )
     var url: String? = null
 

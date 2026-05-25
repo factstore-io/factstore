@@ -1,6 +1,7 @@
 package io.factstore.cli.command
 
 import io.factstore.cli.client.FactStoreClient
+import io.factstore.cli.config.FactStoreConfigResolver
 import jakarta.inject.Inject
 import picocli.CommandLine.Command
 import picocli.CommandLine.ExitCode
@@ -18,6 +19,9 @@ class FindFactCommand : Callable<Int> {
     @Inject
     lateinit var client: FactStoreClient
 
+    @Inject
+    lateinit var configResolver: FactStoreConfigResolver
+
     @Parameters(
         index = "0",
         arity = "1",
@@ -28,10 +32,9 @@ class FindFactCommand : Callable<Int> {
 
     @Option(
         names = ["--store", "-s"],
-        description = ["The name of the store to query"],
-        required = true,
+        description = ["The name of the store to query (env: FACTSTORE_STORE, config: store)"],
     )
-    lateinit var storeName: String
+    var storeName: String? = null
 
     @Option(
         names = ["--output", "-o"],
@@ -41,6 +44,7 @@ class FindFactCommand : Callable<Int> {
     var outputFormat: OutputFormat = OutputFormat.Table
 
     override fun call(): Int {
+        val storeName = configResolver.resolveStore(storeName)
         val fact = client.findFact(storeName, factId)
         fact.printSingle(outputFormat)
         return ExitCode.OK

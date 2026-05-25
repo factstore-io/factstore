@@ -2,6 +2,7 @@ package io.factstore.cli.command
 
 import io.factstore.cli.client.FactHttp
 import io.factstore.cli.client.FactStoreClient
+import io.factstore.cli.config.FactStoreConfigResolver
 import io.factstore.cli.converter.FlexibleInstantConverter
 import jakarta.inject.Inject
 import picocli.CommandLine.*
@@ -14,12 +15,14 @@ class FindFactsCommand : Callable<Int> {
     @Inject
     lateinit var client: FactStoreClient
 
+    @Inject
+    lateinit var configResolver: FactStoreConfigResolver
+
     @Option(
         names = ["--store", "-s"],
-        description = ["The name of the store to query"],
-        required = true,
+        description = ["The name of the store to query (env: FACTSTORE_STORE, config: store)"],
     )
-    lateinit var storeName: String
+    var storeName: String? = null
 
     @ArgGroup(
         exclusive = true,
@@ -49,7 +52,8 @@ class FindFactsCommand : Callable<Int> {
     var outputFormat: OutputFormat = OutputFormat.Table
 
     override fun call(): Int {
-        val facts = filter.toClientCall()
+        val storeName = configResolver.resolveStore(storeName)
+        val facts = filter.toClientCall(storeName)
 
         if (facts.size >= limit) {
             System.err.println("Warning: results limited to $limit facts. Use --limit to retrieve more.")
@@ -59,7 +63,7 @@ class FindFactsCommand : Callable<Int> {
         return ExitCode.OK
     }
 
-    private fun FactFilter?.toClientCall(): List<FactHttp> = when {
+    private fun FactFilter?.toClientCall(storeName: String): List<FactHttp> = when {
         this == null -> client.findFacts(storeName = storeName, limit = limit, direction = direction.name)
         subject != null -> client.findFactsBySubject(
             storeName = storeName,

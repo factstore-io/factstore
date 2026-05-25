@@ -1,6 +1,7 @@
 package io.factstore.cli.command
 
 import io.factstore.cli.client.FactStoreClient
+import io.factstore.cli.config.FactStoreConfigResolver
 import io.smallrye.mutiny.coroutines.asFlow
 import io.vertx.core.http.HttpClosedException
 import jakarta.inject.Inject
@@ -20,12 +21,14 @@ class StreamFactsCommand : Callable<Int> {
     @Inject
     lateinit var client: FactStoreClient
 
-    @Parameters(
-        index = "0",
-        arity = "1",
-        description = ["The name of the store to stream from"]
+    @Inject
+    lateinit var configResolver: FactStoreConfigResolver
+
+    @Option(
+        names = ["--store", "-s"],
+        description = ["The name of the store to stream from (env: FACTSTORE_STORE, config: store)"],
     )
-    lateinit var storeName: String
+    var storeName: String? = null
 
     @ArgGroup(
         exclusive = true,
@@ -60,6 +63,7 @@ class StreamFactsCommand : Callable<Int> {
     enum class FromOption { beginning, end }
 
     override fun call(): Int = runBlocking {
+        val storeName = configResolver.resolveStore(storeName)
         val fromValue = startPosition.from?.name
         val afterValue = startPosition.after
 
