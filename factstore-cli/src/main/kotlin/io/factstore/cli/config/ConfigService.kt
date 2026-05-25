@@ -10,11 +10,13 @@ class ConfigService {
     private val configDir = File(System.getProperty("user.home"), ".factstore")
     private val configFile = File(configDir, "config")
 
-    fun getUrl(): String? {
-        if (!configFile.exists()) return null
-        val props = Properties()
-        configFile.inputStream().use { props.load(it) }
-        return props.getProperty("url")
+    private val properties: Properties? by lazy {
+        if (!configFile.exists()) null
+        else configFile.inputStream().use { stream -> Properties().also { it.load(stream) } }
     }
+
+    fun getUrl(): String? = properties?.getProperty("url")
+
+    fun getStore(): String? = properties?.getProperty("store")
 
 }

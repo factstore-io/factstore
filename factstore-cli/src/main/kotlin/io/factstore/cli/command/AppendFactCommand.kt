@@ -1,6 +1,7 @@
 package io.factstore.cli.command
 
 import io.factstore.cli.client.*
+import io.factstore.cli.config.FactStoreConfigResolver
 import jakarta.inject.Inject
 import picocli.CommandLine.*
 import picocli.CommandLine.Model.CommandSpec
@@ -17,15 +18,17 @@ class AppendFactCommand : Callable<Int> {
     @Inject
     lateinit var client: FactStoreClient
 
+    @Inject
+    lateinit var configResolver: FactStoreConfigResolver
+
     @Spec
     lateinit var spec: CommandSpec
 
     @Option(
         names = ["--store", "-s"],
-        description = ["The name of the store to append to"],
-        required = true,
+        description = ["The name of the store to append to (env: FACTSTORE_STORE, config: store)"],
     )
-    lateinit var storeName: String
+    var storeName: String? = null
 
     @Option(
         names = ["--type", "-t"],
@@ -56,6 +59,7 @@ class AppendFactCommand : Callable<Int> {
     var payload: String? = null
 
     override fun call(): Int {
+        val storeName = configResolver.resolveStore(storeName)
         val resolvedPayload = resolvePayload() ?: return ExitCode.SOFTWARE
         client.appendFact(storeName, resolvedPayload.toAppendRequest())
         println("✅ Fact appended successfully.")

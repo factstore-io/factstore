@@ -24,6 +24,7 @@ class FactStoreExecutionExceptionHandler : CommandLine.IExecutionExceptionHandle
 }
 
 private fun Exception.toCliMessage(): String = when (this) {
+    is CliUsageException -> "❌ ${this.message}"
     is FactStoreApiException -> toCliMessage()
     is ProcessingException -> "❌ Network Error: ${this.cause?.message ?: this.message}"
     is UnknownHostException -> "❌ Could not resolve host: ${this.message}"
