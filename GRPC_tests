@@ -1,0 +1,104 @@
+  # List services
+  grpcurl -plaintext localhost:9000 list
+
+  # Describe a service (shows all RPCs and types)
+  grpcurl -plaintext localhost:9000 describe io.factstore.server.grpc.StoreService
+  grpcurl -plaintext localhost:9000 describe io.factstore.server.grpc.FactService
+
+  # Describe a message type
+  grpcurl -plaintext localhost:9000 describe io.factstore.server.grpc.AppendFactsRequest
+
+  ---
+  StoreService
+  # Create a store
+  grpcurl -plaintext -d '{"name": "orders"}' \
+    localhost:9000 io.factstore.server.grpc.StoreService/CreateStore
+
+  # Get a store
+  grpcurl -plaintext -d '{"name": "orders"}' \
+    localhost:9000 io.factstore.server.grpc.StoreService/GetStore
+
+  # List all stores
+  grpcurl -plaintext localhost:9000 io.factstore.server.grpc.StoreService/ListStores
+
+  # Check existence (no body needed)
+  grpcurl -plaintext -d '{"name": "orders"}' \
+    localhost:9000 io.factstore.server.grpc.StoreService/StoreExists
+
+  # Delete a store
+  grpcurl -plaintext -d '{"name": "orders"}' \
+    localhost:9000 io.factstore.server.grpc.StoreService/DeleteStore
+
+  ---
+  FactService — append
+  # payload.data must be base64-encoded bytes
+  grpcurl -plaintext -d '{
+    "store_name": "orders",
+    "facts": [{
+      "type": "OrderCreated",
+      "subject": "order-42",
+      "payload": { "data": "eyJvcmRlcklkIjogNDJ9" }
+    }]
+  }' localhost:9000 io.factstore.server.grpc.FactService/AppendFacts
+  grpcurl -plaintext -d '{"name": "orders"}' \
+    localhost:9000 io.factstore.server.grpc.StoreService/StoreExists
+
+  # Delete a store
+  grpcurl -plaintext -d '{"name": "orders"}' \
+    localhost:9000 io.factstore.server.grpc.StoreService/DeleteStore
+
+  ---
+  FactService — append
+  # payload.data must be base64-encoded bytes
+  grpcurl -plaintext -d '{
+    "store_name": "orders",
+    "facts": [{
+      "type": "OrderCreated",
+      "subject": "order-42",
+      "payload": { "data": "eyJvcmRlcklkIjogNDJ9" }
+    }]
+  }' localhost:9000 io.factstore.server.grpc.FactService/AppendFacts
+
+  ---
+  FactService — query
+  # Get a fact by ID
+  grpcurl -plaintext -d '{
+    "store_name": "orders",
+    "fact_id": "<uuid-from-append>"
+  }' localhost:9000 io.factstore.server.grpc.FactService/GetFact
+
+  # Find by subject
+  grpcurl -plaintext -d '{
+    "store_name": "orders",
+    "subject": "order-42",
+    "limit": 10,
+    "direction": "FORWARD"
+  }' localhost:9000 io.factstore.server.grpc.FactService/FindFactsBySubject
+
+  # Find by tags
+  grpcurl -plaintext -d '{
+    "store_name": "orders",
+    "tags": {"region": "eu"}
+  }' localhost:9000 io.factstore.server.grpc.FactService/FindFactsByTags
+
+  ---
+  FactService — streaming
+
+  grpcurl handles server-side streaming transparently — it prints each fact as it arrives:
+  # Stream from the beginning (stays open, prints new facts as they arrive)
+  grpcurl -plaintext -d '{"store_name": "orders"}' \
+    localhost:9000 io.factstore.server.grpc.FactService/StreamFacts
+
+  # Stream only new facts from this point onward
+  grpcurl -plaintext -d '{"store_name": "orders", "from_end": true}' \
+    localhost:9000 io.factstore.server.grpc.FactService/StreamFacts
+
+  ---
+  InfoService
+  grpcurl -plaintext localhost:9000 io.factstore.server.grpc.InfoService/GetServerInfo
+
+  ---
+  If reflection isn't enabled in production mode, you can point grpcurl at the proto file instead:
+  grpcurl -plaintext -proto factstore-server/src/main/proto/factstore.proto \
+    -d '{"name": "orders"}' \
+    localhost:9000 io.factstore.server.grpc.StoreService/CreateStore

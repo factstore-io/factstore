@@ -3,6 +3,19 @@ quarkus:
     name: factstore-server
   banner:
     path: factstore-banner.txt
+  #############################
+  #   CODE GEN CONFIGURATION  #
+  #############################
+  generate-code:
+    grpc:
+      kotlin:
+        generate: true
+  #############################
+  #   GRPC API CONFIGURATION  #
+  #############################
+  grpc:
+    server:
+      use-separate-server: false
 
   #############################
   #   REST API CONFIGURATION  #

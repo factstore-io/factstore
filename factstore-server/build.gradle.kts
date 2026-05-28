@@ -8,6 +8,7 @@ dependencies {
     implementation(enforcedPlatform(libs.io.quarkus.platform.quarkus.bom))
     implementation("io.quarkus:quarkus-rest")
     implementation("io.quarkus:quarkus-rest-jackson")
+    implementation("io.quarkus:quarkus-grpc")
     implementation("io.quarkus:quarkus-kotlin")
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
     implementation("io.quarkus:quarkus-arc")
@@ -16,6 +17,11 @@ dependencies {
     implementation("io.quarkus:quarkus-smallrye-openapi")
     implementation("io.quarkus:quarkus-smallrye-health")
     implementation(libs.quarkus.quinoa)
+    implementation("com.google.protobuf:protobuf-kotlin:4.35.0")
+    implementation("io.vertx:vertx-lang-kotlin-coroutines")
+    implementation("io.smallrye.reactive:mutiny-kotlin:3.2.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-jdk9:1.8.1")
+
 
     // factstore libs
     implementation(project(":factstore-specification"))
@@ -45,5 +51,13 @@ kotlin {
     compilerOptions {
         jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21
         javaParameters = true
+    }
+}
+
+sourceSets {
+    main {
+        java {
+            srcDir("build/classes/java/quarkus-generated-sources/grpc")
+        }
     }
 }
