@@ -20,7 +20,7 @@ dependencies {
     implementation("com.google.protobuf:protobuf-kotlin:4.35.0")
     implementation("io.vertx:vertx-lang-kotlin-coroutines")
     implementation("io.smallrye.reactive:mutiny-kotlin:3.2.1")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-jdk9:1.8.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-jdk9:1.11.0")
 
 
     // factstore libs
