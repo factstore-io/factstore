@@ -1,7 +1,7 @@
 
 [versions]
 kotlin = "2.3.21"
-junit = "6.0.3"
+junit = "6.1.0"
 assertj = "3.27.7"
 kotlinx-coroutines-core = "1.10.2"
 fdb-java = "7.3.67"
