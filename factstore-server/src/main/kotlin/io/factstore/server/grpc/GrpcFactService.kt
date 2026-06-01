@@ -77,7 +77,7 @@ class GrpcFactService(
             factExistsResponse {
                 when (result) {
                     ExistsByIdResult.Exists -> present = factPresent { }
-                    ExistsByIdResult.DoesNotExist -> notFound = factNotFound { }
+                    ExistsByIdResult.DoesNotExist -> absent = factAbsent {  }
                     ExistsByIdResult.StoreNotFound -> storeNotFound = storeNotFound { storeName = request.storeName }
                 }
             }

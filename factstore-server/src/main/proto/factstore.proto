@@ -113,6 +113,9 @@ message FactsFound {
   repeated Fact facts = 1;
 }
 
+// The fact with the given ID does not exist in the store.
+message FactAbsent {}
+
 // ─── Store Service ────────────────────────────────────────────────────────────
 
 service StoreService {
@@ -291,7 +294,7 @@ message FactExistsRequest {
 message FactExistsResponse {
   oneof outcome {
     FactPresent present = 1;
-    FactNotFound not_found = 2;
+    FactAbsent absent = 2;
     StoreNotFound store_not_found = 3;
   }
 }
@@ -363,14 +366,18 @@ message FindFactsInTimeRangeResponse {
 
 // -- StreamFacts --
 
+// Marker for streaming from the very first fact in the store.
+message FromBeginning {}
+// Marker for streaming only facts appended after the stream is opened.
+message FromEnd {}
+
 message StreamFactsRequest {
   string store_name = 1;
   oneof start_position {
-    // Stream only new facts appended after the stream is opened.
-    bool from_end = 2;
+    FromBeginning from_beginning = 2;
+    FromEnd from_end = 3;
     // Stream facts appended after the given fact ID, then continue with new ones.
-    string after_fact_id = 3;
-    // If no field is set, streaming begins from the very first fact in the store.
+    string after_fact_id = 4;
   }
 }
 
