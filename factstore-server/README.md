@@ -83,15 +83,12 @@ curl -X POST http://localhost:8080/v1/stores/default/facts \
   -d '{
     "facts": [
       {
-        "subject": {
-          "type": "user",
-          "id": "123"
-        },
         "type": "UserRegistered",
+        "subject": "user:123",
         "payload": {
           "data": "SGVsbG8gd29ybGQ="
         },
-        "tags": ["user", "registration"]
+        "tags": { "role": "user" }
       }
     ]
   }'
@@ -109,16 +106,13 @@ Response (example):
 
 ```json
 {
-  "factId": "2f4d6f2c-6a3e-4a77-8c6b-0c3f6c2e5e11",
-  "subject": {
-    "type": "user",
-    "id": "123"
-  },
+  "id": "2f4d6f2c-6a3e-4a77-8c6b-0c3f6c2e5e11",
   "type": "UserRegistered",
+  "subject": "user:123",
   "payload": {
     "data": "SGVsbG8gd29ybGQ="
   },
-  "tags": ["user", "registration"],
+  "tags": { "role": "user" },
   "appendedAt": "2026-02-14T12:34:56Z"
 }
 ```
@@ -128,7 +122,7 @@ Response (example):
 Retrieve all facts for a specific subject.
 
 ```bash
-curl http://localhost:8080/v1/stores/default/subjects/user/123/facts
+curl http://localhost:8080/v1/stores/default/subjects/user:123/facts
 ```
 
 Response:
@@ -151,7 +145,7 @@ Retrieve all facts between two timestamps.
 curl "http://localhost:8080/v1/stores/default/facts?from=2026-01-01T00:00:00Z&to=2026-02-01T00:00:00Z"
 ```
 
-If to is omitted, the current time is used.
+If `to` is omitted, there is no upper bound — all facts from `from` onwards are returned.
 
 ### 5. Stream Facts (Server-Sent Events)
 
@@ -278,6 +272,8 @@ grpcurl -plaintext \
   localhost:8080 io.factstore.server.grpc.StoreService/StoreExists
 ```
 
+Outcomes: `present` · `absent`
+
 #### DeleteStore
 
 ```bash
@@ -332,7 +328,7 @@ grpcurl -plaintext \
   localhost:8080 io.factstore.server.grpc.FactService/FactExists
 ```
 
-Outcomes: `present` · `not_found` · `store_not_found`
+Outcomes: `present` · `absent` · `store_not_found`
 
 #### FindFactsBySubject
 
@@ -402,7 +398,7 @@ grpcurl -plaintext \
 
 # Receive only facts appended after the stream is opened
 grpcurl -plaintext \
-  -d '{"store_name": "orders", "from_end": true}' \
+  -d '{"store_name": "orders", "from_end": {}}' \
   localhost:8080 io.factstore.server.grpc.FactService/StreamFacts
 
 # Resume from a known fact ID
