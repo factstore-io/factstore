@@ -13,6 +13,7 @@ import kotlinx.coroutines.future.future
 import kotlinx.coroutines.jdk9.asPublisher
 import java.time.Instant
 import java.util.*
+import kotlin.collections.map
 import kotlin.coroutines.CoroutineContext
 import io.factstore.core.ReadDirection as CoreReadDirection
 
@@ -149,3 +150,176 @@ internal fun FactStoreProto.TagQueryItem.toDomain(): TagQueryItem = when (kindCa
 
     else -> throw IllegalArgumentException("TagQueryItem has no kind set")
 }
+
+typealias GrpcAppendRequest = FactStoreProto.AppendFactsRequest
+typealias GrpcAppendFactsResponse = FactStoreProto.AppendFactsResponse
+
+internal fun GrpcAppendRequest.toDomainRequest(): AppendRequest {
+    val storeName = StoreName(storeName)
+    val facts = factsList.map { it.toDomain() }
+    val idempotencyKey = if (hasIdempotencyKey())
+        IdempotencyKey(UUID.fromString(idempotencyKey))
+    else
+        IdempotencyKey()
+    val condition = if (hasCondition()) condition.toDomain() else AppendCondition.None
+
+    return AppendRequest(
+        storeName = storeName,
+        facts = facts,
+        idempotencyKey = idempotencyKey,
+        condition = condition
+    )
+}
+
+internal suspend fun AppendRequest.publishTo(factStore: FactStore): AppendResult =
+    factStore.append(this)
+
+internal fun AppendResult.toGrpcResponse(): GrpcAppendFactsResponse =
+    appendFactsResponse {
+        when (this@toGrpcResponse) {
+            is AppendResult.Appended -> appended = factsAppended { }
+            is AppendResult.AlreadyApplied -> alreadyApplied = alreadyApplied { }
+            is AppendResult.AppendConditionViolated -> conditionViolated = conditionViolated { }
+            is AppendResult.StoreNotFound -> storeNotFound = storeNotFound { storeName = this@toGrpcResponse.storeName.value }
+            is AppendResult.DuplicateFactIds -> duplicateFactIds = duplicateFactIds {
+                factIds += this@toGrpcResponse.factIds.map { it.uuid.toString() }
+            }
+        }
+    }
+
+typealias GrpcGetFactResponse = FactStoreProto.GetFactResponse
+
+internal fun FindByIdResult.toGrpcResponse(): GrpcGetFactResponse =
+    getFactResponse {
+        when (this@toGrpcResponse) {
+            is FindByIdResult.Found -> found = factFound { fact = this@toGrpcResponse.fact.toProto() }
+            is FindByIdResult.NotFound -> notFound = factNotFound { }
+            is FindByIdResult.StoreNotFound -> storeNotFound = storeNotFound { storeName = this@toGrpcResponse.storeName.value }
+        }
+    }
+
+internal fun ExistsByIdResult.toGrpcResponse(): FactStoreProto.FactExistsResponse =
+    factExistsResponse {
+        when (this@toGrpcResponse) {
+            ExistsByIdResult.Exists -> present = factPresent { }
+            ExistsByIdResult.DoesNotExist -> absent = factAbsent { }
+            is ExistsByIdResult.StoreNotFound -> storeNotFound = storeNotFound { storeName = this@toGrpcResponse.storeName.value }
+        }
+    }
+
+
+typealias GrpcFindBySubjectResponse = FactStoreProto.FindFactsBySubjectResponse
+
+internal fun FindBySubjectResult.toGrpcResponse(): GrpcFindBySubjectResponse =
+    findFactsBySubjectResponse {
+        when (this@toGrpcResponse) {
+            is FindBySubjectResult.Found ->
+                found = factsFound { facts += this@toGrpcResponse.facts.map { it.toProto() } }
+
+            is FindBySubjectResult.StoreNotFound ->
+                storeNotFound = storeNotFound { storeName = this@toGrpcResponse.storeName.value }
+        }
+    }
+
+typealias GrpcFindFactsByTagsResponse = FactStoreProto.FindFactsByTagsResponse
+
+internal fun FindByTagsResult.toGrpcResponse(): GrpcFindFactsByTagsResponse =
+    findFactsByTagsResponse {
+        when (this@toGrpcResponse) {
+            is FindByTagsResult.Found ->
+                found = factsFound { facts += this@toGrpcResponse.facts.map { it.toProto() } }
+
+            is FindByTagsResult.StoreNotFound ->
+                storeNotFound = storeNotFound { storeName = this@toGrpcResponse.storeName.value }
+        }
+    }
+
+internal fun FindByTagQueryResult.toGrpcResponse(): FactStoreProto.QueryFactsResponse =
+    queryFactsResponse {
+        when (this@toGrpcResponse) {
+            is FindByTagQueryResult.Found ->
+                found = factsFound { facts += this@toGrpcResponse.facts.map { it.toProto() } }
+
+            is FindByTagQueryResult.StoreNotFound ->
+                storeNotFound = storeNotFound { storeName = this@toGrpcResponse.storeName.value }
+        }
+    }
+
+
+internal fun FindInTimeRangeResult.toGrpcResponse(): FactStoreProto.FindFactsInTimeRangeResponse =
+    findFactsInTimeRangeResponse {
+        when (this@toGrpcResponse) {
+            is FindInTimeRangeResult.Found ->
+                found = factsFound { facts += this@toGrpcResponse.facts.map { it.toProto() } }
+
+            is FindInTimeRangeResult.StoreNotFound ->
+                storeNotFound = storeNotFound { storeName = this@toGrpcResponse.storeName.value }
+        }
+    }
+
+typealias GrpcCreateStoreRequest = FactStoreProto.CreateStoreRequest
+typealias GrpcCreateStoreResponse = FactStoreProto.CreateStoreResponse
+
+internal fun GrpcCreateStoreRequest.toDomainRequest(): CreateStoreRequest =
+    CreateStoreRequest(StoreName(name))
+
+internal suspend fun CreateStoreRequest.publishTo(factStore: FactStore): CreateStoreResult =
+    factStore.handle(this)
+
+internal fun CreateStoreResult.toGrpcResponse(): GrpcCreateStoreResponse =
+    createStoreResponse {
+        when (this@toGrpcResponse) {
+            is CreateStoreResult.Created ->
+                created = storeCreated { id = this@toGrpcResponse.id.uuid.toString() }
+            is CreateStoreResult.NameAlreadyExists ->
+                nameAlreadyExists = storeNameAlreadyExists { }
+        }
+    }
+
+internal fun List<StoreMetadata>.toGrpcResponse(): FactStoreProto.ListStoresResponse =
+    listStoresResponse {
+        stores += this@toGrpcResponse.map { it.toProto() }
+    }
+
+typealias GrpcDeleteStoreRequest = FactStoreProto.DeleteStoreRequest
+typealias GrpcDeleteStoreResponse = FactStoreProto.DeleteStoreResponse
+
+internal fun GrpcDeleteStoreRequest.toDomainRequest(): RemoveStoreRequest =
+    RemoveStoreRequest(StoreName(name))
+
+internal suspend fun RemoveStoreRequest.publishTo(factStore: FactStore): RemoveStoreResult =
+    factStore.handle(this)
+
+internal fun RemoveStoreResult.toGrpcResponse(): GrpcDeleteStoreResponse =
+    deleteStoreResponse {
+        when (this@toGrpcResponse) {
+            is RemoveStoreResult.StoreRemoved -> deleted = storeDeleted { }
+            is RemoveStoreResult.StoreNotFound -> notFound = storeNotFound { storeName = this@toGrpcResponse.storeName.value }
+        }
+    }
+
+typealias GrpcStoreExistsResponse = FactStoreProto.StoreExistsResponse
+
+internal fun Boolean.toGrpcResponse(): GrpcStoreExistsResponse =
+    storeExistsResponse {
+        if (this@toGrpcResponse) {
+            present = storePresent { }
+        } else {
+            absent = storeAbsent { }
+        }
+    }
+
+typealias GrpcFindStoreByNameRequest = FactStoreProto.GetStoreRequest
+typealias GrpcFindStoreByNameResult = FactStoreProto.GetStoreResponse
+
+internal fun GrpcFindStoreByNameRequest.toDomainRequest(): FindStoreByNameRequest =
+    FindStoreByNameRequest(StoreName(name))
+
+internal suspend fun FindStoreByNameRequest.publishTo(factStore: FactStore): FindStoreByNameResult =
+    factStore.findByName(this)
+
+internal fun FindStoreByNameResult.toGrpcResponse(): GrpcFindStoreByNameResult =
+    when (this) {
+        is FindStoreByNameResult.Found -> getStoreResponse { found = storeFound { store = storeMetadata.toProto() } }
+        is FindStoreByNameResult.NotFound -> getStoreResponse { notFound = storeNotFound { storeName = this@toGrpcResponse.storeName.value } }
+    }

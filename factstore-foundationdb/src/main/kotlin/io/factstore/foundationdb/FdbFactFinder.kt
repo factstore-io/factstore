@@ -41,7 +41,7 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
             with(tr) {
                 fdbFactStore.context.lookUpStoreIdByName(storeName).thenCompose { storeId ->
                     if (storeId == null) {
-                        CompletableFuture.completedFuture(ExistsByIdResult.StoreNotFound)
+                        CompletableFuture.completedFuture(ExistsByIdResult.StoreNotFound(storeName))
                     } else {
                         factId.existsById(storeId).thenApply { exists ->
                             if (exists) {

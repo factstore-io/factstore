@@ -3,6 +3,8 @@ package io.factstore.server.http
 import io.factstore.core.CreateStoreRequest
 import io.factstore.core.CreateStoreResult
 import io.factstore.core.FactStore
+import io.factstore.core.FindStoreByNameRequest
+import io.factstore.core.FindStoreByNameResult
 import io.factstore.core.RemoveStoreRequest
 import io.factstore.core.RemoveStoreResult
 import io.factstore.core.StoreMetadata
@@ -42,7 +44,12 @@ class StoreResource(
     suspend fun findStore(
         @PathParam("name") @ValidStoreName name: String
     ): Response = StoreName(name).let { storeName ->
-        store.findByName(storeName)?.toResponse() ?: storeNotFoundError(storeName)
+        store.findByName(FindStoreByNameRequest(storeName)).toResponse()
+    }
+
+    private fun FindStoreByNameResult.toResponse(): Response = when (this) {
+        is FindStoreByNameResult.Found -> Response.ok(storeMetadata.toHttp()).build()
+        is FindStoreByNameResult.NotFound -> storeNotFoundError(storeName)
     }
 
     @HEAD
@@ -66,8 +73,6 @@ class StoreResource(
     }
 
     private fun StoreMetadata.toHttp() = StoreMetadataHttp(id = id.uuid, name = name.value, createdAt = createdAt)
-
-    private fun StoreMetadata.toResponse(): Response = Response.ok(toHttp()).build()
 
     private fun List<StoreMetadata>.toResponse(): Response = Response.ok(map { it.toHttp() }).build()
 

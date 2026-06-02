@@ -66,8 +66,8 @@ class MemoryFactStore : FactStore {
         nameToId.containsKey(name.value)
     }
 
-    override suspend fun findByName(name: StoreName): StoreMetadata? = lock.withLock {
-        resolveId(name)?.let { stores[it] }
+    override suspend fun findByName(request: FindStoreByNameRequest): FindStoreByNameResult = lock.withLock {
+        resolveId(request.name)?.let { stores[it] }?.let { FindStoreByNameResult.Found(it) } ?: FindStoreByNameResult.NotFound(request.name)
     }
 
     override suspend fun append(storeName: StoreName, fact: Fact): AppendResult =
@@ -124,7 +124,7 @@ class MemoryFactStore : FactStore {
     }
 
     override suspend fun existsById(storeName: StoreName, factId: FactId): ExistsByIdResult = lock.withLock {
-        val internalId = resolveId(storeName) ?: return ExistsByIdResult.StoreNotFound
+        val internalId = resolveId(storeName) ?: return ExistsByIdResult.StoreNotFound(storeName)
 
         val exists = facts[internalId]?.any { it.id == factId } ?: false
         if (exists) ExistsByIdResult.Exists else ExistsByIdResult.DoesNotExist

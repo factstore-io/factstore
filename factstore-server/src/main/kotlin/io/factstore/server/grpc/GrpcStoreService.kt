@@ -16,56 +16,37 @@ class GrpcStoreService(
 
     override fun createStore(request: FactStoreProto.CreateStoreRequest): Uni<FactStoreProto.CreateStoreResponse> =
         toUni(grpcContext) {
-            val result = factStore.handle(CreateStoreRequest(StoreName(request.name)))
-            createStoreResponse {
-                when (result) {
-                    is CreateStoreResult.Created ->
-                        created = storeCreated { id = result.id.uuid.toString() }
-                    is CreateStoreResult.NameAlreadyExists ->
-                        nameAlreadyExists = storeNameAlreadyExists { }
-                }
-            }
+            request
+                .toDomainRequest()
+                .publishTo(factStore)
+                .toGrpcResponse()
         }
 
     override fun getStore(request: FactStoreProto.GetStoreRequest): Uni<FactStoreProto.GetStoreResponse> =
         toUni(grpcContext) {
-            val storeMetadata = factStore.findByName(StoreName(request.name))
-            getStoreResponse {
-                if (storeMetadata != null) {
-                    found = storeFound { store = storeMetadata.toProto() }
-                } else {
-                    notFound = storeNotFound { storeName = request.name }
-                }
-            }
+            request
+                .toDomainRequest()
+                .publishTo(factStore)
+                .toGrpcResponse()
         }
 
     override fun listStores(request: FactStoreProto.ListStoresRequest): Uni<FactStoreProto.ListStoresResponse> =
         toUni(grpcContext) {
-            val all = factStore.listAll()
-            listStoresResponse {
-                stores += all.map { it.toProto() }
-            }
+            factStore
+                .listAll()
+                .toGrpcResponse()
         }
 
     override fun deleteStore(request: FactStoreProto.DeleteStoreRequest): Uni<FactStoreProto.DeleteStoreResponse> =
         toUni(grpcContext) {
-            val result = factStore.handle(RemoveStoreRequest(StoreName(request.name)))
-            deleteStoreResponse {
-                when (result) {
-                    is RemoveStoreResult.StoreRemoved -> deleted = storeDeleted { }
-                    is RemoveStoreResult.StoreNotFound -> notFound = storeNotFound { storeName = result.storeName.value }
-                }
-            }
+            request
+                .toDomainRequest()
+                .publishTo(factStore)
+                .toGrpcResponse()
         }
 
     override fun storeExists(request: FactStoreProto.StoreExistsRequest): Uni<FactStoreProto.StoreExistsResponse> =
         toUni(grpcContext) {
-            val found = factStore.existsByName(StoreName(request.name))
-            storeExistsResponse {
-                when (found) {
-                    true -> present = storePresent {}
-                    false -> absent = storeAbsent {}
-                }
-            }
+            factStore.existsByName(StoreName(request.name)).toGrpcResponse()
         }
 }

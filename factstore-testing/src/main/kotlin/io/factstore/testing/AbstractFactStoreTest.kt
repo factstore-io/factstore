@@ -124,7 +124,7 @@ abstract class AbstractFactStoreTest {
                 nonExistingStore,
                 FactId.generate()
             )
-        ).isEqualTo(ExistsByIdResult.StoreNotFound)
+        ).isEqualTo(ExistsByIdResult.StoreNotFound(nonExistingStore))
     }
 
     @Test

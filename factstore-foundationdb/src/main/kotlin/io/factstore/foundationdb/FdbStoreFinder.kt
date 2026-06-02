@@ -1,6 +1,8 @@
 package io.factstore.foundationdb
 
 import com.github.avrokotlin.avro4k.Avro
+import io.factstore.core.FindStoreByNameRequest
+import io.factstore.core.FindStoreByNameResult
 import io.factstore.core.StoreFinder
 import io.factstore.core.StoreId
 import io.factstore.core.StoreMetadata
@@ -41,21 +43,26 @@ class FdbStoreFinder(
         }.await()
     }
 
-    override suspend fun findByName(name: StoreName): StoreMetadata? {
+    override suspend fun findByName(request: FindStoreByNameRequest): FindStoreByNameResult {
         return store.db.readAsync { tr ->
             with(tr) {
-                store.context.lookUpStoreIdByName(name).thenCompose { id ->
+                store.context.lookUpStoreIdByName(request.name).thenCompose { id ->
                     id?.let {
-                        store.context.getMetadata(id)
-                    } ?: CompletableFuture.completedFuture(null)
-                }.thenApply { fdbMetadata ->
-                    fdbMetadata?.let {
-                        StoreMetadata(
-                            id = StoreId(it.storeId),
-                            name = StoreName(it.name),
-                            createdAt = Instant.ofEpochSecond(it.createdAtEpochSeconds)
-                        )
-                    }
+                        store.context.getMetadata(id).thenApply { metadata ->
+                            if (metadata != null) {
+                                FindStoreByNameResult.Found(
+                                    StoreMetadata(
+                                        id = StoreId(metadata.storeId),
+                                        name = StoreName(metadata.name),
+                                        createdAt = Instant.ofEpochSecond(metadata.createdAtEpochSeconds)
+                                    )
+                                )
+                            } else {
+                                // should not be the case.... (consider logging that)
+                                FindStoreByNameResult.NotFound(request.name)
+                            }
+                        }
+                    } ?: CompletableFuture.completedFuture(FindStoreByNameResult.NotFound(request.name))
                 }
             }
         }.await()

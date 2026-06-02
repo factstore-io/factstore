@@ -6,6 +6,6 @@ interface StoreFinder {
 
     suspend fun existsByName(name: StoreName): Boolean
 
-    suspend fun findByName(name: StoreName): StoreMetadata?
+    suspend fun findByName(request: FindStoreByNameRequest): FindStoreByNameResult
 
 }

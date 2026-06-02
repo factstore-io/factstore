@@ -41,131 +41,73 @@ class GrpcFactService(
     override fun appendFacts(
         request: AppendFactsRequest
     ): Uni<AppendFactsResponse> = toUni(grpcContext) {
-        val facts = request.factsList.map { it.toDomain() }
-        val idempotencyKey = if (request.hasIdempotencyKey())
-            IdempotencyKey(UUID.fromString(request.idempotencyKey))
-        else
-            IdempotencyKey()
-        val condition = if (request.hasCondition()) request.condition.toDomain() else AppendCondition.None
-
-        val result = factStore.append(
-            AppendRequest(
-                storeName = StoreName(request.storeName),
-                facts = facts,
-                idempotencyKey = idempotencyKey,
-                condition = condition
-            )
-        )
-
-        appendFactsResponse {
-            when (result) {
-                is AppendResult.Appended -> appended = factsAppended { }
-                is AppendResult.AlreadyApplied -> alreadyApplied = alreadyApplied { }
-                is AppendResult.AppendConditionViolated -> conditionViolated = conditionViolated { }
-                is AppendResult.StoreNotFound -> storeNotFound = storeNotFound { storeName = result.storeName.value }
-                is AppendResult.DuplicateFactIds -> duplicateFactIds = duplicateFactIds {
-                    factIds += result.factIds.map { it.uuid.toString() }
-                }
-            }
-        }
+        request
+            .toDomainRequest()
+            .publishTo(factStore)
+            .toGrpcResponse()
     }
 
     override fun getFact(
         request: GetFactRequest
     ): Uni<GetFactResponse> = toUni(grpcContext) {
-        val result = factStore.findById(
+        factStore.findById(
             storeName = StoreName(request.storeName),
             factId = UUID.fromString(request.factId).toFactId()
         )
-        getFactResponse {
-            when (result) {
-                is FindByIdResult.Found -> found = factFound { fact = result.fact.toProto() }
-                is FindByIdResult.NotFound -> notFound = factNotFound { }
-                is FindByIdResult.StoreNotFound -> storeNotFound = storeNotFound { storeName = result.storeName.value }
-            }
-        }
+            .toGrpcResponse()
     }
 
     override fun factExists(
         request: FactExistsRequest
     ): Uni<FactExistsResponse> = toUni(grpcContext) {
-        val result = factStore.existsById(
+        factStore.existsById(
             storeName = StoreName(request.storeName),
             factId = UUID.fromString(request.factId).toFactId()
         )
-        factExistsResponse {
-            when (result) {
-                ExistsByIdResult.Exists -> present = factPresent { }
-                ExistsByIdResult.DoesNotExist -> absent = factAbsent { }
-                ExistsByIdResult.StoreNotFound -> storeNotFound = storeNotFound { storeName = request.storeName }
-            }
-        }
+            .toGrpcResponse()
     }
 
     override fun findFactsBySubject(
         request: FindFactsBySubjectRequest
     ): Uni<FindFactsBySubjectResponse> = toUni(grpcContext) {
-        val result = factStore.findBySubject(
+        factStore.findBySubject(
             storeName = StoreName(request.storeName),
             subject = Subject(request.subject),
             limit = request.limit.toLimit(),
             direction = request.direction.toCore()
         )
-        findFactsBySubjectResponse {
-            when (result) {
-                is FindBySubjectResult.Found ->
-                    found = factsFound { facts += result.facts.map { it.toProto() } }
-
-                is FindBySubjectResult.StoreNotFound ->
-                    storeNotFound = storeNotFound { storeName = result.storeName.value }
-            }
-        }
+            .toGrpcResponse()
     }
 
     override fun findFactsByTags(
         request: FindFactsByTagsRequest
     ): Uni<FindFactsByTagsResponse> = toUni(grpcContext) {
         val tags = request.tagsMap.entries.map { (k, v) -> k.toTagKey() to v.toTagValue() }
-        val result = factStore.findByTags(
+        factStore.findByTags(
             storeName = StoreName(request.storeName),
             tags = tags,
             limit = request.limit.toLimit(),
             direction = request.direction.toCore()
         )
-        findFactsByTagsResponse {
-            when (result) {
-                is FindByTagsResult.Found ->
-                    found = factsFound { facts += result.facts.map { it.toProto() } }
+            .toGrpcResponse()
 
-                is FindByTagsResult.StoreNotFound ->
-                    storeNotFound = storeNotFound { storeName = result.storeName.value }
-            }
-        }
     }
 
     override fun queryFacts(
         request: QueryFactsRequest
     ): Uni<QueryFactsResponse> = toUni(grpcContext) {
-        val result = factStore.findByTagQuery(
+        factStore.findByTagQuery(
             storeName = StoreName(request.storeName),
             query = request.query.toDomain()
         )
-        queryFactsResponse {
-            when (result) {
-                is FindByTagQueryResult.Found ->
-                    found = factsFound { facts += result.facts.map { it.toProto() } }
-
-                is FindByTagQueryResult.StoreNotFound ->
-                    storeNotFound = storeNotFound { storeName = result.storeName.value }
-            }
-        }
+            .toGrpcResponse()
     }
 
     override fun findFactsInTimeRange(
         request: FindFactsInTimeRangeRequest
     ): Uni<FindFactsInTimeRangeResponse> =
         toUni(grpcContext) {
-            val result = factStore.findInTimeRange(
+            factStore.findInTimeRange(
                 storeName = StoreName(request.storeName),
                 timeRange = TimeRange(
                     start = if (request.hasFrom()) request.from.toInstant() else Instant.MIN,
@@ -174,15 +116,7 @@ class GrpcFactService(
                 limit = request.limit.toLimit(),
                 direction = request.direction.toCore()
             )
-            findFactsInTimeRangeResponse {
-                when (result) {
-                    is FindInTimeRangeResult.Found ->
-                        found = factsFound { facts += result.facts.map { it.toProto() } }
-
-                    is FindInTimeRangeResult.StoreNotFound ->
-                        storeNotFound = storeNotFound { storeName = result.storeName.value }
-                }
-            }
+                .toGrpcResponse()
         }
 
     override fun streamFacts(
