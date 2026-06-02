@@ -6,6 +6,7 @@ import io.factstore.core.*
 import io.smallrye.mutiny.Multi
 import io.smallrye.mutiny.Uni
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
@@ -13,52 +14,76 @@ import kotlinx.coroutines.future.future
 import kotlinx.coroutines.jdk9.asPublisher
 import java.time.Instant
 import java.util.*
+import kotlin.coroutines.CoroutineContext
 import io.factstore.core.ReadDirection as CoreReadDirection
 
 
 /**
- * Converts a suspending function into a Mutiny [Uni].
+ * Bridges a suspending block to a Mutiny [Uni].
  *
- * This bridge is necessary because Quarkus gRPC generates service stubs based on Mutiny
- * ([Uni] and [Multi]) rather than Kotlin coroutines. Until Quarkus provides native support
- * for grpc-kotlin coroutine stubs, service implementations must return Mutiny types while
- * still allowing business logic to be written in idiomatic Kotlin with coroutines.
+ * Exists because Quarkus generates gRPC service stubs against Mutiny rather than
+ * Kotlin coroutines. Use this at the gRPC adapter boundary to keep service bodies
+ * written as ordinary suspend functions.
  *
- * Internally uses [future] from `kotlinx-coroutines-jdk9` to produce a [java.util.concurrent.CompletableFuture],
- * which Mutiny natively understands via [Uni.createFrom().completionStage()]. Both successful
- * results and exceptions are propagated correctly.
+ * ### Lifecycle
  *
- * @param block The suspending function to execute.
- * @return A [Uni] that emits the result of [block], or fails if [block] throws.
+ * Each subscription runs [block] in a fresh [CoroutineScope] built from [context].
+ * That scope exists only for the call: when [block] completes, fails, or the [Uni]
+ * subscription is canceled, the scope has no remaining children and becomes
+ * eligible for GC. No coroutine state outlives the call.
+ *
+ * ### Cancellation
+ *
+ * Cancellation propagates end-to-end. Downstream cancellation of the [Uni] cancels
+ * the underlying [java.util.concurrent.CompletableFuture], which the [future] builder translates into
+ * coroutine cancellation; conversely, exceptions from [block] surface as a failed
+ * [Uni].
+ *
+ * @param context Coroutine context for this call.
+ * @param block Suspending body to execute on subscription.
+ * @return A cold [Uni] that emits the result of [block] or fails with its exception.
  */
-internal fun <T> CoroutineScope.toUni(block: suspend () -> T): Uni<T> =
-    Uni.createFrom().completionStage(
-        future { block() }
-    )
+internal fun <T> toUni(
+    context: CoroutineContext,
+    block: suspend () -> T
+): Uni<T> =
+    Uni.createFrom().completionStage {
+        CoroutineScope(context).future { block() }
+    }
 
 /**
- * Converts a suspending function returning a [Flow] into a Mutiny [Multi].
+ * Bridges a suspending [Flow] producer to a Mutiny [Multi].
  *
- * This bridge is necessary because Quarkus gRPC generates service stubs based on Mutiny
- * ([Uni] and [Multi]) rather than Kotlin coroutines. Until Quarkus provides native support
- * for grpc-kotlin coroutine stubs, server-streaming methods must return [Multi] while still
- * allowing streaming logic to be written using idiomatic Kotlin [Flow].
+ * Exists because Quarkus generates gRPC server-streaming stubs against Mutiny
+ * rather than Kotlin coroutines. Use this at the gRPC adapter boundary to keep
+ * streaming bodies written as ordinary [Flow]s.
  *
- * Internally uses [asPublisher] from `kotlinx-coroutines-jdk9` to convert the [Flow] into
- * a [java.util.concurrent.Flow.Publisher], which Mutiny natively understands via
- * [Multi.createFrom().publisher()]. The calling [CoroutineScope]'s coroutineContext is
- * passed to [asPublisher] to ensure correct dispatcher and cancellation propagation.
+ * ### Lifecycle
  *
- * @param block The suspending function returning a [Flow] of items to stream.
- * @return A [Multi] that emits the items produced by the [Flow], or fails if the [Flow] throws.
+ * Each subscription invokes [block] and collects the returned [Flow] in a fresh
+ * coroutine launched on [context]. That coroutine exists only for the duration
+ * of the subscription. No coroutine state outlives the stream.
+ *
+ * ### Cancellation and back-pressure
+ *
+ * Demand and cancellation propagate via the reactive-streams contract:
+ * downstream cancellation cancels the collector; collector completion or failure
+ * terminates the [Multi]. Back-pressure is honoured by [asPublisher].
+ *
+ * @param context Coroutine context for this call. Supplies the dispatcher (typically
+ *   `vertx.dispatcher()`) and may carry other context elements. Do not pass a shared
+ *   parent Job — see [toUni] for rationale.
+ * @param block Suspending producer of the [Flow] to stream. Invoked once per
+ *   subscription, so any per-call setup belongs inside it.
+ * @return A cold [Multi] that mirrors the [Flow] returned by [block].
  */
-internal fun <T : Any> CoroutineScope.toMulti(
-    block: suspend () -> Flow<T>
-): Multi<T> {
-    val publisher = flow { emitAll(block()) }.asPublisher(this.coroutineContext)
-    return Multi.createFrom().publisher(publisher)
-}
-
+internal fun <T : Any> toMulti(
+    context: CoroutineContext,
+    block: suspend () -> Flow<T>,
+): Multi<T> =
+    Multi.createFrom().publisher(
+        flow { emitAll(block()) }.asPublisher(context)
+    )
 
 internal fun Instant.toTimestamp(): Timestamp = Timestamp.newBuilder()
     .setSeconds(epochSecond)
@@ -119,18 +144,21 @@ internal fun FactStoreProto.AppendCondition.toDomain(): AppendCondition = when (
             UUID.fromString(expectedLastFact.expectedLastFactId).toFactId()
         else null
     )
+
     FactStoreProto.AppendCondition.KindCase.EXPECTED_MULTI_SUBJECT_LAST_FACT -> AppendCondition.ExpectedMultiSubjectLastFact(
         expectations = expectedMultiSubjectLastFact.expectationsList.associate { exp ->
             Subject(exp.subject) to
-                if (exp.hasExpectedLastFactId()) UUID.fromString(exp.expectedLastFactId).toFactId()
-                else null
+                    if (exp.hasExpectedLastFactId()) UUID.fromString(exp.expectedLastFactId).toFactId()
+                    else null
         }
     )
+
     FactStoreProto.AppendCondition.KindCase.TAG_QUERY_BASED -> AppendCondition.TagQueryBased(
         failIfEventsMatch = tagQueryBased.failIfEventsMatch.toDomain(),
         after = if (tagQueryBased.hasAfterFactId()) UUID.fromString(tagQueryBased.afterFactId).toFactId()
         else null
     )
+
     else -> AppendCondition.None
 }
 
@@ -142,9 +170,11 @@ internal fun FactStoreProto.TagQueryItem.toDomain(): TagQueryItem = when (kindCa
     FactStoreProto.TagQueryItem.KindCase.TAG_ONLY -> TagOnlyQueryItem(
         tags = tagOnly.tagsMap.entries.map { (k, v) -> k.toTagKey() to v.toTagValue() }
     )
+
     FactStoreProto.TagQueryItem.KindCase.TAG_TYPE -> TagTypeItem(
         types = tagType.typesList.map { it.toFactType() },
         tags = tagType.tagsMap.entries.map { (k, v) -> k.toTagKey() to v.toTagValue() }
     )
+
     else -> throw IllegalArgumentException("TagQueryItem has no kind set")
 }

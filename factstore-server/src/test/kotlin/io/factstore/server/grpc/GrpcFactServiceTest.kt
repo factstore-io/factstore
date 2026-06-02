@@ -204,7 +204,7 @@ class GrpcFactServiceTest {
             factId = UUID.randomUUID().toString()
         }).awaitSuspending()
 
-        assertThat(response.hasNotFound()).isTrue()
+        assertThat(response.hasAbsent()).isTrue()
     }
 
     @Test

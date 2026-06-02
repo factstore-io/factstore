@@ -5,17 +5,17 @@ import io.quarkus.grpc.GrpcService
 import io.smallrye.mutiny.Uni
 import io.vertx.core.Vertx
 import io.vertx.kotlin.coroutines.dispatcher
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.SupervisorJob
 
 @GrpcService
 class GrpcStoreService(
     private val factStore: FactStore,
     vertx: Vertx,
-) : StoreService, CoroutineScope by CoroutineScope(SupervisorJob() + vertx.dispatcher()) {
+) : StoreService {
+
+    val grpcContext = vertx.dispatcher()
 
     override fun createStore(request: FactStoreProto.CreateStoreRequest): Uni<FactStoreProto.CreateStoreResponse> =
-        toUni {
+        toUni(grpcContext) {
             val result = factStore.handle(CreateStoreRequest(StoreName(request.name)))
             createStoreResponse {
                 when (result) {
@@ -28,7 +28,7 @@ class GrpcStoreService(
         }
 
     override fun getStore(request: FactStoreProto.GetStoreRequest): Uni<FactStoreProto.GetStoreResponse> =
-        toUni {
+        toUni(grpcContext) {
             val storeMetadata = factStore.findByName(StoreName(request.name))
             getStoreResponse {
                 if (storeMetadata != null) {
@@ -40,7 +40,7 @@ class GrpcStoreService(
         }
 
     override fun listStores(request: FactStoreProto.ListStoresRequest): Uni<FactStoreProto.ListStoresResponse> =
-        toUni {
+        toUni(grpcContext) {
             val all = factStore.listAll()
             listStoresResponse {
                 stores += all.map { it.toProto() }
@@ -48,7 +48,7 @@ class GrpcStoreService(
         }
 
     override fun deleteStore(request: FactStoreProto.DeleteStoreRequest): Uni<FactStoreProto.DeleteStoreResponse> =
-        toUni {
+        toUni(grpcContext) {
             val result = factStore.handle(RemoveStoreRequest(StoreName(request.name)))
             deleteStoreResponse {
                 when (result) {
@@ -59,7 +59,7 @@ class GrpcStoreService(
         }
 
     override fun storeExists(request: FactStoreProto.StoreExistsRequest): Uni<FactStoreProto.StoreExistsResponse> =
-        toUni {
+        toUni(grpcContext) {
             val found = factStore.existsByName(StoreName(request.name))
             storeExistsResponse {
                 exists = found
