@@ -21,7 +21,7 @@ import io.factstore.core.ReadDirection as CoreReadDirection
  * Bridges a suspending block to a Mutiny [Uni].
  *
  * Exists because Quarkus generates gRPC service stubs against Mutiny rather than
- * Kotlin coroutines. Use this at the gRPC adapter boundary to keep service bodies
+ * Kotlin coroutines. We use this at the gRPC adapter boundary to keep service bodies
  * written as ordinary suspend functions.
  *
  * @param context Coroutine context for this call.
@@ -40,7 +40,7 @@ internal fun <T> toUni(
  * Bridges a suspending [Flow] producer to a Mutiny [Multi].
  *
  * Exists because Quarkus generates gRPC server-streaming stubs against Mutiny
- * rather than Kotlin coroutines. Use this at the gRPC adapter boundary to keep
+ * rather than Kotlin coroutines. We use this at the gRPC adapter boundary to keep
  * streaming bodies written as ordinary [Flow]s.
  *
  * @param context Coroutine context for this call.
