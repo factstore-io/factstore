@@ -36,7 +36,7 @@ class GrpcFactService(
     vertx: Vertx,
 ) : FactService {
 
-    val grpcContext = vertx.dispatcher()
+    private val grpcContext = vertx.dispatcher()
 
     override fun appendFacts(
         request: AppendFactsRequest

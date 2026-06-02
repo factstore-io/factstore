@@ -193,8 +193,14 @@ message StoreExistsRequest {
 }
 
 message StoreExistsResponse {
-  bool exists = 1;
+  oneof outcome {
+    StorePresent present = 1;
+    StoreAbsent absent = 2;
+  }
 }
+
+message StorePresent {}
+message StoreAbsent {}
 
 // ─── Fact Service ─────────────────────────────────────────────────────────────
 

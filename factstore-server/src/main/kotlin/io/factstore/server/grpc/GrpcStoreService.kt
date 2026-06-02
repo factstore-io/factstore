@@ -12,7 +12,7 @@ class GrpcStoreService(
     vertx: Vertx,
 ) : StoreService {
 
-    val grpcContext = vertx.dispatcher()
+    private val grpcContext = vertx.dispatcher()
 
     override fun createStore(request: FactStoreProto.CreateStoreRequest): Uni<FactStoreProto.CreateStoreResponse> =
         toUni(grpcContext) {
@@ -62,7 +62,10 @@ class GrpcStoreService(
         toUni(grpcContext) {
             val found = factStore.existsByName(StoreName(request.name))
             storeExistsResponse {
-                exists = found
+                when (found) {
+                    true -> present = storePresent {}
+                    false -> absent = storeAbsent {}
+                }
             }
         }
 }
