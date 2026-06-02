@@ -6,7 +6,6 @@ import io.factstore.core.*
 import io.smallrye.mutiny.Multi
 import io.smallrye.mutiny.Uni
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
@@ -24,20 +23,6 @@ import io.factstore.core.ReadDirection as CoreReadDirection
  * Exists because Quarkus generates gRPC service stubs against Mutiny rather than
  * Kotlin coroutines. Use this at the gRPC adapter boundary to keep service bodies
  * written as ordinary suspend functions.
- *
- * ### Lifecycle
- *
- * Each subscription runs [block] in a fresh [CoroutineScope] built from [context].
- * That scope exists only for the call: when [block] completes, fails, or the [Uni]
- * subscription is canceled, the scope has no remaining children and becomes
- * eligible for GC. No coroutine state outlives the call.
- *
- * ### Cancellation
- *
- * Cancellation propagates end-to-end. Downstream cancellation of the [Uni] cancels
- * the underlying [java.util.concurrent.CompletableFuture], which the [future] builder translates into
- * coroutine cancellation; conversely, exceptions from [block] surface as a failed
- * [Uni].
  *
  * @param context Coroutine context for this call.
  * @param block Suspending body to execute on subscription.
@@ -58,21 +43,7 @@ internal fun <T> toUni(
  * rather than Kotlin coroutines. Use this at the gRPC adapter boundary to keep
  * streaming bodies written as ordinary [Flow]s.
  *
- * ### Lifecycle
- *
- * Each subscription invokes [block] and collects the returned [Flow] in a fresh
- * coroutine launched on [context]. That coroutine exists only for the duration
- * of the subscription. No coroutine state outlives the stream.
- *
- * ### Cancellation and back-pressure
- *
- * Demand and cancellation propagate via the reactive-streams contract:
- * downstream cancellation cancels the collector; collector completion or failure
- * terminates the [Multi]. Back-pressure is honoured by [asPublisher].
- *
- * @param context Coroutine context for this call. Supplies the dispatcher (typically
- *   `vertx.dispatcher()`) and may carry other context elements. Do not pass a shared
- *   parent Job — see [toUni] for rationale.
+ * @param context Coroutine context for this call.
  * @param block Suspending producer of the [Flow] to stream. Invoked once per
  *   subscription, so any per-call setup belongs inside it.
  * @return A cold [Multi] that mirrors the [Flow] returned by [block].
