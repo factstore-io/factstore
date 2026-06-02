@@ -298,17 +298,6 @@ internal fun RemoveStoreResult.toGrpcResponse(): GrpcDeleteStoreResponse =
         }
     }
 
-typealias GrpcStoreExistsResponse = FactStoreProto.StoreExistsResponse
-
-internal fun Boolean.toGrpcResponse(): GrpcStoreExistsResponse =
-    storeExistsResponse {
-        if (this@toGrpcResponse) {
-            present = storePresent { }
-        } else {
-            absent = storeAbsent { }
-        }
-    }
-
 typealias GrpcFindStoreByNameRequest = FactStoreProto.GetStoreRequest
 typealias GrpcFindStoreByNameResult = FactStoreProto.GetStoreResponse
 
@@ -322,4 +311,96 @@ internal fun FindStoreByNameResult.toGrpcResponse(): GrpcFindStoreByNameResult =
     when (this) {
         is FindStoreByNameResult.Found -> getStoreResponse { found = storeFound { store = storeMetadata.toProto() } }
         is FindStoreByNameResult.NotFound -> getStoreResponse { notFound = storeNotFound { storeName = this@toGrpcResponse.storeName.value } }
+    }
+
+
+typealias GrpcGetFactRequest = FactStoreProto.GetFactRequest
+
+internal fun GrpcGetFactRequest.toDomainRequest(): FindByIdRequest =
+    FindByIdRequest(
+        storeName = StoreName(storeName),
+        factId = UUID.fromString(factId).toFactId()
+    )
+
+internal suspend fun FindByIdRequest.publishTo(factStore: FactStore): FindByIdResult =
+    factStore.findById(this)
+
+typealias GrpcFactExistsRequest = FactStoreProto.FactExistsRequest
+
+internal fun GrpcFactExistsRequest.toDomainRequest(): ExistsByIdRequest =
+    ExistsByIdRequest(
+        storeName = StoreName(storeName),
+        factId = UUID.fromString(factId).toFactId()
+    )
+
+internal suspend fun ExistsByIdRequest.publishTo(factStore: FactStore): ExistsByIdResult =
+    factStore.existsById(this)
+
+typealias GrpcFindBySubjectRequest = FactStoreProto.FindFactsBySubjectRequest
+
+internal fun GrpcFindBySubjectRequest.toDomainRequest(): FindBySubjectRequest =
+    FindBySubjectRequest(
+        storeName = StoreName(storeName),
+        subject = Subject(subject),
+        limit = limit.toLimit(),
+        direction = direction.toCore()
+    )
+
+internal suspend fun FindBySubjectRequest.publishTo(factStore: FactStore): FindBySubjectResult =
+    factStore.findBySubject(this)
+
+typealias GrpcFindByTagsRequest = FactStoreProto.FindFactsByTagsRequest
+
+internal fun GrpcFindByTagsRequest.toDomainRequest(): FindByTagsRequest =
+    FindByTagsRequest(
+        storeName = StoreName(storeName),
+        tags = tagsMap.entries.map { (k, v) -> k.toTagKey() to v.toTagValue() },
+        limit = limit.toLimit(),
+        direction = direction.toCore()
+    )
+
+internal suspend fun FindByTagsRequest.publishTo(factStore: FactStore): FindByTagsResult =
+    factStore.findByTags(this)
+
+typealias GrpcQueryFactsRequest = FactStoreProto.QueryFactsRequest
+
+internal fun GrpcQueryFactsRequest.toDomainRequest(): FindByTagQueryRequest =
+    FindByTagQueryRequest(
+        storeName = StoreName(storeName),
+        query = query.toDomain()
+    )
+
+internal suspend fun FindByTagQueryRequest.publishTo(factStore: FactStore): FindByTagQueryResult =
+    factStore.findByTagQuery(this)
+
+typealias GrpcFindInTimeRangeRequest = FactStoreProto.FindFactsInTimeRangeRequest
+
+internal fun GrpcFindInTimeRangeRequest.toDomainRequest(): FindInTimeRangeRequest =
+    FindInTimeRangeRequest(
+        storeName = StoreName(storeName),
+        timeRange = TimeRange(
+            start = if (hasFrom()) from.toInstant() else Instant.MIN,
+            end = if (hasTo()) to.toInstant() else Instant.MAX
+        ),
+        limit = limit.toLimit(),
+        direction = direction.toCore()
+    )
+
+internal suspend fun FindInTimeRangeRequest.publishTo(factStore: FactStore): FindInTimeRangeResult =
+    factStore.findInTimeRange(this)
+
+typealias GrpcExistsStoreRequest = FactStoreProto.StoreExistsRequest
+
+internal fun GrpcExistsStoreRequest.toDomainRequest(): ExistsStoreByNameRequest =
+    ExistsStoreByNameRequest(StoreName(name))
+
+internal suspend fun ExistsStoreByNameRequest.publishTo(factStore: FactStore): ExistsStoreByNameResult =
+    factStore.existsByName(this)
+
+typealias GrpcStoreExistsResponse = FactStoreProto.StoreExistsResponse
+
+internal fun ExistsStoreByNameResult.toGrpcResponse(): GrpcStoreExistsResponse =
+    when (this) {
+        ExistsStoreByNameResult.StoreExists -> storeExistsResponse { present = storePresent { } }
+        ExistsStoreByNameResult.StoreAbsent -> storeExistsResponse { absent = storeAbsent { } }
     }

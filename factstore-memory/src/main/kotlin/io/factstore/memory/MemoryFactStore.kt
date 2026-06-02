@@ -62,8 +62,12 @@ class MemoryFactStore : FactStore {
         stores.values.toList()
     }
 
-    override suspend fun existsByName(name: StoreName): Boolean = lock.withLock {
-        nameToId.containsKey(name.value)
+    override suspend fun existsByName(request: ExistsStoreByNameRequest): ExistsStoreByNameResult = lock.withLock {
+        if (nameToId.containsKey(request.name.value)) {
+            ExistsStoreByNameResult.StoreExists
+        } else {
+            ExistsStoreByNameResult.StoreAbsent
+        }
     }
 
     override suspend fun findByName(request: FindStoreByNameRequest): FindStoreByNameResult = lock.withLock {
@@ -116,76 +120,52 @@ class MemoryFactStore : FactStore {
 
     // ===== FactFinder Implementation =====
 
-    override suspend fun findById(storeName: StoreName, factId: FactId): FindByIdResult = lock.withLock {
-        val internalId = resolveId(storeName) ?: return FindByIdResult.StoreNotFound(storeName)
-
-        val fact = facts[internalId]?.find { it.id == factId }
-        fact?.let { FindByIdResult.Found(it) } ?: FindByIdResult.NotFound(factId)
+    override suspend fun findById(request: FindByIdRequest): FindByIdResult = lock.withLock {
+        val internalId = resolveId(request.storeName) ?: return FindByIdResult.StoreNotFound(request.storeName)
+        val fact = facts[internalId]?.find { it.id == request.factId }
+        fact?.let { FindByIdResult.Found(it) } ?: FindByIdResult.NotFound(request.factId)
     }
 
-    override suspend fun existsById(storeName: StoreName, factId: FactId): ExistsByIdResult = lock.withLock {
-        val internalId = resolveId(storeName) ?: return ExistsByIdResult.StoreNotFound(storeName)
-
-        val exists = facts[internalId]?.any { it.id == factId } ?: false
+    override suspend fun existsById(request: ExistsByIdRequest): ExistsByIdResult = lock.withLock {
+        val internalId = resolveId(request.storeName) ?: return ExistsByIdResult.StoreNotFound(request.storeName)
+        val exists = facts[internalId]?.any { it.id == request.factId } ?: false
         if (exists) ExistsByIdResult.Exists else ExistsByIdResult.DoesNotExist
     }
 
-    override suspend fun findInTimeRange(
-        storeName: StoreName,
-        timeRange: TimeRange,
-        limit: Limit,
-        direction: ReadDirection,
-    ): FindInTimeRangeResult = lock.withLock {
-        val internalId = resolveId(storeName) ?: return FindInTimeRangeResult.StoreNotFound(storeName)
-
+    override suspend fun findInTimeRange(request: FindInTimeRangeRequest): FindInTimeRangeResult = lock.withLock {
+        val internalId = resolveId(request.storeName) ?: return FindInTimeRangeResult.StoreNotFound(request.storeName)
         val foundFacts = facts[internalId]
-            ?.filter { it.appendedAt in timeRange.start..timeRange.end }
-            ?.applyDirection(direction)
-            ?.applyLimit(limit)
+            ?.filter { it.appendedAt in request.timeRange.start..request.timeRange.end }
+            ?.applyDirection(request.direction)
+            ?.applyLimit(request.limit)
             ?: emptyList()
-
         FindInTimeRangeResult.Found(foundFacts)
     }
 
-    override suspend fun findBySubject(
-        storeName: StoreName,
-        subject: Subject,
-        limit: Limit,
-        direction: ReadDirection,
-    ): FindBySubjectResult = lock.withLock {
-        val internalId = resolveId(storeName) ?: return FindBySubjectResult.StoreNotFound(storeName)
-
+    override suspend fun findBySubject(request: FindBySubjectRequest): FindBySubjectResult = lock.withLock {
+        val internalId = resolveId(request.storeName) ?: return FindBySubjectResult.StoreNotFound(request.storeName)
         val foundFacts = facts[internalId]
-            ?.filter { it.subject == subject }
-            ?.applyDirection(direction)
-            ?.applyLimit(limit)
+            ?.filter { it.subject == request.subject }
+            ?.applyDirection(request.direction)
+            ?.applyLimit(request.limit)
             ?: emptyList()
-
         FindBySubjectResult.Found(foundFacts)
     }
 
-    override suspend fun findByTags(
-        storeName: StoreName,
-        tags: List<Pair<TagKey, TagValue>>,
-        limit: Limit,
-        direction: ReadDirection,
-    ): FindByTagsResult = lock.withLock {
-        val internalId = resolveId(storeName) ?: return FindByTagsResult.StoreNotFound(storeName)
-
+    override suspend fun findByTags(request: FindByTagsRequest): FindByTagsResult = lock.withLock {
+        val internalId = resolveId(request.storeName) ?: return FindByTagsResult.StoreNotFound(request.storeName)
         val foundFacts = facts[internalId]
-            ?.filter { fact -> tags.all { (key, value) -> fact.tags[key] == value } }
-            ?.applyDirection(direction)
-            ?.applyLimit(limit)
+            ?.filter { fact -> request.tags.all { (key, value) -> fact.tags[key] == value } }
+            ?.applyDirection(request.direction)
+            ?.applyLimit(request.limit)
             ?: emptyList()
-
         FindByTagsResult.Found(foundFacts)
     }
 
-    override suspend fun findByTagQuery(storeName: StoreName, query: TagQuery): FindByTagQueryResult = lock.withLock {
-        val internalId = resolveId(storeName) ?: return FindByTagQueryResult.StoreNotFound(storeName)
-
+    override suspend fun findByTagQuery(request: FindByTagQueryRequest): FindByTagQueryResult = lock.withLock {
+        val internalId = resolveId(request.storeName) ?: return FindByTagQueryResult.StoreNotFound(request.storeName)
         val foundFacts = facts[internalId]?.filter { fact ->
-            query.queryItems.any { it.matches(fact) }
+            request.query.queryItems.any { it.matches(fact) }
         } ?: emptyList()
         FindByTagQueryResult.Found(foundFacts)
     }

@@ -27,7 +27,6 @@ import io.vertx.kotlin.coroutines.dispatcher
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
-import java.time.Instant
 import java.util.*
 
 @GrpcService
@@ -41,83 +40,44 @@ class GrpcFactService(
     override fun appendFacts(
         request: AppendFactsRequest
     ): Uni<AppendFactsResponse> = toUni(grpcContext) {
-        request
-            .toDomainRequest()
-            .publishTo(factStore)
-            .toGrpcResponse()
+        request.toDomainRequest().publishTo(factStore).toGrpcResponse()
     }
 
     override fun getFact(
         request: GetFactRequest
     ): Uni<GetFactResponse> = toUni(grpcContext) {
-        factStore.findById(
-            storeName = StoreName(request.storeName),
-            factId = UUID.fromString(request.factId).toFactId()
-        )
-            .toGrpcResponse()
+        request.toDomainRequest().publishTo(factStore).toGrpcResponse()
     }
 
     override fun factExists(
         request: FactExistsRequest
     ): Uni<FactExistsResponse> = toUni(grpcContext) {
-        factStore.existsById(
-            storeName = StoreName(request.storeName),
-            factId = UUID.fromString(request.factId).toFactId()
-        )
-            .toGrpcResponse()
+        request.toDomainRequest().publishTo(factStore).toGrpcResponse()
     }
 
     override fun findFactsBySubject(
         request: FindFactsBySubjectRequest
     ): Uni<FindFactsBySubjectResponse> = toUni(grpcContext) {
-        factStore.findBySubject(
-            storeName = StoreName(request.storeName),
-            subject = Subject(request.subject),
-            limit = request.limit.toLimit(),
-            direction = request.direction.toCore()
-        )
-            .toGrpcResponse()
+        request.toDomainRequest().publishTo(factStore).toGrpcResponse()
     }
 
     override fun findFactsByTags(
         request: FindFactsByTagsRequest
     ): Uni<FindFactsByTagsResponse> = toUni(grpcContext) {
-        val tags = request.tagsMap.entries.map { (k, v) -> k.toTagKey() to v.toTagValue() }
-        factStore.findByTags(
-            storeName = StoreName(request.storeName),
-            tags = tags,
-            limit = request.limit.toLimit(),
-            direction = request.direction.toCore()
-        )
-            .toGrpcResponse()
-
+        request.toDomainRequest().publishTo(factStore).toGrpcResponse()
     }
 
     override fun queryFacts(
         request: QueryFactsRequest
     ): Uni<QueryFactsResponse> = toUni(grpcContext) {
-        factStore.findByTagQuery(
-            storeName = StoreName(request.storeName),
-            query = request.query.toDomain()
-        )
-            .toGrpcResponse()
+        request.toDomainRequest().publishTo(factStore).toGrpcResponse()
     }
 
     override fun findFactsInTimeRange(
         request: FindFactsInTimeRangeRequest
-    ): Uni<FindFactsInTimeRangeResponse> =
-        toUni(grpcContext) {
-            factStore.findInTimeRange(
-                storeName = StoreName(request.storeName),
-                timeRange = TimeRange(
-                    start = if (request.hasFrom()) request.from.toInstant() else Instant.MIN,
-                    end = if (request.hasTo()) request.to.toInstant() else Instant.now()
-                ),
-                limit = request.limit.toLimit(),
-                direction = request.direction.toCore()
-            )
-                .toGrpcResponse()
-        }
+    ): Uni<FindFactsInTimeRangeResponse> = toUni(grpcContext) {
+        request.toDomainRequest().publishTo(factStore).toGrpcResponse()
+    }
 
     override fun streamFacts(
         request: StreamFactsRequest
@@ -127,7 +87,6 @@ class GrpcFactService(
             StreamFactsRequest.StartPositionCase.AFTER_FACT_ID -> StartPosition.After(
                 UUID.fromString(request.afterFactId).toFactId()
             )
-
             else -> StartPosition.Beginning
         }
 

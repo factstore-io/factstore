@@ -2,6 +2,8 @@ package io.factstore.server.http
 
 import io.factstore.core.CreateStoreRequest
 import io.factstore.core.CreateStoreResult
+import io.factstore.core.ExistsStoreByNameRequest
+import io.factstore.core.ExistsStoreByNameResult
 import io.factstore.core.FactStore
 import io.factstore.core.FindStoreByNameRequest
 import io.factstore.core.FindStoreByNameResult
@@ -57,11 +59,10 @@ class StoreResource(
     suspend fun existsByName(
         @PathParam("name") @ValidStoreName name: String
     ): Response {
-        store.existsByName(StoreName(name)).let { exists ->
-            return if (exists) {
-                Response.ok().build()
-            } else {
-                Response.status(Response.Status.NOT_FOUND).build()
+        store.existsByName(ExistsStoreByNameRequest(StoreName(name))).let { result ->
+            return when (result) {
+                ExistsStoreByNameResult.StoreExists -> Response.ok().build()
+                ExistsStoreByNameResult.StoreAbsent -> Response.status(Response.Status.NOT_FOUND).build()
             }
         }
     }

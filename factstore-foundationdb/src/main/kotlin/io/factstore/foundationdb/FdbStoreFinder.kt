@@ -1,6 +1,8 @@
 package io.factstore.foundationdb
 
 import com.github.avrokotlin.avro4k.Avro
+import io.factstore.core.ExistsStoreByNameRequest
+import io.factstore.core.ExistsStoreByNameResult
 import io.factstore.core.FindStoreByNameRequest
 import io.factstore.core.FindStoreByNameResult
 import io.factstore.core.StoreFinder
@@ -35,10 +37,16 @@ class FdbStoreFinder(
         }.await()
     }
 
-    override suspend fun existsByName(name: StoreName): Boolean {
+    override suspend fun existsByName(request: ExistsStoreByNameRequest): ExistsStoreByNameResult {
         return store.db.readAsync { tr ->
             with(tr) {
-                store.context.lookUpStoreIdByName(name).thenApply { it != null }
+                store.context.lookUpStoreIdByName(request.name).thenApply { store ->
+                    if (store != null) {
+                        ExistsStoreByNameResult.StoreExists
+                    } else {
+                        ExistsStoreByNameResult.StoreAbsent
+                    }
+                }
             }
         }.await()
     }
@@ -58,8 +66,8 @@ class FdbStoreFinder(
                                     )
                                 )
                             } else {
-                                // should not be the case.... (consider logging that)
-                                FindStoreByNameResult.NotFound(request.name)
+                                error("Store name '${request.name.value}' resolved to ID $id " +
+                                        "but no metadata record exists — index/metadata out of sync")
                             }
                         }
                     } ?: CompletableFuture.completedFuture(FindStoreByNameResult.NotFound(request.name))

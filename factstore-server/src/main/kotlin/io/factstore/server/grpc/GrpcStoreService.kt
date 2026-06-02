@@ -16,37 +16,27 @@ class GrpcStoreService(
 
     override fun createStore(request: FactStoreProto.CreateStoreRequest): Uni<FactStoreProto.CreateStoreResponse> =
         toUni(grpcContext) {
-            request
-                .toDomainRequest()
-                .publishTo(factStore)
-                .toGrpcResponse()
+            request.toDomainRequest().publishTo(factStore).toGrpcResponse()
         }
 
     override fun getStore(request: FactStoreProto.GetStoreRequest): Uni<FactStoreProto.GetStoreResponse> =
         toUni(grpcContext) {
-            request
-                .toDomainRequest()
-                .publishTo(factStore)
-                .toGrpcResponse()
+            request.toDomainRequest().publishTo(factStore).toGrpcResponse()
         }
 
     override fun listStores(request: FactStoreProto.ListStoresRequest): Uni<FactStoreProto.ListStoresResponse> =
         toUni(grpcContext) {
-            factStore
-                .listAll()
-                .toGrpcResponse()
+            factStore.listAll().toGrpcResponse()
         }
 
     override fun deleteStore(request: FactStoreProto.DeleteStoreRequest): Uni<FactStoreProto.DeleteStoreResponse> =
         toUni(grpcContext) {
-            request
-                .toDomainRequest()
-                .publishTo(factStore)
-                .toGrpcResponse()
+            request.toDomainRequest().publishTo(factStore).toGrpcResponse()
         }
 
     override fun storeExists(request: FactStoreProto.StoreExistsRequest): Uni<FactStoreProto.StoreExistsResponse> =
         toUni(grpcContext) {
-            factStore.existsByName(StoreName(request.name)).toGrpcResponse()
+            request.toDomainRequest().publishTo(factStore).toGrpcResponse()
+
         }
 }
