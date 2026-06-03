@@ -27,6 +27,7 @@ import io.vertx.kotlin.coroutines.dispatcher
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
+
 @GrpcService
 class GrpcFactService(
     private val factStore: FactStore,

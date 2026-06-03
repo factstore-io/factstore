@@ -407,7 +407,7 @@ grpcurl -plaintext \
   localhost:8080 io.factstore.server.grpc.FactService/StreamFacts
 ```
 
-Store-not-found and unknown `after_fact_id` are signalled as a `NOT_FOUND` gRPC status, not a response message field.
+Store-not-found and unknown `after_fact_id` are signalled as a `FAILED_PRECONDITION` gRPC status, not a response message field.
 
 ---
 
