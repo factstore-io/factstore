@@ -396,7 +396,7 @@ class GrpcFactServiceTest {
     @Test
     @Order(23)
     @DisplayName("StreamFacts - should fail with StatusRuntimeException when store does not exist")
-    fun streamFactsStoreNotFound(): Unit {
+    fun streamFactsStoreNotFound() {
         assertThrows<StatusRuntimeException> {
             runBlocking {
                 factService.streamFacts(streamFactsRequest {
