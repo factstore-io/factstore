@@ -227,8 +227,8 @@ service FactService {
   rpc FindFactsInTimeRange(FindFactsInTimeRangeRequest) returns (FindFactsInTimeRangeResponse);
 
   // Open a server-side stream that emits existing facts and then continues to emit
-  // new facts as they are appended. Errors (store not found, after_fact_id not found)
-  // are signaled as gRPC status codes (NOT_FOUND).
+  // new facts as they are appended. Pre-stream errors (store not found,
+  // after_fact_id not found) are signaled with FAILED_PRECONDITION.
   rpc StreamFacts(StreamFactsRequest) returns (stream Fact);
 }
 
@@ -312,7 +312,7 @@ message FactPresent {}
 message FindFactsBySubjectRequest {
   string store_name = 1;
   string subject = 2;
-  int32 limit = 3;         // 0 = no limit
+  optional int32 limit = 3;
   ReadDirection direction = 4;
 }
 
@@ -328,7 +328,7 @@ message FindFactsBySubjectResponse {
 message FindFactsByTagsRequest {
   string store_name = 1;
   map<string, string> tags = 2; // all tags must match (AND semantics)
-  int32 limit = 3;              // 0 = no limit
+  optional int32 limit = 3;
   ReadDirection direction = 4;
 }
 
@@ -359,7 +359,7 @@ message FindFactsInTimeRangeRequest {
   string store_name = 1;
   optional google.protobuf.Timestamp from = 2; // inclusive; absent = no lower bound
   optional google.protobuf.Timestamp to = 3;   // exclusive; absent = no upper bound
-  int32 limit = 4;                             // 0 = no limit
+  optional int32 limit = 4;
   ReadDirection direction = 5;
 }
 

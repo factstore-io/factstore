@@ -14,7 +14,6 @@ internal fun Instant.toTimestamp(): Timestamp = Timestamp.newBuilder()
 
 internal fun Timestamp.toInstant(): Instant = Instant.ofEpochSecond(seconds, nanos.toLong())
 
-internal fun Int.toLimit(): Limit = if (this > 0) Limit.of(this) else Limit.None
 
 internal fun FactStoreProto.ReadDirection.toCore(): CoreReadDirection = when (this) {
     FactStoreProto.ReadDirection.BACKWARD -> CoreReadDirection.Backward
@@ -304,7 +303,7 @@ internal fun GrpcFindBySubjectRequest.toDomainRequest(): FindBySubjectRequest =
     FindBySubjectRequest(
         storeName = StoreName(storeName),
         subject = Subject(subject),
-        limit = limit.toLimit(),
+        limit = if (hasLimit()) Limit.of(limit) else Limit.None,
         direction = direction.toCore()
     )
 
@@ -317,7 +316,7 @@ internal fun GrpcFindByTagsRequest.toDomainRequest(): FindByTagsRequest =
     FindByTagsRequest(
         storeName = StoreName(storeName),
         tags = tagsMap.entries.map { (k, v) -> k.toTagKey() to v.toTagValue() },
-        limit = limit.toLimit(),
+        limit = if (hasLimit()) Limit.of(limit) else Limit.None,
         direction = direction.toCore()
     )
 
@@ -344,7 +343,7 @@ internal fun GrpcFindInTimeRangeRequest.toDomainRequest(): FindInTimeRangeReques
             start = if (hasFrom()) from.toInstant() else Instant.MIN,
             end = if (hasTo()) to.toInstant() else Instant.MAX
         ),
-        limit = limit.toLimit(),
+        limit = if (hasLimit()) Limit.of(limit) else Limit.None,
         direction = direction.toCore()
     )
 
