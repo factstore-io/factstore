@@ -3,62 +3,9 @@ package io.factstore.server.grpc
 import com.google.protobuf.ByteString
 import com.google.protobuf.Timestamp
 import io.factstore.core.*
-import io.smallrye.mutiny.Multi
-import io.smallrye.mutiny.Uni
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.emitAll
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.future.future
-import kotlinx.coroutines.jdk9.asPublisher
 import java.time.Instant
 import java.util.*
 import io.factstore.core.ReadDirection as CoreReadDirection
-
-
-/**
- * Converts a suspending function into a Mutiny [Uni].
- *
- * This bridge is necessary because Quarkus gRPC generates service stubs based on Mutiny
- * ([Uni] and [Multi]) rather than Kotlin coroutines. Until Quarkus provides native support
- * for grpc-kotlin coroutine stubs, service implementations must return Mutiny types while
- * still allowing business logic to be written in idiomatic Kotlin with coroutines.
- *
- * Internally uses [future] from `kotlinx-coroutines-jdk9` to produce a [java.util.concurrent.CompletableFuture],
- * which Mutiny natively understands via [Uni.createFrom().completionStage()]. Both successful
- * results and exceptions are propagated correctly.
- *
- * @param block The suspending function to execute.
- * @return A [Uni] that emits the result of [block], or fails if [block] throws.
- */
-internal fun <T> CoroutineScope.toUni(block: suspend () -> T): Uni<T> =
-    Uni.createFrom().completionStage(
-        future { block() }
-    )
-
-/**
- * Converts a suspending function returning a [Flow] into a Mutiny [Multi].
- *
- * This bridge is necessary because Quarkus gRPC generates service stubs based on Mutiny
- * ([Uni] and [Multi]) rather than Kotlin coroutines. Until Quarkus provides native support
- * for grpc-kotlin coroutine stubs, server-streaming methods must return [Multi] while still
- * allowing streaming logic to be written using idiomatic Kotlin [Flow].
- *
- * Internally uses [asPublisher] from `kotlinx-coroutines-jdk9` to convert the [Flow] into
- * a [java.util.concurrent.Flow.Publisher], which Mutiny natively understands via
- * [Multi.createFrom().publisher()]. The calling [CoroutineScope]'s coroutineContext is
- * passed to [asPublisher] to ensure correct dispatcher and cancellation propagation.
- *
- * @param block The suspending function returning a [Flow] of items to stream.
- * @return A [Multi] that emits the items produced by the [Flow], or fails if the [Flow] throws.
- */
-internal fun <T : Any> CoroutineScope.toMulti(
-    block: suspend () -> Flow<T>
-): Multi<T> {
-    val publisher = flow { emitAll(block()) }.asPublisher(this.coroutineContext)
-    return Multi.createFrom().publisher(publisher)
-}
-
 
 internal fun Instant.toTimestamp(): Timestamp = Timestamp.newBuilder()
     .setSeconds(epochSecond)
@@ -67,12 +14,17 @@ internal fun Instant.toTimestamp(): Timestamp = Timestamp.newBuilder()
 
 internal fun Timestamp.toInstant(): Instant = Instant.ofEpochSecond(seconds, nanos.toLong())
 
-internal fun Int.toLimit(): Limit = if (this > 0) Limit.of(this) else Limit.None
 
 internal fun FactStoreProto.ReadDirection.toCore(): CoreReadDirection = when (this) {
     FactStoreProto.ReadDirection.BACKWARD -> CoreReadDirection.Backward
     else -> CoreReadDirection.Forward
 }
+
+private fun String.parseUuid(): UUID =
+    runCatching { UUID.fromString(this) }
+        .getOrElse { throw IllegalArgumentException("'$this' is not a valid UUID") }
+
+internal fun String.toFactId(): FactId = parseUuid().toFactId()
 
 internal fun Fact.toProto(): FactStoreProto.Fact = fact {
     id = this@toProto.id.uuid.toString()
@@ -97,7 +49,7 @@ internal fun StoreMetadata.toProto(): FactStoreProto.StoreInfo = storeInfo {
 }
 
 internal fun FactStoreProto.FactInput.toDomain(): Fact = Fact(
-    id = if (hasId()) UUID.fromString(id).toFactId() else FactId.generate(),
+    id = if (hasId()) id.toFactId() else FactId.generate(),
     type = type.toFactType(),
     subject = Subject(subject),
     appendedAt = if (hasAppendedAt()) appendedAt.toInstant() else Instant.now(),
@@ -116,21 +68,24 @@ internal fun FactStoreProto.AppendCondition.toDomain(): AppendCondition = when (
     FactStoreProto.AppendCondition.KindCase.EXPECTED_LAST_FACT -> AppendCondition.ExpectedLastFact(
         subject = Subject(expectedLastFact.subject),
         expectedLastFactId = if (expectedLastFact.hasExpectedLastFactId())
-            UUID.fromString(expectedLastFact.expectedLastFactId).toFactId()
+            expectedLastFact.expectedLastFactId.toFactId()
         else null
     )
+
     FactStoreProto.AppendCondition.KindCase.EXPECTED_MULTI_SUBJECT_LAST_FACT -> AppendCondition.ExpectedMultiSubjectLastFact(
         expectations = expectedMultiSubjectLastFact.expectationsList.associate { exp ->
             Subject(exp.subject) to
-                if (exp.hasExpectedLastFactId()) UUID.fromString(exp.expectedLastFactId).toFactId()
-                else null
+                    if (exp.hasExpectedLastFactId()) exp.expectedLastFactId.toFactId()
+                    else null
         }
     )
+
     FactStoreProto.AppendCondition.KindCase.TAG_QUERY_BASED -> AppendCondition.TagQueryBased(
         failIfEventsMatch = tagQueryBased.failIfEventsMatch.toDomain(),
-        after = if (tagQueryBased.hasAfterFactId()) UUID.fromString(tagQueryBased.afterFactId).toFactId()
+        after = if (tagQueryBased.hasAfterFactId()) tagQueryBased.afterFactId.toFactId()
         else null
     )
+
     else -> AppendCondition.None
 }
 
@@ -142,9 +97,271 @@ internal fun FactStoreProto.TagQueryItem.toDomain(): TagQueryItem = when (kindCa
     FactStoreProto.TagQueryItem.KindCase.TAG_ONLY -> TagOnlyQueryItem(
         tags = tagOnly.tagsMap.entries.map { (k, v) -> k.toTagKey() to v.toTagValue() }
     )
+
     FactStoreProto.TagQueryItem.KindCase.TAG_TYPE -> TagTypeItem(
         types = tagType.typesList.map { it.toFactType() },
         tags = tagType.tagsMap.entries.map { (k, v) -> k.toTagKey() to v.toTagValue() }
     )
+
     else -> throw IllegalArgumentException("TagQueryItem has no kind set")
 }
+
+typealias GrpcAppendRequest = FactStoreProto.AppendFactsRequest
+typealias GrpcAppendFactsResponse = FactStoreProto.AppendFactsResponse
+
+internal fun GrpcAppendRequest.toDomainRequest(): AppendRequest {
+    val storeName = StoreName(storeName)
+    val facts = factsList.map { it.toDomain() }
+    val idempotencyKey = if (hasIdempotencyKey())
+        IdempotencyKey(idempotencyKey.parseUuid())
+    else
+        IdempotencyKey()
+    val condition = if (hasCondition()) condition.toDomain() else AppendCondition.None
+
+    return AppendRequest(
+        storeName = storeName,
+        facts = facts,
+        idempotencyKey = idempotencyKey,
+        condition = condition
+    )
+}
+
+internal suspend fun AppendRequest.publishTo(factStore: FactStore): AppendResult =
+    factStore.append(this)
+
+internal fun AppendResult.toGrpcResponse(): GrpcAppendFactsResponse =
+    appendFactsResponse {
+        when (this@toGrpcResponse) {
+            is AppendResult.Appended -> appended = factsAppended { }
+            is AppendResult.AlreadyApplied -> alreadyApplied = alreadyApplied { }
+            is AppendResult.AppendConditionViolated -> conditionViolated = conditionViolated { }
+            is AppendResult.StoreNotFound -> storeNotFound = storeNotFound { storeName = this@toGrpcResponse.storeName.value }
+            is AppendResult.DuplicateFactIds -> duplicateFactIds = duplicateFactIds {
+                factIds += this@toGrpcResponse.factIds.map { it.uuid.toString() }
+            }
+        }
+    }
+
+typealias GrpcGetFactResponse = FactStoreProto.GetFactResponse
+
+internal fun FindByIdResult.toGrpcResponse(): GrpcGetFactResponse =
+    getFactResponse {
+        when (this@toGrpcResponse) {
+            is FindByIdResult.Found -> found = factFound { fact = this@toGrpcResponse.fact.toProto() }
+            is FindByIdResult.NotFound -> notFound = factNotFound { }
+            is FindByIdResult.StoreNotFound -> storeNotFound = storeNotFound { storeName = this@toGrpcResponse.storeName.value }
+        }
+    }
+
+typealias GrpcFactExistsResponse = FactStoreProto.FactExistsResponse
+
+internal fun ExistsByIdResult.toGrpcResponse(): GrpcFactExistsResponse =
+    factExistsResponse {
+        when (this@toGrpcResponse) {
+            ExistsByIdResult.Exists -> present = factPresent { }
+            ExistsByIdResult.DoesNotExist -> absent = factAbsent { }
+            is ExistsByIdResult.StoreNotFound -> storeNotFound = storeNotFound { storeName = this@toGrpcResponse.storeName.value }
+        }
+    }
+
+
+typealias GrpcFindBySubjectResponse = FactStoreProto.FindFactsBySubjectResponse
+
+internal fun FindBySubjectResult.toGrpcResponse(): GrpcFindBySubjectResponse =
+    findFactsBySubjectResponse {
+        when (this@toGrpcResponse) {
+            is FindBySubjectResult.Found ->
+                found = factsFound { facts += this@toGrpcResponse.facts.map { it.toProto() } }
+
+            is FindBySubjectResult.StoreNotFound ->
+                storeNotFound = storeNotFound { storeName = this@toGrpcResponse.storeName.value }
+        }
+    }
+
+typealias GrpcFindFactsByTagsResponse = FactStoreProto.FindFactsByTagsResponse
+
+internal fun FindByTagsResult.toGrpcResponse(): GrpcFindFactsByTagsResponse =
+    findFactsByTagsResponse {
+        when (this@toGrpcResponse) {
+            is FindByTagsResult.Found ->
+                found = factsFound { facts += this@toGrpcResponse.facts.map { it.toProto() } }
+
+            is FindByTagsResult.StoreNotFound ->
+                storeNotFound = storeNotFound { storeName = this@toGrpcResponse.storeName.value }
+        }
+    }
+
+typealias GrpcQueryFactsResponse = FactStoreProto.QueryFactsResponse
+
+internal fun FindByTagQueryResult.toGrpcResponse(): GrpcQueryFactsResponse =
+    queryFactsResponse {
+        when (this@toGrpcResponse) {
+            is FindByTagQueryResult.Found ->
+                found = factsFound { facts += this@toGrpcResponse.facts.map { it.toProto() } }
+
+            is FindByTagQueryResult.StoreNotFound ->
+                storeNotFound = storeNotFound { storeName = this@toGrpcResponse.storeName.value }
+        }
+    }
+
+
+typealias GrpcFindInTimeRangeResponse = FactStoreProto.FindFactsInTimeRangeResponse
+
+internal fun FindInTimeRangeResult.toGrpcResponse(): GrpcFindInTimeRangeResponse =
+    findFactsInTimeRangeResponse {
+        when (this@toGrpcResponse) {
+            is FindInTimeRangeResult.Found ->
+                found = factsFound { facts += this@toGrpcResponse.facts.map { it.toProto() } }
+
+            is FindInTimeRangeResult.StoreNotFound ->
+                storeNotFound = storeNotFound { storeName = this@toGrpcResponse.storeName.value }
+        }
+    }
+
+typealias GrpcCreateStoreRequest = FactStoreProto.CreateStoreRequest
+typealias GrpcCreateStoreResponse = FactStoreProto.CreateStoreResponse
+
+internal fun GrpcCreateStoreRequest.toDomainRequest(): CreateStoreRequest =
+    CreateStoreRequest(StoreName(name))
+
+internal suspend fun CreateStoreRequest.publishTo(factStore: FactStore): CreateStoreResult =
+    factStore.handle(this)
+
+internal fun CreateStoreResult.toGrpcResponse(): GrpcCreateStoreResponse =
+    createStoreResponse {
+        when (this@toGrpcResponse) {
+            is CreateStoreResult.Created ->
+                created = storeCreated { id = this@toGrpcResponse.id.uuid.toString() }
+            is CreateStoreResult.NameAlreadyExists ->
+                nameAlreadyExists = storeNameAlreadyExists { }
+        }
+    }
+
+internal fun List<StoreMetadata>.toGrpcResponse(): FactStoreProto.ListStoresResponse =
+    listStoresResponse {
+        stores += this@toGrpcResponse.map { it.toProto() }
+    }
+
+typealias GrpcDeleteStoreRequest = FactStoreProto.DeleteStoreRequest
+typealias GrpcDeleteStoreResponse = FactStoreProto.DeleteStoreResponse
+
+internal fun GrpcDeleteStoreRequest.toDomainRequest(): RemoveStoreRequest =
+    RemoveStoreRequest(StoreName(name))
+
+internal suspend fun RemoveStoreRequest.publishTo(factStore: FactStore): RemoveStoreResult =
+    factStore.handle(this)
+
+internal fun RemoveStoreResult.toGrpcResponse(): GrpcDeleteStoreResponse =
+    deleteStoreResponse {
+        when (this@toGrpcResponse) {
+            is RemoveStoreResult.StoreRemoved -> deleted = storeDeleted { }
+            is RemoveStoreResult.StoreNotFound -> notFound = storeNotFound { storeName = this@toGrpcResponse.storeName.value }
+        }
+    }
+
+typealias GrpcFindStoreByNameRequest = FactStoreProto.GetStoreRequest
+typealias GrpcFindStoreByNameResult = FactStoreProto.GetStoreResponse
+
+internal fun GrpcFindStoreByNameRequest.toDomainRequest(): FindStoreByNameRequest =
+    FindStoreByNameRequest(StoreName(name))
+
+internal suspend fun FindStoreByNameRequest.publishTo(factStore: FactStore): FindStoreByNameResult =
+    factStore.findByName(this)
+
+internal fun FindStoreByNameResult.toGrpcResponse(): GrpcFindStoreByNameResult =
+    when (this) {
+        is FindStoreByNameResult.Found -> getStoreResponse { found = storeFound { store = storeMetadata.toProto() } }
+        is FindStoreByNameResult.NotFound -> getStoreResponse { notFound = storeNotFound { storeName = this@toGrpcResponse.storeName.value } }
+    }
+
+
+typealias GrpcGetFactRequest = FactStoreProto.GetFactRequest
+
+internal fun GrpcGetFactRequest.toDomainRequest(): FindByIdRequest =
+    FindByIdRequest(
+        storeName = StoreName(storeName),
+        factId = factId.toFactId()
+    )
+
+internal suspend fun FindByIdRequest.publishTo(factStore: FactStore): FindByIdResult =
+    factStore.findById(this)
+
+typealias GrpcFactExistsRequest = FactStoreProto.FactExistsRequest
+
+internal fun GrpcFactExistsRequest.toDomainRequest(): ExistsByIdRequest =
+    ExistsByIdRequest(
+        storeName = StoreName(storeName),
+        factId = factId.toFactId()
+    )
+
+internal suspend fun ExistsByIdRequest.publishTo(factStore: FactStore): ExistsByIdResult =
+    factStore.existsById(this)
+
+typealias GrpcFindBySubjectRequest = FactStoreProto.FindFactsBySubjectRequest
+
+internal fun GrpcFindBySubjectRequest.toDomainRequest(): FindBySubjectRequest =
+    FindBySubjectRequest(
+        storeName = StoreName(storeName),
+        subject = Subject(subject),
+        limit = if (hasLimit()) Limit.of(limit) else Limit.None,
+        direction = direction.toCore()
+    )
+
+internal suspend fun FindBySubjectRequest.publishTo(factStore: FactStore): FindBySubjectResult =
+    factStore.findBySubject(this)
+
+typealias GrpcFindByTagsRequest = FactStoreProto.FindFactsByTagsRequest
+
+internal fun GrpcFindByTagsRequest.toDomainRequest(): FindByTagsRequest =
+    FindByTagsRequest(
+        storeName = StoreName(storeName),
+        tags = tagsMap.entries.map { (k, v) -> k.toTagKey() to v.toTagValue() },
+        limit = if (hasLimit()) Limit.of(limit) else Limit.None,
+        direction = direction.toCore()
+    )
+
+internal suspend fun FindByTagsRequest.publishTo(factStore: FactStore): FindByTagsResult =
+    factStore.findByTags(this)
+
+typealias GrpcQueryFactsRequest = FactStoreProto.QueryFactsRequest
+
+internal fun GrpcQueryFactsRequest.toDomainRequest(): FindByTagQueryRequest =
+    FindByTagQueryRequest(
+        storeName = StoreName(storeName),
+        query = query.toDomain()
+    )
+
+internal suspend fun FindByTagQueryRequest.publishTo(factStore: FactStore): FindByTagQueryResult =
+    factStore.findByTagQuery(this)
+
+typealias GrpcFindInTimeRangeRequest = FactStoreProto.FindFactsInTimeRangeRequest
+
+internal fun GrpcFindInTimeRangeRequest.toDomainRequest(): FindInTimeRangeRequest =
+    FindInTimeRangeRequest(
+        storeName = StoreName(storeName),
+        timeRange = TimeRange(
+            start = if (hasFrom()) from.toInstant() else Instant.MIN,
+            end = if (hasTo()) to.toInstant() else Instant.MAX
+        ),
+        limit = if (hasLimit()) Limit.of(limit) else Limit.None,
+        direction = direction.toCore()
+    )
+
+internal suspend fun FindInTimeRangeRequest.publishTo(factStore: FactStore): FindInTimeRangeResult =
+    factStore.findInTimeRange(this)
+
+typealias GrpcExistsStoreRequest = FactStoreProto.StoreExistsRequest
+
+internal fun GrpcExistsStoreRequest.toDomainRequest(): ExistsStoreByNameRequest =
+    ExistsStoreByNameRequest(StoreName(name))
+
+internal suspend fun ExistsStoreByNameRequest.publishTo(factStore: FactStore): ExistsStoreByNameResult =
+    factStore.existsByName(this)
+
+typealias GrpcStoreExistsResponse = FactStoreProto.StoreExistsResponse
+
+internal fun ExistsStoreByNameResult.toGrpcResponse(): GrpcStoreExistsResponse =
+    when (this) {
+        ExistsStoreByNameResult.StoreExists -> storeExistsResponse { present = storePresent { } }
+        ExistsStoreByNameResult.StoreAbsent -> storeExistsResponse { absent = storeAbsent { } }
+    }

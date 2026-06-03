@@ -24,7 +24,7 @@ class QueryResource(
         @PathParam("factId") factId: UUID,
     ): Response =
         store
-            .findById(StoreName(storeName), factId.toFactId())
+            .findById(FindByIdRequest(StoreName(storeName), factId.toFactId()))
             .toResponse()
 
     @POST
@@ -36,7 +36,7 @@ class QueryResource(
         @Valid factQueryHttp: FactQueryHttp
     ): Response =
         store
-            .findByTagQuery(StoreName(storeName), factQueryHttp.toTagQuery())
+            .findByTagQuery(FindByTagQueryRequest(StoreName(storeName), factQueryHttp.toTagQuery()))
             .toResponse()
 
     @GET
@@ -50,10 +50,12 @@ class QueryResource(
     ): Response =
         store
             .findBySubject(
-                storeName = StoreName(storeName),
-                subject = Subject(subject),
-                limit = limit.toLimit(),
-                direction = direction,
+                FindBySubjectRequest(
+                    storeName = StoreName(storeName),
+                    subject = Subject(subject),
+                    limit = limit.toLimit(),
+                    direction = direction,
+                )
             )
             .toResponse()
 
@@ -76,21 +78,25 @@ class QueryResource(
             )
             tags.isNotEmpty() -> store
                 .findByTags(
-                    storeName = StoreName(storeName),
-                    tags = tags.map { it.toTagPair() },
-                    limit = limit.toLimit(),
-                    direction = direction,
+                    FindByTagsRequest(
+                        storeName = StoreName(storeName),
+                        tags = tags.map { it.toTagPair() },
+                        limit = limit.toLimit(),
+                        direction = direction,
+                    )
                 )
                 .toResponse()
             else -> store
                 .findInTimeRange(
-                    storeName = StoreName(storeName),
-                    timeRange = TimeRange(
-                        start = from ?: Instant.MIN,
-                        end = to ?: Instant.now()
-                    ),
-                    limit = limit.toLimit(),
-                    direction = direction,
+                    FindInTimeRangeRequest(
+                        storeName = StoreName(storeName),
+                        timeRange = TimeRange(
+                            start = from ?: Instant.MIN,
+                            end = to ?: Instant.MAX
+                        ),
+                        limit = limit.toLimit(),
+                        direction = direction,
+                    )
                 )
                 .toResponse()
         }

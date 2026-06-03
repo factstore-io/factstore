@@ -5,64 +5,37 @@ import io.quarkus.grpc.GrpcService
 import io.smallrye.mutiny.Uni
 import io.vertx.core.Vertx
 import io.vertx.kotlin.coroutines.dispatcher
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.SupervisorJob
 
 @GrpcService
 class GrpcStoreService(
     private val factStore: FactStore,
     vertx: Vertx,
-) : StoreService, CoroutineScope by CoroutineScope(SupervisorJob() + vertx.dispatcher()) {
+) : StoreService {
+
+    private val grpcContext = vertx.dispatcher()
 
     override fun createStore(request: FactStoreProto.CreateStoreRequest): Uni<FactStoreProto.CreateStoreResponse> =
-        toUni {
-            val result = factStore.handle(CreateStoreRequest(StoreName(request.name)))
-            createStoreResponse {
-                when (result) {
-                    is CreateStoreResult.Created ->
-                        created = storeCreated { id = result.id.uuid.toString() }
-                    is CreateStoreResult.NameAlreadyExists ->
-                        nameAlreadyExists = storeNameAlreadyExists { }
-                }
-            }
+        toUni(grpcContext) {
+            request.toDomainRequest().publishTo(factStore).toGrpcResponse()
         }
 
     override fun getStore(request: FactStoreProto.GetStoreRequest): Uni<FactStoreProto.GetStoreResponse> =
-        toUni {
-            val storeMetadata = factStore.findByName(StoreName(request.name))
-            getStoreResponse {
-                if (storeMetadata != null) {
-                    found = storeFound { store = storeMetadata.toProto() }
-                } else {
-                    notFound = storeNotFound { storeName = request.name }
-                }
-            }
+        toUni(grpcContext) {
+            request.toDomainRequest().publishTo(factStore).toGrpcResponse()
         }
 
     override fun listStores(request: FactStoreProto.ListStoresRequest): Uni<FactStoreProto.ListStoresResponse> =
-        toUni {
-            val all = factStore.listAll()
-            listStoresResponse {
-                stores += all.map { it.toProto() }
-            }
+        toUni(grpcContext) {
+            factStore.listAll().toGrpcResponse()
         }
 
     override fun deleteStore(request: FactStoreProto.DeleteStoreRequest): Uni<FactStoreProto.DeleteStoreResponse> =
-        toUni {
-            val result = factStore.handle(RemoveStoreRequest(StoreName(request.name)))
-            deleteStoreResponse {
-                when (result) {
-                    is RemoveStoreResult.StoreRemoved -> deleted = storeDeleted { }
-                    is RemoveStoreResult.StoreNotFound -> notFound = storeNotFound { storeName = result.storeName.value }
-                }
-            }
+        toUni(grpcContext) {
+            request.toDomainRequest().publishTo(factStore).toGrpcResponse()
         }
 
     override fun storeExists(request: FactStoreProto.StoreExistsRequest): Uni<FactStoreProto.StoreExistsResponse> =
-        toUni {
-            val found = factStore.existsByName(StoreName(request.name))
-            storeExistsResponse {
-                exists = found
-            }
+        toUni(grpcContext) {
+            request.toDomainRequest().publishTo(factStore).toGrpcResponse()
         }
 }

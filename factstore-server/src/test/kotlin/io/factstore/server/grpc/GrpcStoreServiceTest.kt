@@ -72,7 +72,7 @@ class GrpcStoreServiceTest {
     fun storeExists(): Unit = runBlocking {
         val response = storeService.storeExists(storeExistsRequest { name = "grpc-store-a" }).awaitSuspending()
 
-        assertThat(response.exists).isTrue()
+        assertThat(response.hasPresent()).isTrue()
     }
 
     @Test
@@ -81,7 +81,7 @@ class GrpcStoreServiceTest {
     fun storeDoesNotExist(): Unit = runBlocking {
         val response = storeService.storeExists(storeExistsRequest { name = "no-such-store" }).awaitSuspending()
 
-        assertThat(response.exists).isFalse()
+        assertThat(response.hasAbsent()).isTrue()
     }
 
     @Test

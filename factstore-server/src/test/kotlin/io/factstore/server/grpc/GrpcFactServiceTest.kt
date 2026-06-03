@@ -204,7 +204,7 @@ class GrpcFactServiceTest {
             factId = UUID.randomUUID().toString()
         }).awaitSuspending()
 
-        assertThat(response.hasNotFound()).isTrue()
+        assertThat(response.hasAbsent()).isTrue()
     }
 
     @Test
@@ -311,10 +311,51 @@ class GrpcFactServiceTest {
         assertThat(response.hasStoreNotFound()).isTrue()
     }
 
+    @Test
+    @Order(18)
+    @DisplayName("QueryFacts - should return FactsFound using a tag-type query")
+    fun queryFactsWithTagTypeItem(): Unit = runBlocking {
+        val response = factService.queryFacts(queryFactsRequest {
+            storeName = STORE
+            query = tagQuery {
+                items += tagQueryItem {
+                    tagType = tagTypeItem {
+                        types += "order.created"
+                        tags["region"] = "eu"
+                    }
+                }
+            }
+        }).awaitSuspending()
+
+        assertThat(response.hasFound()).isTrue()
+        assertThat(response.found.factsList).isNotEmpty()
+        assertThat(response.found.factsList.first().type).isEqualTo("order.created")
+    }
+
+    @Test
+    @Order(19)
+    @DisplayName("QueryFacts - should return empty FactsFound when type does not match")
+    fun queryFactsWithTagTypeItemNoMatch(): Unit = runBlocking {
+        val response = factService.queryFacts(queryFactsRequest {
+            storeName = STORE
+            query = tagQuery {
+                items += tagQueryItem {
+                    tagType = tagTypeItem {
+                        types += "order.cancelled"
+                        tags["region"] = "eu"
+                    }
+                }
+            }
+        }).awaitSuspending()
+
+        assertThat(response.hasFound()).isTrue()
+        assertThat(response.found.factsList).isEmpty()
+    }
+
     // ─── FindFactsInTimeRange ─────────────────────────────────────────────────
 
     @Test
-    @Order(18)
+    @Order(20)
     @DisplayName("FindFactsInTimeRange - should return FactsFound for an unbounded time range")
     fun findFactsInTimeRange(): Unit = runBlocking {
         val response = factService.findFactsInTimeRange(findFactsInTimeRangeRequest {
@@ -327,7 +368,7 @@ class GrpcFactServiceTest {
     }
 
     @Test
-    @Order(19)
+    @Order(21)
     @DisplayName("FindFactsInTimeRange - should return StoreNotFound when store does not exist")
     fun findFactsInTimeRangeStoreNotFound(): Unit = runBlocking {
         val response = factService.findFactsInTimeRange(findFactsInTimeRangeRequest {
@@ -340,7 +381,7 @@ class GrpcFactServiceTest {
     // ─── StreamFacts ──────────────────────────────────────────────────────────
 
     @Test
-    @Order(20)
+    @Order(22)
     @DisplayName("StreamFacts - should emit existing facts from the beginning of the store")
     fun streamFacts(): Unit = runBlocking {
         val facts = factService.streamFacts(streamFactsRequest {
@@ -352,7 +393,7 @@ class GrpcFactServiceTest {
     }
 
     @Test
-    @Order(21)
+    @Order(23)
     @DisplayName("StreamFacts - should fail with StatusRuntimeException when store does not exist")
     fun streamFactsStoreNotFound(): Unit {
         assertThrows<StatusRuntimeException> {

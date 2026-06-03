@@ -4,8 +4,8 @@ interface StoreFinder {
 
     suspend fun listAll(): List<StoreMetadata>
 
-    suspend fun existsByName(name: StoreName): Boolean
+    suspend fun existsByName(request: ExistsStoreByNameRequest): ExistsStoreByNameResult
 
-    suspend fun findByName(name: StoreName): StoreMetadata?
+    suspend fun findByName(request: FindStoreByNameRequest): FindStoreByNameResult
 
 }
