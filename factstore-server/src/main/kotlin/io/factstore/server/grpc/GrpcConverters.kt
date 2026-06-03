@@ -21,6 +21,12 @@ internal fun FactStoreProto.ReadDirection.toCore(): CoreReadDirection = when (th
     else -> CoreReadDirection.Forward
 }
 
+private fun String.parseUuid(): UUID =
+    runCatching { UUID.fromString(this) }
+        .getOrElse { throw IllegalArgumentException("'$this' is not a valid UUID") }
+
+internal fun String.toFactId(): FactId = parseUuid().toFactId()
+
 internal fun Fact.toProto(): FactStoreProto.Fact = fact {
     id = this@toProto.id.uuid.toString()
     type = this@toProto.type.value
@@ -44,7 +50,7 @@ internal fun StoreMetadata.toProto(): FactStoreProto.StoreInfo = storeInfo {
 }
 
 internal fun FactStoreProto.FactInput.toDomain(): Fact = Fact(
-    id = if (hasId()) UUID.fromString(id).toFactId() else FactId.generate(),
+    id = if (hasId()) id.toFactId() else FactId.generate(),
     type = type.toFactType(),
     subject = Subject(subject),
     appendedAt = if (hasAppendedAt()) appendedAt.toInstant() else Instant.now(),
@@ -63,21 +69,21 @@ internal fun FactStoreProto.AppendCondition.toDomain(): AppendCondition = when (
     FactStoreProto.AppendCondition.KindCase.EXPECTED_LAST_FACT -> AppendCondition.ExpectedLastFact(
         subject = Subject(expectedLastFact.subject),
         expectedLastFactId = if (expectedLastFact.hasExpectedLastFactId())
-            UUID.fromString(expectedLastFact.expectedLastFactId).toFactId()
+            expectedLastFact.expectedLastFactId.toFactId()
         else null
     )
 
     FactStoreProto.AppendCondition.KindCase.EXPECTED_MULTI_SUBJECT_LAST_FACT -> AppendCondition.ExpectedMultiSubjectLastFact(
         expectations = expectedMultiSubjectLastFact.expectationsList.associate { exp ->
             Subject(exp.subject) to
-                    if (exp.hasExpectedLastFactId()) UUID.fromString(exp.expectedLastFactId).toFactId()
+                    if (exp.hasExpectedLastFactId()) exp.expectedLastFactId.toFactId()
                     else null
         }
     )
 
     FactStoreProto.AppendCondition.KindCase.TAG_QUERY_BASED -> AppendCondition.TagQueryBased(
         failIfEventsMatch = tagQueryBased.failIfEventsMatch.toDomain(),
-        after = if (tagQueryBased.hasAfterFactId()) UUID.fromString(tagQueryBased.afterFactId).toFactId()
+        after = if (tagQueryBased.hasAfterFactId()) tagQueryBased.afterFactId.toFactId()
         else null
     )
 
@@ -108,7 +114,7 @@ internal fun GrpcAppendRequest.toDomainRequest(): AppendRequest {
     val storeName = StoreName(storeName)
     val facts = factsList.map { it.toDomain() }
     val idempotencyKey = if (hasIdempotencyKey())
-        IdempotencyKey(UUID.fromString(idempotencyKey))
+        IdempotencyKey(idempotencyKey.parseUuid())
     else
         IdempotencyKey()
     val condition = if (hasCondition()) condition.toDomain() else AppendCondition.None
@@ -275,7 +281,7 @@ typealias GrpcGetFactRequest = FactStoreProto.GetFactRequest
 internal fun GrpcGetFactRequest.toDomainRequest(): FindByIdRequest =
     FindByIdRequest(
         storeName = StoreName(storeName),
-        factId = UUID.fromString(factId).toFactId()
+        factId = factId.toFactId()
     )
 
 internal suspend fun FindByIdRequest.publishTo(factStore: FactStore): FindByIdResult =
@@ -286,7 +292,7 @@ typealias GrpcFactExistsRequest = FactStoreProto.FactExistsRequest
 internal fun GrpcFactExistsRequest.toDomainRequest(): ExistsByIdRequest =
     ExistsByIdRequest(
         storeName = StoreName(storeName),
-        factId = UUID.fromString(factId).toFactId()
+        factId = factId.toFactId()
     )
 
 internal suspend fun ExistsByIdRequest.publishTo(factStore: FactStore): ExistsByIdResult =

@@ -27,8 +27,6 @@ import io.vertx.kotlin.coroutines.dispatcher
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
-import java.util.*
-
 @GrpcService
 class GrpcFactService(
     private val factStore: FactStore,
@@ -85,7 +83,7 @@ class GrpcFactService(
         val startPosition = when (request.startPositionCase) {
             StreamFactsRequest.StartPositionCase.FROM_END -> StartPosition.End
             StreamFactsRequest.StartPositionCase.AFTER_FACT_ID -> StartPosition.After(
-                UUID.fromString(request.afterFactId).toFactId()
+                request.afterFactId.toFactId()
             )
             else -> StartPosition.Beginning
         }
