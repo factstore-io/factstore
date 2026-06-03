@@ -1,5 +1,6 @@
 package io.factstore.server.grpc
 
+import io.factstore.grpc.v1.*
 import io.quarkus.grpc.GrpcClient
 import io.quarkus.test.junit.QuarkusTest
 import io.smallrye.mutiny.coroutines.awaitSuspending

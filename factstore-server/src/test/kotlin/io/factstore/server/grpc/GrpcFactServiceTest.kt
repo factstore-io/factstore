@@ -1,6 +1,7 @@
 package io.factstore.server.grpc
 
 import com.google.protobuf.ByteString
+import io.factstore.grpc.v1.*
 import io.grpc.StatusRuntimeException
 import io.quarkus.grpc.GrpcClient
 import io.quarkus.test.junit.QuarkusTest
