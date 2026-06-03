@@ -1,22 +1,9 @@
 package io.factstore.server.grpc
 
 import io.factstore.core.*
-import io.factstore.server.grpc.FactStoreProto.AppendFactsRequest
-import io.factstore.server.grpc.FactStoreProto.AppendFactsResponse
-import io.factstore.server.grpc.FactStoreProto.Fact
-import io.factstore.server.grpc.FactStoreProto.FactExistsRequest
-import io.factstore.server.grpc.FactStoreProto.FactExistsResponse
-import io.factstore.server.grpc.FactStoreProto.FindFactsBySubjectRequest
-import io.factstore.server.grpc.FactStoreProto.FindFactsBySubjectResponse
-import io.factstore.server.grpc.FactStoreProto.FindFactsByTagsRequest
-import io.factstore.server.grpc.FactStoreProto.FindFactsByTagsResponse
-import io.factstore.server.grpc.FactStoreProto.FindFactsInTimeRangeRequest
-import io.factstore.server.grpc.FactStoreProto.FindFactsInTimeRangeResponse
-import io.factstore.server.grpc.FactStoreProto.GetFactRequest
-import io.factstore.server.grpc.FactStoreProto.GetFactResponse
-import io.factstore.server.grpc.FactStoreProto.QueryFactsRequest
-import io.factstore.server.grpc.FactStoreProto.QueryFactsResponse
-import io.factstore.server.grpc.FactStoreProto.StreamFactsRequest
+import io.factstore.grpc.v1.FactService
+import io.factstore.grpc.v1.FactStoreProto
+import io.factstore.grpc.v1.FactStoreProto.*
 import io.grpc.Status
 import io.grpc.StatusRuntimeException
 import io.quarkus.grpc.GrpcService
@@ -80,7 +67,7 @@ class GrpcFactService(
 
     override fun streamFacts(
         request: StreamFactsRequest
-    ): Multi<Fact> = toMulti(grpcContext) {
+    ): Multi<FactStoreProto.Fact> = toMulti(grpcContext) {
         val startPosition = when (request.startPositionCase) {
             StreamFactsRequest.StartPositionCase.FROM_END -> StartPosition.End
             StreamFactsRequest.StartPositionCase.AFTER_FACT_ID -> StartPosition.After(

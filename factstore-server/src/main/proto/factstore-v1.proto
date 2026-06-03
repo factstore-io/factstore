@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package io.factstore.server.grpc;
 
-option java_package = "io.factstore.server.grpc";
+option java_package = "io.factstore.grpc.v1";
 option java_outer_classname = "FactStoreProto";
 
 import "google/protobuf/timestamp.proto";

@@ -207,7 +207,7 @@ Pass the proto file directly to tools that need it (e.g. grpcurl in environments
 
 ```bash
 grpcurl -plaintext \
-  -proto factstore-server/src/main/proto/factstore.proto \
+  -proto factstore-server/src/main/proto/factstore-v1.proto \
   -d '{"name": "orders"}' \
   localhost:8080 io.factstore.server.grpc.StoreService/CreateStore
 ```

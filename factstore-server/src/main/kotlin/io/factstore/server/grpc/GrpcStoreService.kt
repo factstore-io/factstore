@@ -1,6 +1,8 @@
 package io.factstore.server.grpc
 
 import io.factstore.core.*
+import io.factstore.grpc.v1.FactStoreProto
+import io.factstore.grpc.v1.StoreService
 import io.quarkus.grpc.GrpcService
 import io.smallrye.mutiny.Uni
 import io.vertx.core.Vertx
