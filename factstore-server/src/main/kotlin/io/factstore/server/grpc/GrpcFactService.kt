@@ -94,11 +94,11 @@ class GrpcFactService(
                 StreamingOptions(startPosition)
             )) {
                 is StreamResult.StoreNotFound -> throw StatusRuntimeException(
-                    Status.NOT_FOUND.withDescription("Store '${result.storeName.value}' not found")
+                    Status.FAILED_PRECONDITION.withDescription("Store '${result.storeName.value}' not found - create it first")
                 )
 
                 is StreamResult.FactIdNotFound -> throw StatusRuntimeException(
-                    Status.NOT_FOUND.withDescription("Fact '${result.id.uuid}' not found")
+                    Status.FAILED_PRECONDITION.withDescription("Fact '${result.id.uuid}' not found - cannot use it as a stream cursor")
                 )
 
                 is StreamResult.FactStream -> emitAll(result.stream.map { it.toProto() })
