@@ -37,6 +37,5 @@ class GrpcStoreService(
     override fun storeExists(request: FactStoreProto.StoreExistsRequest): Uni<FactStoreProto.StoreExistsResponse> =
         toUni(grpcContext) {
             request.toDomainRequest().publishTo(factStore).toGrpcResponse()
-
         }
 }

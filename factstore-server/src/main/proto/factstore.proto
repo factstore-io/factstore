@@ -379,6 +379,7 @@ message FromEnd {}
 
 message StreamFactsRequest {
   string store_name = 1;
+  // If start_position is not set, streaming starts from the beginning (equivalent to from_beginning).
   oneof start_position {
     FromBeginning from_beginning = 2;
     FromEnd from_end = 3;

@@ -3,59 +3,9 @@ package io.factstore.server.grpc
 import com.google.protobuf.ByteString
 import com.google.protobuf.Timestamp
 import io.factstore.core.*
-import io.smallrye.mutiny.Multi
-import io.smallrye.mutiny.Uni
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.emitAll
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.future.future
-import kotlinx.coroutines.jdk9.asPublisher
 import java.time.Instant
 import java.util.*
-import kotlin.collections.map
-import kotlin.coroutines.CoroutineContext
 import io.factstore.core.ReadDirection as CoreReadDirection
-
-
-/**
- * Bridges a suspending block to a Mutiny [Uni].
- *
- * Exists because Quarkus generates gRPC service stubs against Mutiny rather than
- * Kotlin coroutines. We use this at the gRPC adapter boundary to keep service bodies
- * written as ordinary suspend functions.
- *
- * @param context Coroutine context for this call.
- * @param block Suspending body to execute on subscription.
- * @return A cold [Uni] that emits the result of [block] or fails with its exception.
- */
-internal fun <T> toUni(
-    context: CoroutineContext,
-    block: suspend () -> T
-): Uni<T> =
-    Uni.createFrom().completionStage {
-        CoroutineScope(context).future { block() }
-    }
-
-/**
- * Bridges a suspending [Flow] producer to a Mutiny [Multi].
- *
- * Exists because Quarkus generates gRPC server-streaming stubs against Mutiny
- * rather than Kotlin coroutines. We use this at the gRPC adapter boundary to keep
- * streaming bodies written as ordinary [Flow]s.
- *
- * @param context Coroutine context for this call.
- * @param block Suspending producer of the [Flow] to stream. Invoked once per
- *   subscription, so any per-call setup belongs inside it.
- * @return A cold [Multi] that mirrors the [Flow] returned by [block].
- */
-internal fun <T : Any> toMulti(
-    context: CoroutineContext,
-    block: suspend () -> Flow<T>,
-): Multi<T> =
-    Multi.createFrom().publisher(
-        flow { emitAll(block()) }.asPublisher(context)
-    )
 
 internal fun Instant.toTimestamp(): Timestamp = Timestamp.newBuilder()
     .setSeconds(epochSecond)
@@ -198,7 +148,9 @@ internal fun FindByIdResult.toGrpcResponse(): GrpcGetFactResponse =
         }
     }
 
-internal fun ExistsByIdResult.toGrpcResponse(): FactStoreProto.FactExistsResponse =
+typealias GrpcFactExistsResponse = FactStoreProto.FactExistsResponse
+
+internal fun ExistsByIdResult.toGrpcResponse(): GrpcFactExistsResponse =
     factExistsResponse {
         when (this@toGrpcResponse) {
             ExistsByIdResult.Exists -> present = factPresent { }
@@ -234,7 +186,9 @@ internal fun FindByTagsResult.toGrpcResponse(): GrpcFindFactsByTagsResponse =
         }
     }
 
-internal fun FindByTagQueryResult.toGrpcResponse(): FactStoreProto.QueryFactsResponse =
+typealias GrpcQueryFactsResponse = FactStoreProto.QueryFactsResponse
+
+internal fun FindByTagQueryResult.toGrpcResponse(): GrpcQueryFactsResponse =
     queryFactsResponse {
         when (this@toGrpcResponse) {
             is FindByTagQueryResult.Found ->
@@ -246,7 +200,9 @@ internal fun FindByTagQueryResult.toGrpcResponse(): FactStoreProto.QueryFactsRes
     }
 
 
-internal fun FindInTimeRangeResult.toGrpcResponse(): FactStoreProto.FindFactsInTimeRangeResponse =
+typealias GrpcFindInTimeRangeResponse = FactStoreProto.FindFactsInTimeRangeResponse
+
+internal fun FindInTimeRangeResult.toGrpcResponse(): GrpcFindInTimeRangeResponse =
     findFactsInTimeRangeResponse {
         when (this@toGrpcResponse) {
             is FindInTimeRangeResult.Found ->
