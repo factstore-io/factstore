@@ -1,6 +1,7 @@
 package io.factstore.server.grpc
 
 import com.google.protobuf.ByteString
+import io.factstore.grpc.v1.*
 import io.grpc.StatusRuntimeException
 import io.quarkus.grpc.GrpcClient
 import io.quarkus.test.junit.QuarkusTest
@@ -395,7 +396,7 @@ class GrpcFactServiceTest {
     @Test
     @Order(23)
     @DisplayName("StreamFacts - should fail with StatusRuntimeException when store does not exist")
-    fun streamFactsStoreNotFound(): Unit {
+    fun streamFactsStoreNotFound() {
         assertThrows<StatusRuntimeException> {
             runBlocking {
                 factService.streamFacts(streamFactsRequest {

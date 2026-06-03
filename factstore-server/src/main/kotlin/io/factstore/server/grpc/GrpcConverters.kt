@@ -3,6 +3,7 @@ package io.factstore.server.grpc
 import com.google.protobuf.ByteString
 import com.google.protobuf.Timestamp
 import io.factstore.core.*
+import io.factstore.grpc.v1.*
 import java.time.Instant
 import java.util.*
 import io.factstore.core.ReadDirection as CoreReadDirection
