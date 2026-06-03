@@ -1,6 +1,6 @@
 
 [versions]
-kotlin = "2.3.21"
+kotlin = "2.4.0"
 junit = "6.1.0"
 assertj = "3.27.7"
 kotlinx-coroutines-core = "1.11.0"
