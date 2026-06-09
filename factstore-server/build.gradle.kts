@@ -17,10 +17,9 @@ dependencies {
     implementation("io.quarkus:quarkus-smallrye-openapi")
     implementation("io.quarkus:quarkus-smallrye-health")
     implementation(libs.quarkus.quinoa)
-    implementation("com.google.protobuf:protobuf-kotlin:4.35.0")
+    implementation(libs.com.google.protobuf.protobuf.kotlin)
     implementation("io.vertx:vertx-lang-kotlin-coroutines")
-    implementation("io.smallrye.reactive:mutiny-kotlin:3.2.1")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-jdk9:1.11.0")
+    implementation(libs.coroutines.jdk)
 
 
     // factstore libs
@@ -33,6 +32,7 @@ dependencies {
     testImplementation("io.quarkus:quarkus-junit")
     testImplementation("io.rest-assured:rest-assured")
     testImplementation(libs.org.assertj.assertj.core)
+    testImplementation(libs.io.smallrye.mutiny.kotlin)
 }
 
 java {

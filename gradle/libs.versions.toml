@@ -13,6 +13,9 @@ fmodel = "3.7.0"
 quarkusVersion = "3.36.1"
 kotlin-logging = "8.0.4"
 quarkusQuinoa = "2.8.2"
+coroutines-jdk = "1.11.0"
+protobuf-kotlin = "4.35.0"
+mutiny-kotlin = "3.2.1"
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
@@ -37,3 +40,6 @@ com-fraktalio-fmodel-application-vanilla = { module = "com.fraktalio.fmodel:appl
 io-quarkus-platform-quarkus-bom = { module = "io.quarkus.platform:quarkus-bom", version.ref = "quarkusVersion" }
 io-github-oshai-kotlin-logging = {module = 'io.github.oshai:kotlin-logging-jvm', version.ref = "kotlin-logging" }
 quarkus-quinoa = { module = "io.quarkiverse.quinoa:quarkus-quinoa", version.ref = "quarkusQuinoa" }
+coroutines-jdk = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-jdk9", version.ref = "coroutines-jdk" }
+com-google-protobuf-protobuf-kotlin = { module = "com.google.protobuf:protobuf-kotlin", version.ref = "protobuf-kotlin" }
+io-smallrye-mutiny-kotlin = { module = "io.smallrye.reactive:mutiny-kotlin", version.ref = "mutiny-kotlin" }
