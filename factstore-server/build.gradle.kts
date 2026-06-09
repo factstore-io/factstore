@@ -1,3 +1,6 @@
+import io.quarkus.gradle.tasks.QuarkusDev
+import io.quarkus.gradle.tasks.QuarkusRun
+
 plugins {
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.allopen)
@@ -52,6 +55,19 @@ kotlin {
         jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_25
         javaParameters = true
     }
+}
+
+val fdbJvmArgs = listOf(
+    "--enable-native-access=ALL-UNNAMED",
+    "--sun-misc-unsafe-memory-access=allow"
+)
+
+tasks.withType<QuarkusDev>().configureEach {
+    jvmArgs = fdbJvmArgs
+}
+
+tasks.withType<QuarkusRun>().configureEach {
+    jvmArgs = fdbJvmArgs
 }
 
 sourceSets {

@@ -35,6 +35,10 @@ kotlin {
 }
 
 tasks.test {
+    jvmArgs(
+        "--enable-native-access=ALL-UNNAMED",
+        "--sun-misc-unsafe-memory-access=allow"
+    )
     useJUnitPlatform()
 }
 
