@@ -1,7 +1,7 @@
-package io.factstore.cli.command
+package io.factstore.cli.command.store
 
-import io.factstore.cli.client.FactStoreClient
-import io.factstore.cli.client.StoreMetadata
+import io.factstore.client.FactStoreClient
+import io.factstore.client.model.StoreInfo
 import jakarta.inject.Inject
 import kotlinx.coroutines.runBlocking
 import picocli.CommandLine.Command
@@ -19,7 +19,7 @@ class ListStoresCommand : Runnable {
     lateinit var client: FactStoreClient
 
     override fun run() = runBlocking {
-        val metadata = client.listStores()
+        val metadata = client.stores.list()
 
         if (metadata.isEmpty()) {
             println("No stores found.")
@@ -28,7 +28,7 @@ class ListStoresCommand : Runnable {
         }
     }
 
-    private fun List<StoreMetadata>.print() {
+    private fun List<StoreInfo>.print() {
         // Table Header
         println("%-25s %-25s %-36s".format("NAME", "CREATED AT", "STORE ID"))
         println("-".repeat(90))

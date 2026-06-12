@@ -1,21 +1,19 @@
 package io.factstore.cli.client
 
-import io.factstore.cli.config.FactStoreConfigResolver
+import io.factstore.client.FactStoreClient
+import io.grpc.Channel
+import io.quarkus.grpc.GrpcClient
 import jakarta.enterprise.context.ApplicationScoped
-import jakarta.enterprise.inject.Produces
-import picocli.CommandLine
+import jakarta.ws.rs.Produces
 
 @ApplicationScoped
 class FactStoreClientProducer {
 
     @Produces
     @ApplicationScoped
-    fun produceClient(
-        parseResult: CommandLine.ParseResult,
-        resolver: FactStoreConfigResolver,
-        factory: FactStoreClientFactory
-    ): FactStoreClient {
-        val url = resolver.resolveUrl(parseResult)
-        return factory.create(url)
-    }
+    fun factStoreClient(
+        @GrpcClient("factstore") channel: Channel
+    ): FactStoreClient =
+        io.factstore.client.factStoreClient(channel)
+
 }

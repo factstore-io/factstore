@@ -1,7 +1,8 @@
-package io.factstore.cli.command
+package io.factstore.cli.command.store
 
-import io.factstore.cli.client.FactStoreClient
+import io.factstore.client.FactStoreClient
 import jakarta.inject.Inject
+import kotlinx.coroutines.runBlocking
 import picocli.CommandLine.Command
 import picocli.CommandLine.Parameters
 
@@ -22,8 +23,8 @@ class RemoveStoreCommand : Runnable {
     )
     lateinit var storeName: String
 
-    override fun run() {
-        client.removeStore(storeName)
+    override fun run() = runBlocking {
+        client.stores.delete(storeName)
         println("✅ Store '$storeName' removed successfully.")
     }
 }

@@ -13,6 +13,9 @@ dependencies {
     implementation("io.quarkus:quarkus-hibernate-validator")
     implementation("io.quarkus:quarkus-picocli")
     implementation("io.quarkus:quarkus-rest-client-jackson")
+    implementation("io.quarkus:quarkus-grpc")
+
+    implementation(project(":factstore-client-kotlin"))
 
     implementation(libs.io.github.oshai.kotlin.logging)
 

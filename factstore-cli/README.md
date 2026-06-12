@@ -33,7 +33,7 @@ factstore store create orders
 factstore fact append '{"orderId": "12345", "amount": 100.0}' --store orders --subject order-12345 --type ORDER_PLACED
 
 # Stream facts in real time
-factstore fact stream orders --from beginning
+factstore fact stream --store orders --from beginning
 ```
 
 ---
@@ -50,7 +50,7 @@ factstore store create orders
 factstore store list
 
 # Delete a store
-factstore store delete orders
+factstore store remove orders
 ```
 
 ---
@@ -77,37 +77,47 @@ factstore fact append '{"orderId": "12345", "amount": 100.0}' \
 
 ### Querying Facts
 
-#### Direct lookup by ID
+Each query mode is a dedicated subcommand under `fact`. All commands support `--limit` (default: 100) and `--direction` (`forward` / `backward`, default: `forward`).
+
+#### Find by ID
+
+Direct lookup of a single fact by its UUID:
 
 ```bash
-factstore find fact 550e8400-e29b-41d4-a716-446655440000 --store orders
+factstore fact find-by-id 550e8400-e29b-41d4-a716-446655440000 --store orders
 ```
 
-#### Find facts with filters
-
-All filters are optional and mutually exclusive. Results default to **oldest first** with a limit of **100**.
+#### Find by subject
 
 ```bash
-# Find facts for a specific subject
-factstore find facts --store orders --subject order-12345
+factstore fact find-by-subject order-12345 --store orders
+factstore fact find-by-subject order-12345 --store orders --limit 50 --direction backward
+```
 
-# Find facts in the last 5 minutes
-factstore find facts --store orders --since 5m
+#### Find by tags
 
-# Find facts in the last 2 hours, newest first
-factstore find facts --store orders --since 2h --direction backward
+All specified tags must match (AND semantics):
 
-# Find facts in an absolute time range
-factstore find facts --store orders \
+```bash
+factstore fact find-by-tags --store orders --tag region=eu
+factstore fact find-by-tags --store orders --tag region=eu --tag env=prod
+```
+
+#### Find in time range
+
+At least one of `--since` or `--until` is required:
+
+```bash
+# Facts in the last 5 minutes
+factstore fact find-in-time-range --store orders --since 5m
+
+# Facts in the last 2 hours, newest first
+factstore fact find-in-time-range --store orders --since 2h --direction backward
+
+# Absolute time range
+factstore fact find-in-time-range --store orders \
   --since 2024-01-01T00:00:00Z \
   --until 2024-01-02T00:00:00Z
-
-# Find facts by tag (AND semantics — all tags must match)
-factstore find facts --store orders --tag region=eu
-factstore find facts --store orders --tag region=eu --tag env=prod
-
-# Control result size and order
-factstore find facts --store orders --since 1h --limit 50 --direction backward
 ```
 
 #### Time expressions
@@ -129,13 +139,13 @@ Stream facts in real time, similar to `tail -f`:
 
 ```bash
 # Stream new facts as they arrive (from the end)
-factstore fact stream orders --from end
+factstore fact stream --store orders --from end
 
 # Replay all facts from the beginning
-factstore fact stream orders --from beginning
+factstore fact stream --store orders --from beginning
 
 # Resume from a specific fact ID
-factstore fact stream orders --after 550e8400-e29b-41d4-a716-446655440000
+factstore fact stream --store orders --after 550e8400-e29b-41d4-a716-446655440000
 ```
 
 Press `Ctrl+C` to stop streaming.
@@ -148,13 +158,13 @@ All query and find commands support `--output` for machine-readable output:
 
 ```bash
 # Default: human-readable table
-factstore find facts --store orders --since 1h
+factstore fact find-in-time-range --store orders --since 1h
 
 # JSON output (pipe-friendly)
-factstore find facts --store orders --since 1h --output json
+factstore fact find-in-time-range --store orders --since 1h --output json
 
 # Pipe to jq
-factstore find facts --store orders --since 1h --output json | jq '.[] | .type'
+factstore fact find-in-time-range --store orders --since 1h --output json | jq '.[] | .type'
 ```
 
 ---
@@ -173,7 +183,7 @@ export FACTSTORE_URL=http://localhost:8080
 export FACTSTORE_STORE=orders
 
 # --store is no longer needed
-factstore find facts --since 5m
+factstore fact find-in-time-range --since 5m
 factstore fact stream
 ```
 

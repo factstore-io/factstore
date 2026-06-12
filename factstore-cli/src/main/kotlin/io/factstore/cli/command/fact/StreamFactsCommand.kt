@@ -1,18 +1,21 @@
-package io.factstore.cli.command
+package io.factstore.cli.command.fact
 
-import io.factstore.cli.client.FactStoreClient
+import io.factstore.cli.command.OutputFormat
+import io.factstore.cli.command.printSingle
 import io.factstore.cli.config.FactStoreConfigResolver
+import io.factstore.client.FactStoreClient
+import io.factstore.client.model.StreamStartPosition
 import io.smallrye.mutiny.coroutines.asFlow
 import io.vertx.core.http.HttpClosedException
 import jakarta.inject.Inject
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.runBlocking
-import picocli.CommandLine.*
-import java.util.*
+import picocli.CommandLine
+import java.util.UUID
 import java.util.concurrent.Callable
 import kotlin.coroutines.cancellation.CancellationException
 
-@Command(
+@CommandLine.Command(
     name = "stream",
     description = ["Stream facts from a store in real-time (similar to tail -f)"]
 )
@@ -24,13 +27,13 @@ class StreamFactsCommand : Callable<Int> {
     @Inject
     lateinit var configResolver: FactStoreConfigResolver
 
-    @Option(
+    @CommandLine.Option(
         names = ["--store", "-s"],
         description = ["The name of the store to stream from (env: FACTSTORE_STORE, config: store)"],
     )
     var storeName: String? = null
 
-    @ArgGroup(
+    @CommandLine.ArgGroup(
         exclusive = true,
         heading = "Start position options:%n"
     )
@@ -38,14 +41,14 @@ class StreamFactsCommand : Callable<Int> {
 
     class StartPosition {
 
-        @Option(
+        @CommandLine.Option(
             names = ["--from"],
             description = ["Start from: 'beginning' or 'end'"],
-            showDefaultValue = Help.Visibility.ALWAYS,
+            showDefaultValue = CommandLine.Help.Visibility.ALWAYS,
         )
         var from: FromOption? = null
 
-        @Option(
+        @CommandLine.Option(
             names = ["--after"],
             description = ["Start after a specific Fact ID (UUID)"]
         )
@@ -53,7 +56,7 @@ class StreamFactsCommand : Callable<Int> {
 
     }
 
-    @Option(
+    @CommandLine.Option(
         names = ["--output", "-o"],
         description = ["Output format (default: \${DEFAULT-VALUE})"],
         defaultValue = "table",
@@ -64,15 +67,18 @@ class StreamFactsCommand : Callable<Int> {
 
     override fun call(): Int = runBlocking {
         val storeName = configResolver.resolveStore(storeName)
-        val fromValue = startPosition.from?.name
+        val fromValue = startPosition.from
         val afterValue = startPosition.after
 
-        client.streamFacts(storeName, fromValue, afterValue)
-            .asFlow()
+        val streamStartPosition = afterValue?.let { StreamStartPosition.AfterFact(afterValue.toString()) }
+            ?: fromValue?.let { if (fromValue == FromOption.beginning) StreamStartPosition.Beginning else StreamStartPosition.End }
+            ?: StreamStartPosition.Beginning
+
+        client.facts.stream(storeName, streamStartPosition)
             .catch { cause -> cause.handleStreamTermination() }
             .collect { fact -> fact.printSingle(outputFormat) }
 
-        ExitCode.OK
+        CommandLine.ExitCode.OK
     }
 
     private fun Throwable.handleStreamTermination() {

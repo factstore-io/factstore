@@ -1,6 +1,10 @@
 package io.factstore.cli.exception
 
-import io.factstore.cli.client.FactStoreApiException
+import io.factstore.client.exceptions.AppendConditionViolatedException
+import io.factstore.client.exceptions.DuplicateFactIdsException
+import io.factstore.client.exceptions.FactNotFoundException
+import io.factstore.client.exceptions.StoreNameAlreadyExistsException
+import io.factstore.client.exceptions.StoreNotFoundException
 import jakarta.enterprise.context.ApplicationScoped
 import jakarta.ws.rs.ProcessingException
 import picocli.CommandLine
@@ -25,16 +29,13 @@ class FactStoreExecutionExceptionHandler : CommandLine.IExecutionExceptionHandle
 
 private fun Exception.toCliMessage(): String = when (this) {
     is CliUsageException -> "❌ ${this.message}"
-    is FactStoreApiException -> toCliMessage()
-    is ProcessingException -> "❌ Network Error: ${this.cause?.message ?: this.message}"
+    is StoreNotFoundException -> "❌ Store not found: '${this.storeName}'"
+    is StoreNameAlreadyExistsException -> "❌ A store named '${this.storeName}' already exists"
+    is FactNotFoundException -> "❌ Fact not found: '${this.factId}'"
+    is AppendConditionViolatedException -> "❌ Append condition violated: a concurrent write changed the store state. Retry with an updated condition."
+    is DuplicateFactIdsException -> "❌ Duplicate fact IDs in request: ${this.factIds.joinToString()}"
+    is ProcessingException -> "❌ Network error: ${this.cause?.message ?: this.message}"
     is UnknownHostException -> "❌ Could not resolve host: ${this.message}"
-    else -> "❌ Unexpected Error: ${this.message}"
+    else -> "❌ Unexpected error: ${this.message}"
 }
 
-private fun FactStoreApiException.toCliMessage(): String {
-    return if (apiError != null) {
-        "Error from server (${apiError.reason}): ${apiError.message}"
-    } else {
-        "❌ Server Error: HTTP $httpStatus"
-    }
-}
