@@ -13,16 +13,20 @@ dependencies {
     compileOnly(libs.javax.annotation.javax.annotation.api)
 }
 
+tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+    compilerOptions { freeCompilerArgs.add("-opt-in=kotlin.RequiresOptIn") }
+}
+
 protobuf {
     protoc {
-        artifact = "com.google.protobuf:protoc:4.35.0"
+        artifact = "com.google.protobuf:protoc:4.33.2"
     }
     plugins {
         create("grpc") {
-            artifact = "io.grpc:protoc-gen-grpc-java:1.71.0"
+            artifact = "io.grpc:protoc-gen-grpc-java:1.81.0"
         }
         create("grpckt") {
-            artifact = "io.grpc:protoc-gen-grpc-kotlin:1.4.1:jdk8@jar"
+            artifact = "io.grpc:protoc-gen-grpc-kotlin:1.5.0:jdk8@jar"
         }
     }
     generateProtoTasks {
@@ -47,12 +51,6 @@ sourceSets {
 }
 
 kotlin {
-    compilerOptions {
-        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21
-    }
+    jvmToolchain(25)
 }
 
-java {
-    sourceCompatibility = JavaVersion.VERSION_21
-    targetCompatibility = JavaVersion.VERSION_21
-}

@@ -1,8 +1,8 @@
-package io.factstore.cli.command
+package io.factstore.cli.command.store
 
-import picocli.CommandLine.Command
+import picocli.CommandLine
 
-@Command(
+@CommandLine.Command(
     name = "store",
     aliases = [ "stores" ],
     description = ["Manage stores"],

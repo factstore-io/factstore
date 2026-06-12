@@ -1,13 +1,18 @@
-package io.factstore.cli.command
+package io.factstore.cli.command.fact
 
-import io.factstore.cli.client.*
 import io.factstore.cli.config.FactStoreConfigResolver
+import io.factstore.client.FactStoreClient
+import io.factstore.client.model.FactInput
+import io.factstore.client.model.FactPayload
 import jakarta.inject.Inject
-import picocli.CommandLine.*
-import picocli.CommandLine.Model.CommandSpec
-import java.util.*
+import kotlinx.coroutines.runBlocking
+import picocli.CommandLine
+import picocli.CommandLine.Command
+import picocli.CommandLine.Option
+import picocli.CommandLine.Parameters
+import picocli.CommandLine.Spec
+import java.util.UUID
 import java.util.concurrent.Callable
-import kotlin.text.Charsets.UTF_8
 
 @Command(
     name = "append",
@@ -22,7 +27,7 @@ class AppendFactCommand : Callable<Int> {
     lateinit var configResolver: FactStoreConfigResolver
 
     @Spec
-    lateinit var spec: CommandSpec
+    lateinit var spec: CommandLine.Model.CommandSpec
 
     @Option(
         names = ["--store", "-s"],
@@ -58,13 +63,27 @@ class AppendFactCommand : Callable<Int> {
     )
     var payload: String? = null
 
-    override fun call(): Int {
+    override fun call(): Int = runBlocking {
         val storeName = configResolver.resolveStore(storeName)
-        val resolvedPayload = resolvePayload() ?: return ExitCode.SOFTWARE
-        client.appendFact(storeName, resolvedPayload.toAppendRequest())
+        val resolvedPayload = resolvePayload() ?: return@runBlocking CommandLine.ExitCode.SOFTWARE
+        client.facts.append(
+            storeName = storeName,
+            facts = listOf(
+                resolvedPayload.toFactInput()
+            ),
+            idempotencyKey = UUID.randomUUID().toString(),
+            condition = null
+        )
         println("✅ Fact appended successfully.")
-        return ExitCode.OK
+        CommandLine.ExitCode.OK
     }
+
+    private fun String.toFactInput(): FactInput = FactInput(
+        type = type,
+        subject = subject,
+        payload = FactPayload(data = toByteArray(Charsets.UTF_8)),
+        id = UUID.randomUUID().toString(),
+    )
 
     private fun resolvePayload(): String? {
         val raw = payload ?: System.`in`.bufferedReader().readText()
@@ -77,16 +96,4 @@ class AppendFactCommand : Callable<Int> {
         return raw
     }
 
-    private fun String.toAppendRequest(): AppendHttpRequest =
-        AppendHttpRequest(
-            facts = listOf(
-                FactHttp(
-                    type = type,
-                    subject = subject,
-                    payload = FactPayloadHttp(data = toByteArray(UTF_8)),
-                    tags = tags,
-                )
-            ),
-            idempotencyKey = UUID.randomUUID(),
-        )
 }

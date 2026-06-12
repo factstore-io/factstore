@@ -4,18 +4,18 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.ObjectWriter
 import com.fasterxml.jackson.databind.SerializationFeature
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
-import io.factstore.cli.client.FactHttp
+import io.factstore.client.model.Fact
 import java.time.temporal.ChronoUnit.SECONDS
 import kotlin.text.Charsets.UTF_8
 
-fun FactHttp.printSingle(outputFormat: OutputFormat) {
+fun Fact.printSingle(outputFormat: OutputFormat) {
     when (outputFormat) {
         OutputFormat.Table -> printTable()
         OutputFormat.Json -> printJson()
     }
 }
 
-fun FactHttp.printTable() {
+fun Fact.printTable() {
     println(
         "[%s] %-15s | %s".format(
             appendedAt?.truncatedTo(SECONDS),
@@ -30,14 +30,16 @@ enum class OutputFormat {
     Json
 }
 
-fun List<FactHttp>.print(format: OutputFormat) {
+fun List<Fact>.print(format: OutputFormat) {
     when (format) {
         OutputFormat.Table -> printTable()
         OutputFormat.Json -> printPrettyJson()
     }
 }
 
-fun List<FactHttp>.printTable() {
+
+
+fun List<Fact>.printTable() {
     if (this.isEmpty()) {
         println("No facts found.")
         return
@@ -67,7 +69,7 @@ fun List<FactHttp>.printTable() {
                 fact.id,
                 fact.type,
                 fact.subject,
-                fact.appendedAt?.truncatedTo(SECONDS) ?: "",
+                fact.appendedAt.truncatedTo(SECONDS) ?: "",
                 payload,
             )
         )
@@ -82,10 +84,10 @@ val prettyJsonPrinter: ObjectWriter =
     jsonPrinter.writerWithDefaultPrettyPrinter()
 
 
-fun List<FactHttp>.printPrettyJson() {
+fun List<Fact>.printPrettyJson() {
     println(prettyJsonPrinter.writeValueAsString(this))
 }
 
-fun FactHttp.printJson() {
+fun Fact.printJson() {
     println(jsonPrinter.writeValueAsString(this))
 }

@@ -1,4 +1,4 @@
-package io.factstore.cli.command
+package io.factstore.cli.command.fact
 
 import picocli.CommandLine.Command
 
@@ -9,6 +9,10 @@ import picocli.CommandLine.Command
     subcommands = [
         AppendFactCommand::class,
         StreamFactsCommand::class,
+        FindBySubjectCommand::class,
+        FindByTagsCommand::class,
+        FindInTimeRangeCommand::class,
+        FindByIdCommand::class,
     ]
 )
 class FactCommand
