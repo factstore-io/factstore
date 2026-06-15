@@ -351,6 +351,23 @@ internal fun GrpcFindInTimeRangeRequest.toDomainRequest(): FindInTimeRangeReques
 internal suspend fun FindInTimeRangeRequest.publishTo(factStore: FactStore): FindInTimeRangeResult =
     factStore.findInTimeRange(this)
 
+typealias GrpcStreamFactsRequest = FactStoreProto.StreamFactsRequest
+
+internal fun GrpcStreamFactsRequest.toDomainRequest(): StreamFactsRequest {
+    val startPosition = when (startPositionCase) {
+        FactStoreProto.StreamFactsRequest.StartPositionCase.FROM_END -> StartPosition.End
+        FactStoreProto.StreamFactsRequest.StartPositionCase.AFTER_FACT_ID -> StartPosition.After(afterFactId.toFactId())
+        else -> StartPosition.Beginning
+    }
+    return StreamFactsRequest(
+        storeName = StoreName(storeName),
+        startPosition = startPosition,
+    )
+}
+
+internal suspend fun StreamFactsRequest.publishTo(factStore: FactStore): StreamResult =
+    factStore.stream(this)
+
 typealias GrpcExistsStoreRequest = FactStoreProto.StoreExistsRequest
 
 internal fun GrpcExistsStoreRequest.toDomainRequest(): ExistsStoreByNameRequest =

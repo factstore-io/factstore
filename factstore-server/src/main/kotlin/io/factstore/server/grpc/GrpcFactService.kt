@@ -66,21 +66,10 @@ class GrpcFactService(
     }
 
     override fun streamFacts(
-        request: StreamFactsRequest
+        request: FactStoreProto.StreamFactsRequest
     ): Multi<FactStoreProto.Fact> = toMulti(grpcContext) {
-        val startPosition = when (request.startPositionCase) {
-            StreamFactsRequest.StartPositionCase.FROM_END -> StartPosition.End
-            StreamFactsRequest.StartPositionCase.AFTER_FACT_ID -> StartPosition.After(
-                request.afterFactId.toFactId()
-            )
-            else -> StartPosition.Beginning
-        }
-
         flow {
-            when (val result = factStore.stream(
-                StoreName(request.storeName),
-                StreamingOptions(startPosition)
-            )) {
+            when (val result = request.toDomainRequest().publishTo(factStore)) {
                 is StreamResult.StoreNotFound -> throw StatusRuntimeException(
                     Status.FAILED_PRECONDITION.withDescription("Store '${result.storeName.value}' not found - create it first")
                 )

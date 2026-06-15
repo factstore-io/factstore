@@ -14,31 +14,19 @@ import kotlinx.coroutines.flow.Flow
  *
  * @author Domenic Cassisi
  */
-interface FactStreamer {
+fun interface FactStreamer {
 
     /**
-     * Streams all facts from the store according to the given streaming options.
+     * Streams all facts from the store according to the given request.
      *
      * The returned [Flow] emits facts incrementally and may continue emitting
      * new facts as they are appended to the store.
      *
-     * @param storeName the store from which to stream facts
-     * @param streamingOptions configuration options controlling how facts
-     * are streamed
+     * @param request the streaming request specifying the store and start position
      * @return a cold [Flow] emitting facts that match the streaming criteria,
      * or an error result if the fact store does not exist or the start position is invalid
      */
-    suspend fun stream(storeName: StoreName, streamingOptions: StreamingOptions): StreamResult
-
-    /**
-     * Streams all facts from the beginning of the store.
-     *
-     * This is equivalent to calling [stream] with a default
-     * [StreamingOptions].
-     *
-     * @return a cold [Flow] emitting all facts in order
-     */
-    suspend fun stream(storeName: StoreName) = stream(storeName, StreamingOptions())
+    suspend fun stream(request: StreamFactsRequest): StreamResult
 
 }
 
@@ -65,16 +53,6 @@ sealed interface StartPosition {
 
 }
 
-/**
- * Configuration options controlling fact streaming behavior.
- *
- * @property startPosition the position from which to start streaming
- *
- * @author Domenic Cassisi
- */
-data class StreamingOptions(
-    val startPosition: StartPosition = StartPosition.Beginning,
-)
 
 sealed interface StreamResult {
     @JvmInline

@@ -97,7 +97,7 @@ abstract class AbstractFactStoreTest {
 
         store.append(testStore, fact)
 
-        store.stream(testStore).let { (it as StreamResult.FactStream).stream }.take(1).collect {
+        store.stream(StreamFactsRequest(testStore)).let { (it as StreamResult.FactStream).stream }.take(1).collect {
             println("Streamed fact: $it")
         }
 
@@ -947,7 +947,7 @@ abstract class AbstractFactStoreTest {
 
         // Start streaming from beginning
         val streamJob = launch {
-            store.stream(testStore)
+            store.stream(StreamFactsRequest(testStore))
                 .let { (it as StreamResult.FactStream).stream }
                 .take(3)
                 .collect {
@@ -978,8 +978,7 @@ abstract class AbstractFactStoreTest {
         // ---- Test StartPosition.After ----
 
         val streamedEvents = store.stream(
-            testStore,
-            StreamingOptions(startPosition = StartPosition.After(fact1.id))
+            StreamFactsRequest(testStore, startPosition = StartPosition.After(fact1.id))
         ).let { (it as StreamResult.FactStream).stream }
             .take(2)
             .toList()
@@ -991,8 +990,7 @@ abstract class AbstractFactStoreTest {
         val nonExistingFactId = FactId.generate()
 
         val streamResult = store.stream(
-            testStore,
-            StreamingOptions(startPosition = StartPosition.After(nonExistingFactId))
+            StreamFactsRequest(testStore, startPosition = StartPosition.After(nonExistingFactId))
         )
 
         assertThat(streamResult).isInstanceOf(StreamResult.FactIdNotFound::class.java)
@@ -1016,8 +1014,7 @@ abstract class AbstractFactStoreTest {
         // Start stream from END (should NOT see initialFact1/2)
         val job = launch {
             store.stream(
-                testStore,
-                StreamingOptions(startPosition = StartPosition.End)
+                StreamFactsRequest(testStore, startPosition = StartPosition.End)
             )
                 .let { (it as StreamResult.FactStream).stream }
                 .take(2)
@@ -1070,7 +1067,7 @@ abstract class AbstractFactStoreTest {
 
     @Test
     fun testStreamingNonExistingFactstore(): Unit = runBlocking {
-        val streamResult = store.stream(nonExistingStore)
+        val streamResult = store.stream(StreamFactsRequest(nonExistingStore))
         assertThat(streamResult).isInstanceOf(StreamResult.StoreNotFound::class.java)
     }
 
