@@ -14,7 +14,7 @@ quarkusVersion = "3.36.2"
 kotlin-logging = "8.0.4"
 quarkusQuinoa = "2.8.3"
 coroutines-jdk = "1.11.0"
-protobuf-kotlin = "4.35.1"
+google-protobuf = "4.35.1"
 mutiny-kotlin = "3.2.1"
 grpc = "1.81.0"
 grpc-kotlin = "1.5.0"
@@ -45,7 +45,8 @@ io-quarkus-platform-quarkus-bom = { module = "io.quarkus.platform:quarkus-bom", 
 io-github-oshai-kotlin-logging = {module = 'io.github.oshai:kotlin-logging-jvm', version.ref = "kotlin-logging" }
 quarkus-quinoa = { module = "io.quarkiverse.quinoa:quarkus-quinoa", version.ref = "quarkusQuinoa" }
 coroutines-jdk = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-jdk9", version.ref = "coroutines-jdk" }
-com-google-protobuf-protobuf-kotlin = { module = "com.google.protobuf:protobuf-kotlin", version.ref = "protobuf-kotlin" }
+com-google-protobuf-protobuf-java = { module = "com.google.protobuf:protobuf-java", version.ref = "google-protobuf" }
+com-google-protobuf-protobuf-kotlin = { module = "com.google.protobuf:protobuf-kotlin", version.ref = "google-protobuf" }
 io-smallrye-mutiny-kotlin = { module = "io.smallrye.reactive:mutiny-kotlin", version.ref = "mutiny-kotlin" }
 io-grpc-grpc-stub = { module = "io.grpc:grpc-stub", version.ref = "grpc" }
 io-grpc-grpc-protobuf = { module = "io.grpc:grpc-protobuf", version.ref = "grpc" }

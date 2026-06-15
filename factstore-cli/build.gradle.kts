@@ -4,10 +4,12 @@ plugins {
     alias(libs.plugins.quarkus)
 }
 
+val protobufVersion = libs.versions.google.protobuf.get()
+
 configurations.all {
     resolutionStrategy {
-        force("com.google.protobuf:protobuf-java:4.35.1")
-        force("com.google.protobuf:protobuf-kotlin:4.35.1")
+        force("com.google.protobuf:protobuf-java:$protobufVersion")
+        force("com.google.protobuf:protobuf-kotlin:$protobufVersion")
     }
 }
 
