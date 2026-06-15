@@ -18,10 +18,8 @@ class FdbFactStreamer(
     private val store: FdbFactStore
 ) : FactStreamer {
 
-    override suspend fun stream(
-        storeName: StoreName,
-        streamingOptions: StreamingOptions
-    ): StreamResult {
+    override suspend fun stream(request: StreamFactsRequest): StreamResult {
+        val storeName = request.storeName
 
         // Check existence
         val storeId = read { tr ->
@@ -36,7 +34,7 @@ class FdbFactStreamer(
 
         // Resolve cursor safely
         val cursorResult = with(storeId) {
-            resolveInitialCursor(streamingOptions.startPosition)
+            resolveInitialCursor(request.startPosition)
         }
 
         val initialCursor = when (cursorResult) {

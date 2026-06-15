@@ -4,24 +4,28 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import java.util.UUID
 
-class StreamingOptionsTest {
+class StreamFactsRequestTest {
 
     @Test
-    fun `should create StreamingOptionSet with default values`() {
-        val options = StreamingOptions()
+    fun `should create StreamFactsRequest with default start position`() {
+        val storeName = StoreName("test-store")
+        val request = StreamFactsRequest(storeName)
 
-        assertThat(options.startPosition).isEqualTo(StartPosition.Beginning)
+        assertThat(request.storeName).isEqualTo(storeName)
+        assertThat(request.startPosition).isEqualTo(StartPosition.Beginning)
     }
 
     @Test
-    fun `should create StreamingOptionSet with custom values`() {
+    fun `should create StreamFactsRequest with custom start position`() {
+        val storeName = StoreName("test-store")
         val lastSeenId = FactId(UUID.randomUUID())
 
-        val options = StreamingOptions(
+        val request = StreamFactsRequest(
+            storeName = storeName,
             startPosition = StartPosition.After(lastSeenId),
         )
 
-        assertThat(options.startPosition).isEqualTo(StartPosition.After(lastSeenId))
+        assertThat(request.startPosition).isEqualTo(StartPosition.After(lastSeenId))
     }
 
 }

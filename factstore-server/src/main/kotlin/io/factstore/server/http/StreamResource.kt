@@ -29,19 +29,17 @@ class StreamResource(
         @QueryParam("from") from: String? = null,
     ): Flow<FactHttp> =
         factStore.stream(
-            storeName = StoreName(storeName),
-            streamingOptions = buildStreamingOptions(after, from?.lowercase(Locale.ENGLISH))
-        )
-            .toResponse()
+            StreamFactsRequest(
+                storeName = StoreName(storeName),
+                startPosition = buildStartPosition(after, from?.lowercase(Locale.ENGLISH))
+            )
+        ).toResponse()
 
 
-    private fun buildStreamingOptions(after: UUID?, from: String?): StreamingOptions {
-        val startPosition = when (from) {
-            "beginning" -> StartPosition.Beginning
-            "end" -> StartPosition.End
-            else -> after?.let { StartPosition.After(it.toFactId()) } ?: StartPosition.Beginning
-        }
-        return StreamingOptions(startPosition)
+    private fun buildStartPosition(after: UUID?, from: String?): StartPosition = when (from) {
+        "beginning" -> StartPosition.Beginning
+        "end" -> StartPosition.End
+        else -> after?.let { StartPosition.After(it.toFactId()) } ?: StartPosition.Beginning
     }
 
 }

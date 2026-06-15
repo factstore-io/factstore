@@ -172,10 +172,11 @@ class MemoryFactStore : FactStore {
 
     // ===== FactStreamer Implementation =====
 
-    override suspend fun stream(storeName: StoreName, streamingOptions: StreamingOptions): StreamResult {
+    override suspend fun stream(request: StreamFactsRequest): StreamResult {
+        val storeName = request.storeName
         val internalId = lock.withLock { resolveId(storeName) } ?: return StreamResult.StoreNotFound(storeName)
 
-        val startIndex = when (val position = streamingOptions.startPosition) {
+        val startIndex = when (val position = request.startPosition) {
             StartPosition.Beginning -> 0
             StartPosition.End -> lock.withLock { facts[internalId]?.size ?: 0 }
             is StartPosition.After -> {
