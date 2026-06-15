@@ -1,5 +1,7 @@
 package io.factstore.cli.command
 
+import io.factstore.cli.command.fact.FactCommand
+import io.factstore.cli.command.store.StoreCommand
 import io.quarkus.picocli.runtime.annotations.TopCommand
 import kotlinx.coroutines.Runnable
 import picocli.CommandLine.Command
@@ -17,7 +19,6 @@ import picocli.CommandLine.Spec
     subcommands = [
         StoreCommand::class,
         FactCommand::class,
-        FindCommand::class,
     ]
 )
 class FactStoreCommand : Runnable {

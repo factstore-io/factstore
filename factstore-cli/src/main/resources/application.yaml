@@ -11,6 +11,16 @@ quarkus:
   package:
     jar:
       enabled: true
+  grpc:
+    server:
+      use-separate-server: false
+    clients:
+      factstore:
+        host: localhost
+        port: 8080
+        #use-quarkus-grpc-client: true
+  http:
+    host-enabled: false
 
 "%dev":
   quarkus:

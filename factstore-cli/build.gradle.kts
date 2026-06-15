@@ -4,6 +4,15 @@ plugins {
     alias(libs.plugins.quarkus)
 }
 
+val protobufVersion = libs.versions.google.protobuf.get()
+
+configurations.all {
+    resolutionStrategy {
+        force("com.google.protobuf:protobuf-java:$protobufVersion")
+        force("com.google.protobuf:protobuf-kotlin:$protobufVersion")
+    }
+}
+
 dependencies {
     implementation(enforcedPlatform(libs.io.quarkus.platform.quarkus.bom))
     implementation("io.quarkus:quarkus-kotlin")
@@ -13,6 +22,9 @@ dependencies {
     implementation("io.quarkus:quarkus-hibernate-validator")
     implementation("io.quarkus:quarkus-picocli")
     implementation("io.quarkus:quarkus-rest-client-jackson")
+    implementation("io.quarkus:quarkus-grpc")
+
+    implementation(project(":factstore-client-kotlin"))
 
     implementation(libs.io.github.oshai.kotlin.logging)
 

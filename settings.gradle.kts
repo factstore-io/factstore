@@ -8,4 +8,5 @@ include(
     "factstore-memory",
     "factstore-server",
     "factstore-cli",
+    "factstore-client-kotlin",
 )
