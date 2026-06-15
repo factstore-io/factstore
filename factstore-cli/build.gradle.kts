@@ -4,6 +4,13 @@ plugins {
     alias(libs.plugins.quarkus)
 }
 
+configurations.all {
+    resolutionStrategy {
+        force("com.google.protobuf:protobuf-java:4.35.1")
+        force("com.google.protobuf:protobuf-kotlin:4.35.1")
+    }
+}
+
 dependencies {
     implementation(enforcedPlatform(libs.io.quarkus.platform.quarkus.bom))
     implementation("io.quarkus:quarkus-kotlin")
