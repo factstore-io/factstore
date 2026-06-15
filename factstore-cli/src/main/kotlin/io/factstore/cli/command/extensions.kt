@@ -18,7 +18,7 @@ fun Fact.printSingle(outputFormat: OutputFormat) {
 fun Fact.printTable() {
     println(
         "[%s] %-15s | %s".format(
-            appendedAt?.truncatedTo(SECONDS),
+            appendedAt.truncatedTo(SECONDS),
             type,
             String(payload.data, charset = UTF_8)
         )
