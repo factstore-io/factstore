@@ -7,6 +7,7 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.flow.transform
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.assertj.core.api.Assertions.*
@@ -97,7 +98,7 @@ abstract class AbstractFactStoreTest {
 
         store.append(testStore, fact)
 
-        store.stream(StreamFactsRequest(testStore)).let { (it as StreamResult.FactStream).stream }.take(1).collect {
+        store.stream(StreamFactsRequest(testStore)).let { (it as StreamResult.FactStream).stream }.transform { batch -> batch.forEach { emit(it) } }.take(1).collect {
             println("Streamed fact: $it")
         }
 
@@ -949,6 +950,7 @@ abstract class AbstractFactStoreTest {
         val streamJob = launch {
             store.stream(StreamFactsRequest(testStore))
                 .let { (it as StreamResult.FactStream).stream }
+                .transform { batch -> batch.forEach { emit(it) } }
                 .take(3)
                 .collect {
                     collectedFacts += it
@@ -980,6 +982,7 @@ abstract class AbstractFactStoreTest {
         val streamedEvents = store.stream(
             StreamFactsRequest(testStore, startPosition = StartPosition.After(fact1.id))
         ).let { (it as StreamResult.FactStream).stream }
+            .transform { batch -> batch.forEach { emit(it) } }
             .take(2)
             .toList()
 
@@ -1017,6 +1020,7 @@ abstract class AbstractFactStoreTest {
                 StreamFactsRequest(testStore, startPosition = StartPosition.End)
             )
                 .let { (it as StreamResult.FactStream).stream }
+                .transform { batch -> batch.forEach { emit(it) } }
                 .take(2)
                 .onStart { streamStartedLatch.complete(Unit) }
                 .collect {

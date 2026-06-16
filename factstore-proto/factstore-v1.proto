@@ -229,7 +229,8 @@ service FactService {
   // Open a server-side stream that emits existing facts and then continues to emit
   // new facts as they are appended. Pre-stream errors (store not found,
   // after_fact_id not found) are signaled with FAILED_PRECONDITION.
-  rpc StreamFacts(StreamFactsRequest) returns (stream Fact);
+  // Facts are delivered in batches for higher throughput.
+  rpc StreamFacts(StreamFactsRequest) returns (stream FactBatch);
 }
 
 // -- AppendFacts --
@@ -371,6 +372,11 @@ message FindFactsInTimeRangeResponse {
 }
 
 // -- StreamFacts --
+
+// A batch of facts delivered in a single stream message for higher throughput.
+message FactBatch {
+  repeated Fact facts = 1;
+}
 
 // Marker for streaming from the very first fact in the store.
 message FromBeginning {}

@@ -390,7 +390,7 @@ class GrpcFactServiceTest {
         }).asFlow().take(1).toList()
 
         assertThat(facts).hasSize(1)
-        assertThat(facts.first().id).isEqualTo(seedFactId.toString())
+        assertThat(facts.first().factsList.first().id).isEqualTo(seedFactId.toString())
     }
 
     @Test

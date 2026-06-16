@@ -10,7 +10,7 @@ import jakarta.ws.rs.core.Response
 import jakarta.ws.rs.ext.ExceptionMapper
 import jakarta.ws.rs.ext.Provider
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.transform
 import org.jboss.resteasy.reactive.RestStreamElementType
 import java.util.*
 
@@ -47,7 +47,7 @@ class StreamResource(
 private fun StreamResult.toResponse(): Flow<FactHttp> = when (this) {
     is StreamResult.StoreNotFound -> throw StoreNotFoundException(storeName)
     is StreamResult.FactIdNotFound -> throw FactNotFoundException(this.id)
-    is StreamResult.FactStream -> this.stream.map { it.toFactHttp() }
+    is StreamResult.FactStream -> this.stream.transform { batch -> batch.forEach { emit(it.toFactHttp()) } }
 }
 
 sealed class StreamApiException : RuntimeException() {
