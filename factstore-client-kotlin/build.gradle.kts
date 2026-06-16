@@ -1,5 +1,6 @@
 plugins {
     alias(libs.plugins.kotlin.jvm)
+    alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.protobuf)
 }
 
@@ -10,6 +11,7 @@ dependencies {
     implementation(libs.com.google.protobuf.protobuf.kotlin)
     implementation(libs.io.grpc.grpc.netty.shaded)
     implementation(libs.org.jetbrains.kotlinx.kotlinx.coroutines.core)
+    api(libs.org.jetbrains.kotlinx.kotlinx.serialization.json)
     compileOnly(libs.javax.annotation.javax.annotation.api)
 }
 

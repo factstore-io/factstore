@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.allopen)
     alias(libs.plugins.quarkus)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 val protobufVersion = libs.versions.google.protobuf.get()
@@ -19,9 +20,7 @@ dependencies {
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
     implementation("io.quarkus:quarkus-arc")
     implementation("io.quarkus:quarkus-config-yaml")
-    implementation("io.quarkus:quarkus-hibernate-validator")
     implementation("io.quarkus:quarkus-picocli")
-    implementation("io.quarkus:quarkus-rest-client-jackson")
     implementation("io.quarkus:quarkus-grpc")
 
     implementation(project(":factstore-client-kotlin"))

@@ -4,7 +4,7 @@ import io.factstore.client.FactStoreClient
 import io.grpc.Channel
 import io.quarkus.grpc.GrpcClient
 import jakarta.enterprise.context.ApplicationScoped
-import jakarta.ws.rs.Produces
+import jakarta.enterprise.inject.Produces
 
 @ApplicationScoped
 class FactStoreClientProducer {
