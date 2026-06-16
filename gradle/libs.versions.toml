@@ -18,7 +18,7 @@ google-protobuf = "4.35.1"
 mutiny-kotlin = "3.2.1"
 grpc = "1.81.0"
 grpc-kotlin = "1.5.0"
-protobuf-gradle-plugin = "0.9.4"
+protobuf-gradle-plugin = "0.10.0"
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
