@@ -1,10 +1,7 @@
 package io.factstore.cli.command
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.ObjectWriter
-import com.fasterxml.jackson.databind.SerializationFeature
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import io.factstore.client.model.Fact
+import kotlinx.serialization.json.Json
 import java.time.temporal.ChronoUnit.SECONDS
 import kotlin.text.Charsets.UTF_8
 
@@ -76,18 +73,13 @@ fun List<Fact>.printTable() {
     }
 }
 
-val jsonPrinter: ObjectMapper = ObjectMapper()
-    .registerModule(JavaTimeModule())
-    .configure(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS, false)
-
-val prettyJsonPrinter: ObjectWriter =
-    jsonPrinter.writerWithDefaultPrettyPrinter()
-
+private val json = Json { prettyPrint = false }
+private val prettyJson = Json { prettyPrint = true }
 
 fun List<Fact>.printPrettyJson() {
-    println(prettyJsonPrinter.writeValueAsString(this))
+    println(prettyJson.encodeToString(this))
 }
 
 fun Fact.printJson() {
-    println(jsonPrinter.writeValueAsString(this))
+    println(json.encodeToString(this))
 }

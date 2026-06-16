@@ -6,7 +6,6 @@ import io.factstore.client.exceptions.FactNotFoundException
 import io.factstore.client.exceptions.StoreNameAlreadyExistsException
 import io.factstore.client.exceptions.StoreNotFoundException
 import jakarta.enterprise.context.ApplicationScoped
-import jakarta.ws.rs.ProcessingException
 import picocli.CommandLine
 import picocli.CommandLine.ExitCode
 import java.lang.Exception
@@ -34,7 +33,6 @@ private fun Exception.toCliMessage(): String = when (this) {
     is FactNotFoundException -> "❌ Fact not found: '${this.factId}'"
     is AppendConditionViolatedException -> "❌ Append condition violated: a concurrent write changed the store state. Retry with an updated condition."
     is DuplicateFactIdsException -> "❌ Duplicate fact IDs in request: ${this.factIds.joinToString()}"
-    is ProcessingException -> "❌ Network error: ${this.cause?.message ?: this.message}"
     is UnknownHostException -> "❌ Could not resolve host: ${this.message}"
     else -> "❌ Unexpected error: ${this.message}"
 }

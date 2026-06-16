@@ -1,18 +1,23 @@
 package io.factstore.client.model
 
+import kotlinx.serialization.Serializable
 import java.time.Instant
 
+@Serializable
 data class Fact(
     val id: String,
     val type: String,
     val subject: String,
+    @Serializable(with = InstantSerializer::class)
     val appendedAt: Instant,
     val payload: FactPayload,
     val metadata: Map<String, String>,
     val tags: Map<String, String>,
 )
 
+@Serializable
 data class FactPayload(
+    @Serializable(with = ByteArrayAsBase64Serializer::class)
     val data: ByteArray,
     val format: String? = null,
     val schemaRef: String? = null,
