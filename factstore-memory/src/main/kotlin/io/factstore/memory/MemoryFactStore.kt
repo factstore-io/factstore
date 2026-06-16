@@ -192,19 +192,20 @@ class MemoryFactStore : FactStore {
         return StreamResult.FactStream(streamFacts(internalId, startIndex))
     }
 
-    private fun streamFacts(internalId: UUID, startIndex: Int) = flow {
+    private fun streamFacts(internalId: UUID, startIndex: Int) = flow<List<Fact>> {
         var currentIndex = startIndex
         while (true) {
-            var factToEmit: Fact? = null
-            lock.withLock {
+            val batch = lock.withLock {
                 val store = facts[internalId]
                 if (store != null && currentIndex < store.size) {
-                    factToEmit = store[currentIndex]
-                    currentIndex++
+                    val newFacts = store.subList(currentIndex, store.size).toList()
+                    currentIndex = store.size
+                    newFacts
+                } else {
+                    emptyList()
                 }
             }
-
-            factToEmit?.let { emit(it) } ?: delay(100)
+            if (batch.isNotEmpty()) emit(batch) else delay(100)
         }
     }
 

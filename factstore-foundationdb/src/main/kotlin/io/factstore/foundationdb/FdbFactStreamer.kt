@@ -1,38 +1,43 @@
 package io.factstore.foundationdb
 
 import com.apple.foundationdb.KeySelector
+import com.apple.foundationdb.KeyValue
 import com.apple.foundationdb.Range
 import com.apple.foundationdb.ReadTransaction
+import com.apple.foundationdb.StreamingMode
 import com.apple.foundationdb.Transaction
-import com.apple.foundationdb.tuple.Tuple
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.future.await
+import kotlinx.coroutines.withContext
 import io.factstore.core.*
 import io.factstore.core.StreamResult.*
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.channels.BufferOverflow.SUSPEND
+import kotlinx.coroutines.flow.buffer
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import java.util.concurrent.CompletableFuture
 
-const val DEFAULT_BATCH_SIZE = 5000
+const val DEFAULT_BATCH_SIZE = 10_000
+const val RAW_CHANNEL_CAPACITY = 4
 
 class FdbFactStreamer(
-    private val store: FdbFactStore
+    private val store: FdbFactStore,
+    private val deserializationDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : FactStreamer {
 
     override suspend fun stream(request: StreamFactsRequest): StreamResult {
         val storeName = request.storeName
 
-        // Check existence
         val storeId = read { tr ->
-            with(tr) {
-                store.context.lookUpStoreIdByName(storeName)
-            }
+            with(tr) { store.context.lookUpStoreIdByName(storeName) }
         }
 
         if (storeId == null) {
             return StoreNotFound(storeName)
         }
 
-        // Resolve cursor safely
         val cursorResult = with(storeId) {
             resolveInitialCursor(request.startPosition)
         }
@@ -44,41 +49,44 @@ class FdbFactStreamer(
         }
 
         val globalRange = store.context.factSubspace.getRange(storeId)
-        val flow = streamFacts(initialCursor, globalRange, storeId)
 
-        return FactStream(flow)
+        return FactStream(streamFacts(initialCursor, globalRange, storeId))
     }
 
     private fun streamFacts(
         initialCursor: ByteArray?,
         globalRange: Range,
         storeId: StoreId
-    ): Flow<Fact> = flow {
+    ): Flow<List<Fact>> =
+        launchStreamer(initialCursor, globalRange, storeId)
+            .buffer(
+                capacity = RAW_CHANNEL_CAPACITY,
+                onBufferOverflow = SUSPEND
+            )
+            .map { keyValues ->
+                withContext(deserializationDispatcher) {
+                    keyValues.map { it.value.toSerializableFdbFact().toFact() }
+                }
+            }
 
+    private fun launchStreamer(
+        initialCursor: ByteArray?,
+        globalRange: Range,
+        storeId: StoreId
+    ): Flow<List<KeyValue>> = flow {
         var lastSeenKey = initialCursor
-
         while (true) {
-
             val readResult = store.db.runAsync { tr ->
                 readNextBatch(lastSeenKey, globalRange, tr)
                     .thenApply { batch -> batch.toReadResult(tr, storeId) }
             }.await()
-
             when (readResult) {
                 is ReadResult.BatchResult -> {
-                    val lastFact = readResult.batch.last()
-                    lastSeenKey = with(storeId) {
-                        lastFact.getFactPositionKey()
-                    }
-
-                    for (fdbFact in readResult.batch) {
-                        emit(fdbFact.fact)
-                    }
+                    lastSeenKey = readResult.batch.last().key
+                    emit(readResult.batch)
                 }
 
-                is ReadResult.WatchResult -> {
-                    readResult.watch.await()
-                }
+                is ReadResult.WatchResult -> readResult.waitForFacts()
             }
         }
     }
@@ -98,15 +106,12 @@ class FdbFactStreamer(
     }
 
     context(storeId: StoreId)
-    private suspend fun resolveInitialCursor(
-        startPosition: StartPosition,
-    ): CursorResult =
+    private suspend fun resolveInitialCursor(startPosition: StartPosition): CursorResult =
         when (startPosition) {
             StartPosition.Beginning -> CursorResult.Beginning
             StartPosition.End -> {
                 val key = getCurrentEndKey()
-                if (key == null) CursorResult.Beginning
-                else CursorResult.Found(key)
+                if (key == null) CursorResult.Beginning else CursorResult.Found(key)
             }
 
             is StartPosition.After -> {
@@ -120,10 +125,20 @@ class FdbFactStreamer(
     private suspend fun getKeyForFactOrNull(factId: FactId): ByteArray? =
         read { tr ->
             with(tr) {
-                store.context.factPositionIndexSubspace.getPosition(storeId, factId).thenApply { position ->
-                    position?.getFactPositionKey()
-                }
+                store.context.factPositionIndexSubspace.getPosition(storeId, factId)
+                    .thenApply { position ->
+                        position?.let { store.context.factSubspace.getFactKey(storeId, it) }
+                    }
             }
+        }
+
+    context(storeId: StoreId)
+    private suspend fun getCurrentEndKey(): ByteArray? =
+        read { tr ->
+            store.getHead(storeId, tr)
+                .thenApply { position ->
+                    position?.let { store.context.factSubspace.getFactKey(storeId, it) }
+                }
         }
 
     // -------------------------------------------------------------------------
@@ -134,8 +149,7 @@ class FdbFactStreamer(
         lastSeenKey: ByteArray?,
         globalRange: Range,
         tr: ReadTransaction
-    ): CompletableFuture<List<FdbFact>> {
-
+    ): CompletableFuture<List<KeyValue>> {
         val beginSelector =
             if (lastSeenKey == null)
                 KeySelector.firstGreaterOrEqual(globalRange.begin)
@@ -144,53 +158,19 @@ class FdbFactStreamer(
 
         val endSelector = KeySelector.firstGreaterOrEqual(globalRange.end)
 
-        return tr.getRange(beginSelector, endSelector, DEFAULT_BATCH_SIZE)
-            .asList()
-            .thenApply { keyValues ->
-                keyValues.map { kv ->
-                    val keyTuple = Tuple.fromBytes(kv.key)
-                    val factPosition = keyTuple.getLastAsFactPosition()
-                    val fact = kv.value.toSerializableFdbFact().toFact()
-
-                    FdbFact(
-                        fact = fact,
-                        factPosition = factPosition
-                    )
-                }
-            }
+        return tr.snapshot().getRange(
+            beginSelector,
+            endSelector,
+            DEFAULT_BATCH_SIZE,
+            false,
+            StreamingMode.WANT_ALL
+        ).asList()
     }
 
-    // -------------------------------------------------------------------------
-    // Helpers
-    // -------------------------------------------------------------------------
-
-    context(storeId: StoreId)
-    private fun FdbFact.getFactPositionKey(): ByteArray =
-        factPosition.getFactPositionKey()
-
-    context(storeId: StoreId)
-    private fun FactPosition.getFactPositionKey(): ByteArray =
-        store.context.factSubspace.getFactKey(storeId, this)
-
-    context(storeId: StoreId)
-    private suspend fun getCurrentEndKey(): ByteArray? =
-        read { tr ->
-            store.getHead(storeId, tr)
-                .thenApply { factPosition ->
-                    factPosition?.getFactPositionKey()
-                }
-        }
-
-    private suspend fun <T> read(trBlock: (ReadTransaction) -> CompletableFuture<T>): T =
-        store.db.readAsync(trBlock).await()
-
-    private fun List<FdbFact>.toReadResult(tr: Transaction, storeId: StoreId): ReadResult =
+    private fun List<KeyValue>.toReadResult(tr: Transaction, storeId: StoreId): ReadResult =
         if (isEmpty()) {
-            ReadResult.WatchResult(
-                tr
-                    .watch(store.context.headSubspace.headKey(storeId))
-                    .thenApply { Unit } // to avoid Java's Void
-            )
+            val watchFuture = tr.watch(store.context.headSubspace.headKey(storeId))
+            ReadResult.WatchResult { watchFuture.await() }
         } else {
             ReadResult.BatchResult(this)
         }
@@ -200,7 +180,10 @@ class FdbFactStreamer(
     // -------------------------------------------------------------------------
 
     private sealed interface ReadResult {
-        data class BatchResult(val batch: List<FdbFact>) : ReadResult
-        data class WatchResult(val watch: CompletableFuture<Unit>) : ReadResult
+        data class BatchResult(val batch: List<KeyValue>) : ReadResult
+        data class WatchResult(val waitForFacts: suspend () -> Unit) : ReadResult
     }
+
+    private suspend fun <T> read(trBlock: (ReadTransaction) -> CompletableFuture<T>): T =
+        store.db.readAsync(trBlock).await()
 }

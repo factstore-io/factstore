@@ -27,6 +27,10 @@ private fun String.parseUuid(): UUID =
 
 internal fun String.toFactId(): FactId = parseUuid().toFactId()
 
+internal fun List<Fact>.toProtoFactBatch(): FactStoreProto.FactBatch = factBatch {
+    facts += this@toProtoFactBatch.map { it.toProto() }
+}
+
 internal fun Fact.toProto(): FactStoreProto.Fact = fact {
     id = this@toProto.id.uuid.toString()
     type = this@toProto.type.value

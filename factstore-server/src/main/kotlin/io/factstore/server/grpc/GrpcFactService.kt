@@ -11,8 +11,6 @@ import io.smallrye.mutiny.Multi
 import io.smallrye.mutiny.Uni
 import io.vertx.core.Vertx
 import io.vertx.kotlin.coroutines.dispatcher
-import kotlinx.coroutines.flow.emitAll
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 
 @GrpcService
@@ -67,19 +65,15 @@ class GrpcFactService(
 
     override fun streamFacts(
         request: FactStoreProto.StreamFactsRequest
-    ): Multi<FactStoreProto.Fact> = toMulti(grpcContext) {
-        flow {
-            when (val result = request.toDomainRequest().publishTo(factStore)) {
-                is StreamResult.StoreNotFound -> throw StatusRuntimeException(
-                    Status.FAILED_PRECONDITION.withDescription("Store '${result.storeName.value}' not found - create it first")
-                )
-
-                is StreamResult.FactIdNotFound -> throw StatusRuntimeException(
-                    Status.FAILED_PRECONDITION.withDescription("Fact '${result.id.uuid}' not found - cannot use it as a stream cursor")
-                )
-
-                is StreamResult.FactStream -> emitAll(result.stream.map { it.toProto() })
-            }
+    ): Multi<FactBatch> = toMulti(grpcContext) {
+        when (val result = request.toDomainRequest().publishTo(factStore)) {
+            is StreamResult.StoreNotFound -> throw StatusRuntimeException(
+                Status.FAILED_PRECONDITION.withDescription("Store '${result.storeName.value}' not found - create it first")
+            )
+            is StreamResult.FactIdNotFound -> throw StatusRuntimeException(
+                Status.FAILED_PRECONDITION.withDescription("Fact '${result.id.uuid}' not found - cannot use it as a stream cursor")
+            )
+            is StreamResult.FactStream -> result.stream.map { it.toProtoFactBatch() }
         }
     }
 }

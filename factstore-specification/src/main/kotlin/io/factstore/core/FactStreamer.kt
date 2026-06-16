@@ -56,7 +56,7 @@ sealed interface StartPosition {
 
 sealed interface StreamResult {
     @JvmInline
-    value class FactStream(val stream: Flow<Fact>) : StreamResult
+    value class FactStream(val stream: Flow<List<Fact>>) : StreamResult
     @JvmInline
     value class StoreNotFound(val storeName: StoreName) : StreamResult
     @JvmInline

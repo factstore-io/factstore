@@ -26,7 +26,7 @@ import io.factstore.grpc.v1.getFactRequest
 import io.factstore.grpc.v1.queryFactsRequest
 import io.factstore.grpc.v1.streamFactsRequest
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.transform
 import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.TimeUnit
@@ -172,5 +172,5 @@ class FactOperations internal constructor(
             StreamStartPosition.End -> fromEnd = fromEnd {}
             is StreamStartPosition.AfterFact -> afterFactId = startPosition.factId
         }
-    }).map { it.toDomain() }
+    }).transform { batch -> batch.factsList.forEach { emit(it.toDomain()) } }
 }
