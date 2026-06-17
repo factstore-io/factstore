@@ -190,8 +190,8 @@ class FdbFactAppender(
             return Pair(beginSelector, endSelector)
         }
 
-        val futures: List<CompletableFuture<Set<FactId>>> = tags.map { tag ->
-            val (beginSelector, endSelector) = createSelectors(tag, afterPosition)
+        val futures: List<CompletableFuture<Set<FactId>>> = tags.map { (key, value) ->
+            val (beginSelector, endSelector) = createSelectors(key to value, afterPosition)
 
             tr.getRange(beginSelector, endSelector, LIMIT_ONE)
                 .asList()
@@ -242,9 +242,9 @@ class FdbFactAppender(
 
         // use composite "type+tag" index
         val futures: List<CompletableFuture<Set<FactId>>> = types.map { type ->
-            val tagFutures = tags.map { tag ->
+            val tagFutures = tags.map { (key, value) ->
                 // Create the start and end selectors
-                val (startKeySelector, endSelector) = createSelectors(type, tag, afterPosition)
+                val (startKeySelector, endSelector) = createSelectors(type, key to value, afterPosition)
 
                 tr.getRange(startKeySelector, endSelector, LIMIT_ONE)
                     .asList()

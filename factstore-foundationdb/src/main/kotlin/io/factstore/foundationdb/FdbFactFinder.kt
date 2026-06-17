@@ -115,7 +115,7 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
                         when {
                             request.tags.isEmpty() -> CompletableFuture.completedFuture(FindByTagsResult.Found(emptyList()))
                             request.tags.size == 1 -> {
-                                val (key, value) = request.tags.first()
+                                val (key, value) = request.tags.entries.first()
                                 val range = tagsIndexSubspace.range(storeId, key, value)
                                 tr.getRange(range, request.limit.toFdbLimit(), request.direction.isReverse())
                                     .asList().thenCompose { kvs ->
@@ -210,8 +210,8 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
 
     context(tr: ReadTransaction, storeId: StoreId)
     private fun TagOnlyQueryItem.resolveFactPositions(): CompletableFuture<Set<FactPosition>> {
-        val futures: List<CompletableFuture<Set<FactPosition>>> = tags.map { tag ->
-            val range = tagsIndexSubspace.range(storeId, tag)
+        val futures: List<CompletableFuture<Set<FactPosition>>> = tags.map { (key, value) ->
+            val range = tagsIndexSubspace.range(storeId, key to value)
             tr.getRange(range).asList().thenApply { keyValues ->
                 keyValues.map {
                     tagsIndexSubspace.unpackPosition(it.key)
@@ -229,8 +229,8 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
     context(tr: ReadTransaction, storeId: StoreId)
     private fun TagTypeItem.resolveFactPositions(): CompletableFuture<Set<FactPosition>> {
         val futures: List<CompletableFuture<Set<FactPosition>>> = types.map { type ->
-            val tagFutures = tags.map { tag ->
-                val range = tagsTypeIndexSubspace.range(storeId, type, tag)
+            val tagFutures = tags.map { (key, value) ->
+                val range = tagsTypeIndexSubspace.range(storeId, type, key to value)
                 tr.getRange(range).asList().thenApply { keyValues ->
                     keyValues.map {
                         tagsTypeIndexSubspace.unpackPosition(it.key)

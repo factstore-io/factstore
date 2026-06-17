@@ -601,12 +601,12 @@ abstract class AbstractFactStoreTest {
         )
 
         // --- Query 1: Find all role=admin (AND semantics → fact1 + fact3, both have role=admin)
-        val adminResult = store.findByTags(FindByTagsRequest(testStore, listOf(TagKey("role") to TagValue("admin"))))
+        val adminResult = store.findByTags(FindByTagsRequest(testStore, mapOf(TagKey("role") to TagValue("admin"))))
         assertThat(adminResult).isInstanceOf(FindByTagsResult.Found::class.java)
         assertThat((adminResult as FindByTagsResult.Found).facts).containsExactly(fact1, fact3)
 
         // --- Query 2: Find all region=us (AND semantics → fact2 + fact3, both have region=us)
-        val usResult = store.findByTags(FindByTagsRequest(testStore, listOf(TagKey("region") to TagValue("us"))))
+        val usResult = store.findByTags(FindByTagsRequest(testStore, mapOf(TagKey("region") to TagValue("us"))))
         assertThat(usResult).isInstanceOf(FindByTagsResult.Found::class.java)
         assertThat((usResult as FindByTagsResult.Found).facts).containsExactly(fact2, fact3)
 
@@ -614,14 +614,14 @@ abstract class AbstractFactStoreTest {
         val adminAndEuResult = store.findByTags(
             FindByTagsRequest(
                 storeName = testStore,
-                tags = listOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("eu"))
+                tags = mapOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("eu"))
             )
         )
         assertThat(adminAndEuResult).isInstanceOf(FindByTagsResult.Found::class.java)
         assertThat((adminAndEuResult as FindByTagsResult.Found).facts).containsExactly(fact1)
 
         // --- Query 4: Non-existent tag → empty
-        val noFactsResult = store.findByTags(FindByTagsRequest(testStore, listOf(TagKey("region") to TagValue("asia"))))
+        val noFactsResult = store.findByTags(FindByTagsRequest(testStore, mapOf(TagKey("region") to TagValue("asia"))))
         assertThat(noFactsResult).isInstanceOf(FindByTagsResult.Found::class.java)
         assertThat((noFactsResult as FindByTagsResult.Found).facts).isEmpty()
 
@@ -629,7 +629,7 @@ abstract class AbstractFactStoreTest {
         val adminAndUsResult = store.findByTags(
             FindByTagsRequest(
                 storeName = testStore,
-                tags = listOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("us"))
+                tags = mapOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("us"))
             )
         )
         assertThat(adminAndUsResult).isInstanceOf(FindByTagsResult.Found::class.java)
@@ -646,7 +646,7 @@ abstract class AbstractFactStoreTest {
         val result = store.findByTags(
             FindByTagsRequest(
                 storeName = nonExistingStore,
-                tags = listOf(TagKey("region") to TagValue("asia"))
+                tags = mapOf(TagKey("region") to TagValue("asia"))
             )
         )
 
@@ -666,7 +666,7 @@ abstract class AbstractFactStoreTest {
         val result = store.findByTags(
             FindByTagsRequest(
                 storeName = testStore,
-                tags = listOf(TagKey("role") to TagValue("admin")),
+                tags = mapOf(TagKey("role") to TagValue("admin")),
                 limit = Limit.of(2),
             )
         )
@@ -689,7 +689,7 @@ abstract class AbstractFactStoreTest {
         val result = store.findByTags(
             FindByTagsRequest(
                 storeName = testStore,
-                tags = listOf(TagKey("role") to TagValue("admin")),
+                tags = mapOf(TagKey("role") to TagValue("admin")),
                 direction = ReadDirection.Backward,
             )
         )
@@ -712,7 +712,7 @@ abstract class AbstractFactStoreTest {
         val result = store.findByTags(
             FindByTagsRequest(
                 storeName = testStore,
-                tags = listOf(TagKey("role") to TagValue("admin")),
+                tags = mapOf(TagKey("role") to TagValue("admin")),
                 limit = Limit.of(2),
                 direction = ReadDirection.Backward,
             )
@@ -737,7 +737,7 @@ abstract class AbstractFactStoreTest {
         val result = store.findByTags(
             FindByTagsRequest(
                 storeName = testStore,
-                tags = listOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("eu")),
+                tags = mapOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("eu")),
                 limit = Limit.of(2),
                 direction = ReadDirection.Backward,
             )
@@ -894,8 +894,8 @@ abstract class AbstractFactStoreTest {
         val bobQuery = TagQuery(
             queryItems = listOf(
                 TagTypeItem(
-                    types = listOf(FactType("USER_CREATED")),
-                    tags = listOf(TagKey("username") to TagValue("bob"))
+                    types = setOf(FactType("USER_CREATED")),
+                    tags = mapOf(TagKey("username") to TagValue("bob"))
                 )
             )
         )
@@ -908,8 +908,8 @@ abstract class AbstractFactStoreTest {
         val multipleTagsQuery = TagQuery(
             queryItems = listOf(
                 TagTypeItem(
-                    types = listOf(FactType("USER_CREATED")),
-                    tags = listOf(TagKey("username") to TagValue("bob"), TagKey("region") to TagValue("us"))
+                    types = setOf(FactType("USER_CREATED")),
+                    tags = mapOf(TagKey("username") to TagValue("bob"), TagKey("region") to TagValue("us"))
                 )
             )
         )
@@ -922,8 +922,8 @@ abstract class AbstractFactStoreTest {
         val noMatchQuery = TagQuery(
             queryItems = listOf(
                 TagTypeItem(
-                    types = listOf(FactType("USER_CREATED")),
-                    tags = listOf(TagKey("username") to TagValue("bob"), TagKey("region") to TagValue("eu"))
+                    types = setOf(FactType("USER_CREATED")),
+                    tags = mapOf(TagKey("username") to TagValue("bob"), TagKey("region") to TagValue("eu"))
                 )
             )
         )
@@ -936,8 +936,8 @@ abstract class AbstractFactStoreTest {
         val multipleTypesQuery = TagQuery(
             queryItems = listOf(
                 TagTypeItem(
-                    types = listOf("USER_CREATED".toFactType(), "USER_DELETED".toFactType()),
-                    tags = listOf(TagKey("username") to TagValue("bob"))
+                    types = setOf("USER_CREATED".toFactType(), "USER_DELETED".toFactType()),
+                    tags = mapOf(TagKey("username") to TagValue("bob"))
                 )
             )
         )
@@ -950,8 +950,8 @@ abstract class AbstractFactStoreTest {
         val complexQuery = TagQuery(
             queryItems = listOf(
                 TagTypeItem(
-                    types = listOf("USER_CREATED".toFactType(), "USER_DELETED".toFactType()),
-                    tags = listOf(TagKey("username") to TagValue("bob"), TagKey("region") to TagValue("us"))
+                    types = setOf("USER_CREATED".toFactType(), "USER_DELETED".toFactType()),
+                    tags = mapOf(TagKey("username") to TagValue("bob"), TagKey("region") to TagValue("us"))
                 )
             )
         )
@@ -964,8 +964,8 @@ abstract class AbstractFactStoreTest {
         val noMatchingTagQuery = TagQuery(
             queryItems = listOf(
                 TagTypeItem(
-                    types = listOf(FactType("USER_CREATED")),
-                    tags = listOf(TagKey("username") to TagValue("dave"))
+                    types = setOf(FactType("USER_CREATED")),
+                    tags = mapOf(TagKey("username") to TagValue("dave"))
                 )
             )
         )
@@ -978,8 +978,8 @@ abstract class AbstractFactStoreTest {
         val noMatchingTypeQuery = TagQuery(
             queryItems = listOf(
                 TagTypeItem(
-                    types = listOf(FactType("USER_DELETED")),
-                    tags = listOf(TagKey("username") to TagValue("bob"))
+                    types = setOf(FactType("USER_DELETED")),
+                    tags = mapOf(TagKey("username") to TagValue("bob"))
                 )
             )
         )
@@ -992,8 +992,8 @@ abstract class AbstractFactStoreTest {
         val tagsNoFactsQuery = TagQuery(
             queryItems = listOf(
                 TagTypeItem(
-                    types = listOf(FactType("USER_CREATED")),
-                    tags = listOf(TagKey("username") to TagValue("david"), TagKey("region") to TagValue("asia"))
+                    types = setOf(FactType("USER_CREATED")),
+                    tags = mapOf(TagKey("username") to TagValue("david"), TagKey("region") to TagValue("asia"))
                 )
             )
         )
@@ -1006,8 +1006,8 @@ abstract class AbstractFactStoreTest {
         val differentTagsQuery = TagQuery(
             queryItems = listOf(
                 TagTypeItem(
-                    types = listOf(FactType("USER_CREATED")),
-                    tags = listOf(TagKey("username") to TagValue("charlie"), TagKey("region") to TagValue("us"))
+                    types = setOf(FactType("USER_CREATED")),
+                    tags = mapOf(TagKey("username") to TagValue("charlie"), TagKey("region") to TagValue("us"))
                 )
             )
         )
@@ -1033,8 +1033,8 @@ abstract class AbstractFactStoreTest {
         val query = TagQuery(
             queryItems = listOf(
                 TagTypeItem(
-                    types = listOf("USER_CREATED".toFactType(), "USER_UPDATED".toFactType()),
-                    tags = listOf(TagKey("username") to TagValue("alice"))
+                    types = setOf("USER_CREATED".toFactType(), "USER_UPDATED".toFactType()),
+                    tags = mapOf(TagKey("username") to TagValue("alice"))
                 )
             )
         )
@@ -1061,12 +1061,12 @@ abstract class AbstractFactStoreTest {
         val query = TagQuery(
             queryItems = listOf(
                 TagTypeItem(
-                    types = listOf("USER_CREATED".toFactType(), "USER_UPDATED".toFactType()),
-                    tags = listOf(TagKey("username") to TagValue("bob"))
+                    types = setOf("USER_CREATED".toFactType(), "USER_UPDATED".toFactType()),
+                    tags = mapOf(TagKey("username") to TagValue("bob"))
                 ),
                 TagTypeItem(
-                    types = listOf("USER_CREATED".toFactType()),
-                    tags = listOf(TagKey("region") to TagValue("us"))
+                    types = setOf("USER_CREATED".toFactType()),
+                    tags = mapOf(TagKey("region") to TagValue("us"))
                 )
             )
         )
@@ -1095,12 +1095,12 @@ abstract class AbstractFactStoreTest {
         val query = TagQuery(
             queryItems = listOf(
                 TagTypeItem(
-                    types = listOf("USER_CREATED".toFactType(), "USER_UPDATED".toFactType()),
-                    tags = listOf(TagKey("username") to TagValue("bob"), TagKey("region") to TagValue("us"))
+                    types = setOf("USER_CREATED".toFactType(), "USER_UPDATED".toFactType()),
+                    tags = mapOf(TagKey("username") to TagValue("bob"), TagKey("region") to TagValue("us"))
                 ),
                 TagTypeItem(
-                    types = listOf("USER_CREATED".toFactType()),
-                    tags = listOf(TagKey("region") to TagValue("eu"), TagKey("username") to TagValue("alice"))
+                    types = setOf("USER_CREATED".toFactType()),
+                    tags = mapOf(TagKey("region") to TagValue("eu"), TagKey("username") to TagValue("alice"))
                 )
             )
         )
@@ -1124,8 +1124,8 @@ abstract class AbstractFactStoreTest {
         val query = TagQuery(
             queryItems = listOf(
                 TagTypeItem(
-                    types = listOf(FactType("USER_UPDATED")),
-                    tags = listOf(TagKey("username") to TagValue("bob"))
+                    types = setOf(FactType("USER_UPDATED")),
+                    tags = mapOf(TagKey("username") to TagValue("bob"))
                 )
             )
         )
@@ -1179,8 +1179,8 @@ abstract class AbstractFactStoreTest {
         val query = TagQuery(
             queryItems = listOf(
                 TagTypeItem(
-                    types = listOf(FactType("USER_CREATED")),
-                    tags = listOf(TagKey("role") to TagValue("user"), TagKey("region") to TagValue("us"))
+                    types = setOf(FactType("USER_CREATED")),
+                    tags = mapOf(TagKey("role") to TagValue("user"), TagKey("region") to TagValue("us"))
                 )
             )
         )
@@ -1199,8 +1199,8 @@ abstract class AbstractFactStoreTest {
                     query = TagQuery(
                         listOf(
                             TagTypeItem(
-                                types = listOf(FactType("USER_CREATED")),
-                                tags = listOf(TagKey("role") to TagValue("custom"))
+                                types = setOf(FactType("USER_CREATED")),
+                                tags = mapOf(TagKey("role") to TagValue("custom"))
                             )
                         )
                     )
@@ -1234,8 +1234,8 @@ abstract class AbstractFactStoreTest {
                     query = TagQuery(
                         listOf(
                             TagTypeItem(
-                                types = listOf(FactType("USER_CREATED")),
-                                tags = listOf(TagKey("role") to TagValue("custom"))
+                                types = setOf(FactType("USER_CREATED")),
+                                tags = mapOf(TagKey("role") to TagValue("custom"))
                             )
                         )
                     )
@@ -1253,8 +1253,8 @@ abstract class AbstractFactStoreTest {
         val tagQuery = TagQuery(
             queryItems = listOf(
                 TagTypeItem(
-                    types = listOf(FactType("USER_CREATED")),
-                    tags = listOf(TagKey("user") to TagValue("ALICE")),
+                    types = setOf(FactType("USER_CREATED")),
+                    tags = mapOf(TagKey("user") to TagValue("ALICE")),
                 )
             )
         )
@@ -1299,8 +1299,8 @@ abstract class AbstractFactStoreTest {
         val tagQuery2 = TagQuery(
             queryItems = listOf(
                 TagTypeItem(
-                    types = listOf(FactType("USER_CREATED")),
-                    tags = listOf(TagKey("user") to TagValue("BOB")),
+                    types = setOf(FactType("USER_CREATED")),
+                    tags = mapOf(TagKey("user") to TagValue("BOB")),
                 )
             )
         )
