@@ -56,8 +56,9 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
                     if (storeId == null) {
                         CompletableFuture.completedFuture(FindInTimeRangeResult.StoreNotFound(request.storeName))
                     } else {
-                        val begin = createdAtIndexSubspace.getKey(storeId, start)
-                        val endKey = createdAtIndexSubspace.getKey(storeId, end)
+                        val storeRange = createdAtIndexSubspace.range(storeId)
+                        val begin = start?.let { createdAtIndexSubspace.getKey(storeId, it) } ?: storeRange.begin
+                        val endKey = end?.let { createdAtIndexSubspace.getKey(storeId, it) } ?: storeRange.end
 
                         tr.getRange(begin, endKey, request.limit.toFdbLimit(), request.direction.isReverse())
                             .asList().thenCompose { kvs ->

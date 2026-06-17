@@ -3,40 +3,51 @@ package io.factstore.core
 import java.time.Instant
 
 /**
- * Represents a time interval defined by a [start] and [end] instant.
+ * Represents a half-open time interval `[start, end)` used to query facts by
+ * ingestion time.
  *
- * The range is half-open: `[start, end)`. A fact matches if its timestamp is
- * greater than or equal to [start] and strictly less than [end]. A fact whose
- * timestamp equals [end] is therefore **not** included. All FactStore
- * implementations must honor these boundary semantics identically.
+ * Both bounds are optional. A `null` [start] means unbounded below (from the
+ * beginning of the store); a `null` [end] means unbounded above (no upper
+ * limit). A fact matches when `start == null || appendedAt >= start` **and**
+ * `end == null || appendedAt < end` — so a fact whose timestamp equals [end] is
+ * never included.
  *
- * The range is strictly bounded, meaning:
- * - [start] must be strictly before [end]
- * - equal instants are not allowed
+ * Prefer the [between], [from], [until], and [unbounded] factories for
+ * intent-revealing call sites.
  *
- * @property start the beginning of the time range (inclusive)
- * @property end the end of the time range (exclusive)
+ * @property start the inclusive lower bound, or `null` for unbounded below
+ * @property end the exclusive upper bound, or `null` for unbounded above
  *
- * @throws IllegalArgumentException if [start] is not strictly before [end]
- *
- * Example:
- * ```
- * val range = TimeRange(
- *     start = Instant.parse("2024-01-01T00:00:00Z"),
- *     end = Instant.parse("2024-01-02T00:00:00Z")
- * )
- * ```
+ * @throws IllegalArgumentException if both bounds are present and [start] is not
+ *         strictly before [end]
  */
 data class TimeRange(
-    val start: Instant,
-    val end: Instant,
+    val start: Instant?,
+    val end: Instant?,
 ) {
 
     init {
-        require(start.isBefore(end)) {
-            "start ($start) must be strictly before end ($end)"
+        if (start != null && end != null) {
+            require(start.isBefore(end)) {
+                "start ($start) must be strictly before end ($end)"
+            }
         }
     }
 
-    override fun toString(): String = "[$start, $end)"
+    override fun toString(): String = "[${start ?: "-∞"}, ${end ?: "∞"})"
+
+    companion object {
+
+        /** A bounded range `[start, end)`. */
+        fun between(start: Instant, end: Instant) = TimeRange(start, end)
+
+        /** Everything from [start] onwards: `[start, ∞)`. */
+        fun from(start: Instant) = TimeRange(start, null)
+
+        /** Everything up to, but excluding, [end]: `[-∞, end)`. */
+        fun until(end: Instant) = TimeRange(null, end)
+
+        /** No time bound at all — matches every fact. */
+        val unbounded = TimeRange(null, null)
+    }
 }
