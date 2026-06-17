@@ -2,6 +2,7 @@ package io.factstore.client.operations
 
 import io.factstore.client.exceptions.StoreNameAlreadyExistsException
 import io.factstore.client.exceptions.StoreNotFoundException
+import io.factstore.client.internal.grpcCall
 import io.factstore.client.internal.toDomain
 import io.factstore.client.model.StoreInfo
 import io.factstore.grpc.v1.StoreServiceGrpcKt.StoreServiceCoroutineStub
@@ -19,28 +20,29 @@ class StoreOperations internal constructor(
 ) {
     private fun timedStub() = stub.withDeadlineAfter(callTimeout.toMillis(), TimeUnit.MILLISECONDS)
 
-    suspend fun create(name: String): String {
+    suspend fun create(name: String): String = grpcCall {
         val response = timedStub().createStore(createStoreRequest { this.name = name })
-        return when {
+        when {
             response.hasCreated() -> response.created.id
             response.hasNameAlreadyExists() -> throw StoreNameAlreadyExistsException(name)
             else -> error("Unexpected response: $response")
         }
     }
 
-    suspend fun get(name: String): StoreInfo {
+    suspend fun get(name: String): StoreInfo = grpcCall {
         val response = timedStub().getStore(getStoreRequest { this.name = name })
-        return when {
+        when {
             response.hasFound() -> response.found.store.toDomain()
             response.hasNotFound() -> throw StoreNotFoundException(name)
             else -> error("Unexpected response: $response")
         }
     }
 
-    suspend fun list(): List<StoreInfo> =
+    suspend fun list(): List<StoreInfo> = grpcCall {
         timedStub().listStores(listStoresRequest {}).storesList.map { it.toDomain() }
+    }
 
-    suspend fun delete(name: String) {
+    suspend fun delete(name: String): Unit = grpcCall {
         val response = timedStub().deleteStore(deleteStoreRequest { this.name = name })
         when {
             response.hasDeleted() -> Unit
@@ -49,8 +51,7 @@ class StoreOperations internal constructor(
         }
     }
 
-    suspend fun exists(name: String): Boolean {
-        val response = timedStub().storeExists(storeExistsRequest { this.name = name })
-        return response.hasPresent()
+    suspend fun exists(name: String): Boolean = grpcCall {
+        timedStub().storeExists(storeExistsRequest { this.name = name }).hasPresent()
     }
 }

@@ -227,10 +227,12 @@ service FactService {
   rpc FindFactsInTimeRange(FindFactsInTimeRangeRequest) returns (FindFactsInTimeRangeResponse);
 
   // Open a server-side stream that emits existing facts and then continues to emit
-  // new facts as they are appended. Pre-stream errors (store not found,
-  // after_fact_id not found) are signaled with FAILED_PRECONDITION.
-  // Facts are delivered in batches for higher throughput.
-  rpc StreamFacts(StreamFactsRequest) returns (stream FactBatch);
+  // new facts as they are appended. Facts are delivered in batches for higher
+  // throughput. Pre-stream errors (store not found, after_fact_id not found) are
+  // delivered as the first and only StreamFactsResponse message, after which the
+  // stream completes normally; terminal failures that occur once facts are already
+  // flowing are surfaced as gRPC status errors.
+  rpc StreamFacts(StreamFactsRequest) returns (stream StreamFactsResponse);
 }
 
 // -- AppendFacts --
@@ -376,6 +378,17 @@ message FindFactsInTimeRangeResponse {
 // A batch of facts delivered in a single stream message for higher throughput.
 message FactBatch {
   repeated Fact facts = 1;
+}
+
+// Envelope for each StreamFacts stream message: either a batch of facts or a
+// pre-stream error. Mirrors the oneof-outcome pattern used by the unary RPCs so
+// that business errors are typed data rather than out-of-band status codes.
+message StreamFactsResponse {
+  oneof message {
+    FactBatch batch = 1;
+    StoreNotFound store_not_found = 2;
+    FactNotFound after_fact_not_found = 3; // the after_fact_id cursor does not exist
+  }
 }
 
 // Marker for streaming from the very first fact in the store.
