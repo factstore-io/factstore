@@ -5,7 +5,7 @@ import io.factstore.core.AppendCondition
 import io.factstore.core.AppendRequest
 import io.factstore.core.AppendResult
 import io.factstore.core.Fact
-import io.factstore.core.FactId
+import io.factstore.core.FactInput
 import io.factstore.core.FactPayload
 import io.factstore.core.IdempotencyKey
 import io.factstore.core.StoreName
@@ -22,7 +22,7 @@ import java.time.Instant
 
 
 fun AppendResult.toResponse(): Response = when(this) {
-    is AppendResult.Appended -> Response.ok().build()
+    is AppendResult.Appended -> Response.ok(AppendedHttp(factIds.map { it.uuid }, appendedAt)).build()
     is AppendResult.AlreadyApplied ->  Response.ok().build()
     is AppendResult.AppendConditionViolated -> appendConditionViolatedError()
     is AppendResult.StoreNotFound -> storeNotFoundError(storeName)
@@ -31,7 +31,7 @@ fun AppendResult.toResponse(): Response = when(this) {
 
 fun AppendHttpRequest.toAppendRequest(storeName: StoreName): AppendRequest = AppendRequest(
     storeName = storeName,
-    facts = facts.toFacts(),
+    facts = facts.toFactInputs(),
     idempotencyKey = idempotencyKey?.let { IdempotencyKey(it) } ?: IdempotencyKey(),
     condition = condition?.toAppendCondition() ?: AppendCondition.None
 )
@@ -83,14 +83,12 @@ fun TagQueryItemHttp.toTagQueryItem(): TagQueryItem =
     }
 
 
-fun List<FactHttp>.toFacts() = map { it.toFact() }
+fun List<FactInputHttp>.toFactInputs() = map { it.toFactInput() }
 
-fun FactHttp.toFact() = Fact(
-    id = id?.toFactId() ?: FactId.generate(),
+fun FactInputHttp.toFactInput() = FactInput(
     type = type.toFactType(),
     payload = payload.toPayload(),
     subject = Subject(subject),
-    appendedAt = appendedAt ?: Instant.now(),
     metadata = metadata ?: emptyMap(),
     tags = tags?.entries?.associate { Pair(it.key.toTagKey(), it.value.toTagValue()) } ?: emptyMap()
 )

@@ -16,7 +16,7 @@ import java.util.*
  * - **Payload** ([payload]) containing the event data and its transport metadata
  * - **Subject association** ([subject]) defining the entity or context
  *   the fact belongs to
- * - **Temporal information** ([appendedAt]) indicating when the fact occurred
+ * - **Temporal information** ([appendedAt]) indicating when the fact was ingested
  * - **Metadata** ([metadata]) for auxiliary, non-indexed information
  * - **Tags** ([tags]) for classification, filtering, and efficient querying
  *
@@ -24,11 +24,11 @@ import java.util.*
  * indexing, transporting, and replaying facts, but does not interpret the
  * semantic meaning of the payload, schema, or data format.
  *
- * @property id the globally unique identifier of the fact
+ * @property id the globally unique identifier of the fact, assigned by the store
  * @property type the logical type of the fact
  * @property payload the serialized fact payload
  * @property subject the subject the fact is associated with
- * @property appendedAt the time the fact was appended
+ * @property appendedAt the server-assigned ingestion time of the fact
  * @property metadata optional metadata associated with the fact
  * @property tags optional tags used for querying and classification
  *

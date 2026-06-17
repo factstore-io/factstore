@@ -11,9 +11,25 @@ import java.util.*
 
 data class AppendHttpRequest(
     @field:NotEmpty
-    val facts: List<@Valid FactHttp>,
+    val facts: List<@Valid FactInputHttp>,
     val idempotencyKey: UUID? = null,
     val condition: AppendConditionHttp? = null
+)
+
+data class FactInputHttp(
+    @field:NotBlank
+    val type: String,
+    @field:NotBlank
+    val subject: String,
+    @field:Valid
+    val payload: FactPayloadHttp,
+    val metadata: Map<String, String>? = null,
+    val tags: Map<String, String>? = null,
+)
+
+data class AppendedHttp(
+    val factIds: List<UUID>,
+    val appendedAt: Instant,
 )
 
 @JsonTypeInfo(

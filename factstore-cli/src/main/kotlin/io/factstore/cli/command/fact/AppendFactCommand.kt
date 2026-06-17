@@ -2,6 +2,7 @@ package io.factstore.cli.command.fact
 
 import io.factstore.cli.config.FactStoreConfigResolver
 import io.factstore.client.FactStoreClient
+import io.factstore.client.model.AppendOutcome
 import io.factstore.client.model.FactInput
 import io.factstore.client.model.FactPayload
 import jakarta.inject.Inject
@@ -66,7 +67,7 @@ class AppendFactCommand : Callable<Int> {
     override fun call(): Int = runBlocking {
         val storeName = configResolver.resolveStore(storeName)
         val resolvedPayload = resolvePayload() ?: return@runBlocking CommandLine.ExitCode.SOFTWARE
-        client.facts.append(
+        val outcome = client.facts.append(
             storeName = storeName,
             facts = listOf(
                 resolvedPayload.toFactInput()
@@ -74,7 +75,12 @@ class AppendFactCommand : Callable<Int> {
             idempotencyKey = UUID.randomUUID().toString(),
             condition = null
         )
-        println("✅ Fact appended successfully.")
+        when (outcome) {
+            is AppendOutcome.Appended ->
+                println("✅ Fact appended successfully. Id: ${outcome.factIds.single()}")
+            AppendOutcome.AlreadyApplied ->
+                println("ℹ️ Append already applied; nothing was added.")
+        }
         CommandLine.ExitCode.OK
     }
 
@@ -82,7 +88,6 @@ class AppendFactCommand : Callable<Int> {
         type = type,
         subject = subject,
         payload = FactPayload(data = toByteArray(Charsets.UTF_8)),
-        id = UUID.randomUUID().toString(),
     )
 
     private fun resolvePayload(): String? {

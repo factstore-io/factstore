@@ -7,10 +7,12 @@ import io.factstore.client.exceptions.StoreNotFoundException
 import io.factstore.client.internal.grpcCall
 import io.factstore.client.internal.toDomain
 import io.factstore.client.internal.toFactStoreException
+import io.factstore.client.internal.toInstant
 import io.factstore.client.internal.toProto
 import io.factstore.client.internal.toProtoTimestamp
 import io.factstore.client.model.AppendCondition
 import io.factstore.client.model.AppendFactsBuilder
+import io.factstore.client.model.AppendOutcome
 import io.factstore.client.model.Fact
 import io.factstore.client.model.FactInput
 import io.factstore.client.model.ReadDirection
@@ -45,7 +47,7 @@ class FactOperations internal constructor(
         facts: List<FactInput>,
         idempotencyKey: String? = null,
         condition: AppendCondition? = null,
-    ): Unit = grpcCall {
+    ): AppendOutcome = grpcCall {
         val response = timedStub().appendFacts(appendFactsRequest {
             this.storeName = storeName
             this.facts += facts.map { it.toProto() }
@@ -53,7 +55,11 @@ class FactOperations internal constructor(
             condition?.let { this.condition = it.toProto() }
         })
         when {
-            response.hasAppended() || response.hasAlreadyApplied() -> Unit
+            response.hasAppended() -> AppendOutcome.Appended(
+                factIds = response.appended.factIdsList.toList(),
+                appendedAt = response.appended.appendedAt.toInstant(),
+            )
+            response.hasAlreadyApplied() -> AppendOutcome.AlreadyApplied
             response.hasConditionViolated() -> throw AppendConditionViolatedException()
             response.hasDuplicateFactIds() -> throw DuplicateFactIdsException(response.duplicateFactIds.factIdsList)
             response.hasStoreNotFound() -> throw StoreNotFoundException(storeName)
@@ -66,7 +72,7 @@ class FactOperations internal constructor(
         idempotencyKey: String? = null,
         condition: AppendCondition? = null,
         block: AppendFactsBuilder.() -> Unit,
-    ) = append(storeName, AppendFactsBuilder().apply(block).build(), idempotencyKey, condition)
+    ): AppendOutcome = append(storeName, AppendFactsBuilder().apply(block).build(), idempotencyKey, condition)
 
     suspend fun get(storeName: String, factId: String): Fact = grpcCall {
         val response = timedStub().getFact(getFactRequest {

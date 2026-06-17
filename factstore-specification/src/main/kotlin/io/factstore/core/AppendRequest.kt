@@ -23,30 +23,23 @@ value class IdempotencyKey(val value: UUID = UUID.randomUUID())
  * and conditional append semantics. All facts contained in the request are
  * processed atomically.
  *
+ * Facts are submitted as [FactInput]s: their [Fact.id] and [Fact.appendedAt] are
+ * assigned by the store on append, not by the client.
+ *
  * @property storeName the store to which to append the facts to
  * @property facts the facts to append
  * @property idempotencyKey the key used to ensure idempotent processing
  * @property condition an optional condition that must be satisfied for the
  *         append operation to be applied
  *
- * @throws IllegalArgumentException if the request contains duplicate [FactId]s
- *
  * @author Domenic Cassisi
  */
 data class AppendRequest(
     val storeName: StoreName,
-    val facts: List<Fact>,
+    val facts: List<FactInput>,
     val idempotencyKey: IdempotencyKey,
     val condition: AppendCondition = AppendCondition.None
-) {
-
-    init {
-        require(facts.map { it.id }.distinct().size == facts.size) {
-            "Duplicated FactId detected!"
-        }
-    }
-
-}
+)
 
 /**
  * Defines conditions that must be satisfied for an append request to be applied.

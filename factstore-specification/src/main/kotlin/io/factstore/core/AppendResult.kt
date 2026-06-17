@@ -1,5 +1,7 @@
 package io.factstore.core
 
+import java.time.Instant
+
 /**
  * Represents the outcome of an append operation.
  *
@@ -14,8 +16,17 @@ sealed interface AppendResult {
     /**
      * Indicates that the append operation was successfully applied and the
      * provided facts were persisted.
+     *
+     * @property factIds the identifiers assigned by the store to the appended
+     *         facts, in the same order as the [AppendRequest.facts] they were
+     *         materialized from (`factIds[i]` corresponds to the i-th input fact)
+     * @property appendedAt the ingestion timestamp assigned to the appended
+     *         facts; all facts in a single append share this instant
      */
-    data object Appended : AppendResult
+    data class Appended(
+        val factIds: List<FactId>,
+        val appendedAt: Instant,
+    ) : AppendResult
 
     /**
      * Indicates that an append request with the same idempotency key was already

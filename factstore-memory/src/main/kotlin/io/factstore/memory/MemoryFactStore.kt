@@ -74,10 +74,10 @@ class MemoryFactStore : FactStore {
         resolveId(request.name)?.let { stores[it] }?.let { FindStoreByNameResult.Found(it) } ?: FindStoreByNameResult.NotFound(request.name)
     }
 
-    override suspend fun append(storeName: StoreName, fact: Fact): AppendResult =
+    override suspend fun append(storeName: StoreName, fact: FactInput): AppendResult =
         append(storeName, listOf(fact))
 
-    override suspend fun append(storeName: StoreName, facts: List<Fact>): AppendResult =
+    override suspend fun append(storeName: StoreName, facts: List<FactInput>): AppendResult =
         append(
             AppendRequest(
                 storeName = storeName,
@@ -98,10 +98,13 @@ class MemoryFactStore : FactStore {
             return AppendResult.AlreadyApplied
         }
 
+        val appendedAt = Instant.now()
+        val materializedFacts = request.facts.map { it.toFact(FactId.generate(), appendedAt) }
+
         // Check for duplicate fact IDs
         val store = facts[storeId] ?: throw IllegalStateException("Facts list should be initialized for store $storeId")
         val existingIds = store.map { it.id.uuid }.toSet()
-        val duplicates = request.facts.filter { it.id.uuid in existingIds }
+        val duplicates = materializedFacts.filter { it.id.uuid in existingIds }
         if (duplicates.isNotEmpty()) {
             return AppendResult.DuplicateFactIds(duplicates.map { it.id })
         }
@@ -112,10 +115,10 @@ class MemoryFactStore : FactStore {
         }
 
         // Append facts
-        facts[storeId]?.addAll(request.facts)
+        facts[storeId]?.addAll(materializedFacts)
         idempotencySet.add(request.idempotencyKey.value)
 
-        AppendResult.Appended
+        AppendResult.Appended(materializedFacts.map { it.id }, appendedAt)
     }
 
     // ===== FactFinder Implementation =====
@@ -135,7 +138,7 @@ class MemoryFactStore : FactStore {
     override suspend fun findInTimeRange(request: FindInTimeRangeRequest): FindInTimeRangeResult = lock.withLock {
         val internalId = resolveId(request.storeName) ?: return FindInTimeRangeResult.StoreNotFound(request.storeName)
         val foundFacts = facts[internalId]
-            ?.filter { it.appendedAt in request.timeRange.start..request.timeRange.end }
+            ?.filter { it.appendedAt >= request.timeRange.start && it.appendedAt < request.timeRange.end }
             ?.applyDirection(request.direction)
             ?.applyLimit(request.limit)
             ?: emptyList()

@@ -53,11 +53,9 @@ internal fun StoreMetadata.toProto(): FactStoreProto.StoreInfo = storeInfo {
     createdAt = this@toProto.createdAt.toTimestamp()
 }
 
-internal fun FactStoreProto.FactInput.toDomain(): Fact = Fact(
-    id = if (hasId()) id.toFactId() else FactId.generate(),
+internal fun FactStoreProto.FactInput.toDomain(): FactInput = FactInput(
     type = type.toFactType(),
     subject = Subject(subject),
-    appendedAt = if (hasAppendedAt()) appendedAt.toInstant() else Instant.now(),
     payload = payload.toDomain(),
     metadata = metadataMap,
     tags = tagsMap.entries.associate { (k, v) -> k.toTagKey() to v.toTagValue() }
@@ -133,7 +131,10 @@ internal suspend fun AppendRequest.publishTo(factStore: FactStore): AppendResult
 internal fun AppendResult.toGrpcResponse(): GrpcAppendFactsResponse =
     appendFactsResponse {
         when (this@toGrpcResponse) {
-            is AppendResult.Appended -> appended = factsAppended { }
+            is AppendResult.Appended -> appended = factsAppended {
+                factIds += this@toGrpcResponse.factIds.map { it.uuid.toString() }
+                appendedAt = this@toGrpcResponse.appendedAt.toTimestamp()
+            }
             is AppendResult.AlreadyApplied -> alreadyApplied = alreadyApplied { }
             is AppendResult.AppendConditionViolated -> conditionViolated = conditionViolated { }
             is AppendResult.StoreNotFound -> storeNotFound = storeNotFound { storeName = this@toGrpcResponse.storeName.value }
