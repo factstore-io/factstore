@@ -38,6 +38,15 @@ class TimeRangeTest {
     }
 
     @Test
+    fun `open bounds are allowed and do not throw`() {
+        val instant = Instant.parse("2024-01-01T00:00:00Z")
+
+        assertThat(TimeRange.from(instant)).isEqualTo(TimeRange(instant, null))
+        assertThat(TimeRange.until(instant)).isEqualTo(TimeRange(null, instant))
+        assertThat(TimeRange.unbounded).isEqualTo(TimeRange(null, null))
+    }
+
+    @Test
     fun `data class equality should work`() {
         val start = Instant.parse("2024-01-01T00:00:00Z")
         val end = Instant.parse("2024-01-02T00:00:00Z")

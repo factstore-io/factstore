@@ -223,6 +223,33 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
+    fun testFindInTimeRangeWithOpenBounds(): Unit = runBlocking {
+        val fact1 = appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload))
+        delay(10.milliseconds)
+        val fact2 = appendStored(input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload))
+        delay(10.milliseconds)
+        val fact3 = appendStored(input(CHARLIE_SUBJECT_VALUE, "USER_CREATED", charliePayload))
+
+        // from(t2): unbounded above, inclusive lower → fact2 and fact3
+        val fromResult = store.findInTimeRange(
+            FindInTimeRangeRequest(testStore, TimeRange.from(fact2.appendedAt))
+        )
+        assertThat((fromResult as FindInTimeRangeResult.Found).facts).containsExactly(fact2, fact3)
+
+        // until(t2): unbounded below, exclusive upper → fact1 only
+        val untilResult = store.findInTimeRange(
+            FindInTimeRangeRequest(testStore, TimeRange.until(fact2.appendedAt))
+        )
+        assertThat((untilResult as FindInTimeRangeResult.Found).facts).containsExactly(fact1)
+
+        // unbounded: every fact
+        val allResult = store.findInTimeRange(
+            FindInTimeRangeRequest(testStore, TimeRange.unbounded)
+        )
+        assertThat((allResult as FindInTimeRangeResult.Found).facts).containsExactly(fact1, fact2, fact3)
+    }
+
+    @Test
     fun testFindInTimeRangeForNonExistingStore(): Unit = runBlocking {
         val result = store.findInTimeRange(
             FindInTimeRangeRequest(
@@ -248,7 +275,7 @@ abstract class AbstractFactStoreTest {
         val result = store.findInTimeRange(
             FindInTimeRangeRequest(
                 storeName = testStore,
-                timeRange = TimeRange(start = Instant.MIN, end = fact3.appendedAt.plusSeconds(10)),
+                timeRange = TimeRange.until(fact3.appendedAt.plusSeconds(10)),
                 limit = Limit.of(2),
             )
         )
@@ -269,7 +296,7 @@ abstract class AbstractFactStoreTest {
         val result = store.findInTimeRange(
             FindInTimeRangeRequest(
                 storeName = testStore,
-                timeRange = TimeRange(start = Instant.MIN, end = fact3.appendedAt.plusSeconds(10)),
+                timeRange = TimeRange.until(fact3.appendedAt.plusSeconds(10)),
                 direction = ReadDirection.Backward,
             )
         )
@@ -290,7 +317,7 @@ abstract class AbstractFactStoreTest {
         val result = store.findInTimeRange(
             FindInTimeRangeRequest(
                 storeName = testStore,
-                timeRange = TimeRange(start = Instant.MIN, end = fact3.appendedAt.plusSeconds(10)),
+                timeRange = TimeRange.until(fact3.appendedAt.plusSeconds(10)),
                 limit = Limit.of(2),
                 direction = ReadDirection.Backward,
             )

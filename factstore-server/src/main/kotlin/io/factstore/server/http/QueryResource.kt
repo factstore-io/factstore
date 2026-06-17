@@ -90,10 +90,7 @@ class QueryResource(
                 .findInTimeRange(
                     FindInTimeRangeRequest(
                         storeName = StoreName(storeName),
-                        timeRange = TimeRange(
-                            start = from ?: Instant.MIN,
-                            end = to ?: Instant.MAX
-                        ),
+                        timeRange = TimeRange(start = from, end = to),
                         limit = limit.toLimit(),
                         direction = direction,
                     )

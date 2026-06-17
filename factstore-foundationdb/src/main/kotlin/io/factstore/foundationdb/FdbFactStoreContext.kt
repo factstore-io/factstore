@@ -242,6 +242,8 @@ value class CreatedAtIndexSubspace(val subspace: Subspace) {
     fun getKey(storeId: StoreId, createdAt: Instant): ByteArray =
         subspace.pack(Tuple.from(storeId.uuid, createdAt.epochSecond, createdAt.nano))
 
+    fun range(storeId: StoreId): Range = subspace.range(Tuple.from(storeId.uuid))
+
     fun unpackPosition(key: ByteArray): FactPosition =
         subspace.unpack(key).getLastAsFactPosition()
 

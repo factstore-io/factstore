@@ -339,8 +339,8 @@ internal fun GrpcFindInTimeRangeRequest.toDomainRequest(): FindInTimeRangeReques
     FindInTimeRangeRequest(
         storeName = StoreName(storeName),
         timeRange = TimeRange(
-            start = if (hasFrom()) from.toInstant() else Instant.MIN,
-            end = if (hasTo()) to.toInstant() else Instant.MAX
+            start = if (hasFrom()) from.toInstant() else null,
+            end = if (hasTo()) to.toInstant() else null
         ),
         limit = if (hasLimit()) Limit.of(limit) else Limit.None,
         direction = direction.toCore()
