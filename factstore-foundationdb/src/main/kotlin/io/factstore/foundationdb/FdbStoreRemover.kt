@@ -9,7 +9,7 @@ class FdbStoreRemover(
     private val fdbFactStore: FdbFactStore
 ) : StoreRemover {
 
-    override suspend fun handle(request: RemoveStoreRequest): RemoveStoreResult {
+    override suspend fun remove(request: RemoveStoreRequest): RemoveStoreResult {
         return fdbFactStore.db.runAsync { tr ->
             with(tr) {
                 fdbFactStore.context.lookUpStoreIdByName(request.storeName).thenApply { storeId ->

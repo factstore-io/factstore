@@ -40,7 +40,7 @@ class FdbStoreFinder(
     override suspend fun existsByName(request: ExistsStoreByNameRequest): ExistsStoreByNameResult {
         return store.db.readAsync { tr ->
             with(tr) {
-                store.context.lookUpStoreIdByName(request.name).thenApply { store ->
+                store.context.lookUpStoreIdByName(request.storeName).thenApply { store ->
                     if (store != null) {
                         ExistsStoreByNameResult.StoreExists
                     } else {
@@ -54,7 +54,7 @@ class FdbStoreFinder(
     override suspend fun findByName(request: FindStoreByNameRequest): FindStoreByNameResult {
         return store.db.readAsync { tr ->
             with(tr) {
-                store.context.lookUpStoreIdByName(request.name).thenCompose { id ->
+                store.context.lookUpStoreIdByName(request.storeName).thenCompose { id ->
                     id?.let {
                         store.context.getMetadata(id).thenApply { metadata ->
                             if (metadata != null) {
@@ -66,11 +66,11 @@ class FdbStoreFinder(
                                     )
                                 )
                             } else {
-                                error("Store name '${request.name.value}' resolved to ID $id " +
+                                error("Store name '${request.storeName.value}' resolved to ID $id " +
                                         "but no metadata record exists — index/metadata out of sync")
                             }
                         }
-                    } ?: CompletableFuture.completedFuture(FindStoreByNameResult.NotFound(request.name))
+                    } ?: CompletableFuture.completedFuture(FindStoreByNameResult.NotFound(request.storeName))
                 }
             }
         }.await()

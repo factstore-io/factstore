@@ -224,7 +224,7 @@ internal fun GrpcCreateStoreRequest.toDomainRequest(): CreateStoreRequest =
     CreateStoreRequest(StoreName(name))
 
 internal suspend fun CreateStoreRequest.publishTo(factStore: FactStore): CreateStoreResult =
-    factStore.handle(this)
+    factStore.create(this)
 
 internal fun CreateStoreResult.toGrpcResponse(): GrpcCreateStoreResponse =
     createStoreResponse {
@@ -248,7 +248,7 @@ internal fun GrpcDeleteStoreRequest.toDomainRequest(): RemoveStoreRequest =
     RemoveStoreRequest(StoreName(name))
 
 internal suspend fun RemoveStoreRequest.publishTo(factStore: FactStore): RemoveStoreResult =
-    factStore.handle(this)
+    factStore.remove(this)
 
 internal fun RemoveStoreResult.toGrpcResponse(): GrpcDeleteStoreResponse =
     deleteStoreResponse {

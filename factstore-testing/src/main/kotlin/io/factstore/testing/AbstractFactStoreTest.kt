@@ -87,7 +87,7 @@ abstract class AbstractFactStoreTest {
         store = initializeFactStore()
         reset()
         val createStoreRequest = CreateStoreRequest(storeName = testStore)
-        val result = store.handle(createStoreRequest)
+        val result = store.create(createStoreRequest)
 
         assertThat(result).isInstanceOf(CreateStoreResult.Created::class.java)
     }
@@ -98,14 +98,14 @@ abstract class AbstractFactStoreTest {
         val name = StoreName("test")
         val request = CreateStoreRequest(name)
 
-        val result = store.handle(request)
+        val result = store.create(request)
 
         assertThat(result)
             .isNotNull()
             .isInstanceOf(CreateStoreResult.Created::class.java)
 
         // creating another fact store with the same name should be rejected
-        val secondResult = store.handle(request)
+        val secondResult = store.create(request)
 
         assertThat(secondResult)
             .isNotNull()
@@ -116,7 +116,7 @@ abstract class AbstractFactStoreTest {
         val anotherName = StoreName("another-store")
         val anotherRequest = CreateStoreRequest(anotherName)
 
-        val thirdResult = store.handle(anotherRequest)
+        val thirdResult = store.create(anotherRequest)
 
         assertThat(thirdResult)
             .isNotNull()
@@ -1340,8 +1340,8 @@ abstract class AbstractFactStoreTest {
         val storeName1 = StoreName("store-1")
         val storeName2 = StoreName("store-2")
 
-        store.handle(CreateStoreRequest(storeName1))
-        store.handle(CreateStoreRequest(storeName2))
+        store.create(CreateStoreRequest(storeName1))
+        store.create(CreateStoreRequest(storeName2))
 
         val fact1 = appendStored(input(BOB_SUBJECT_VALUE, "USER_LOCKED", bobPayload), storeName1)
         val fact2 = appendStored(input(ALICE_SUBJECT_VALUE, "USER_LOCKED", alicePayload), storeName2)
@@ -1389,18 +1389,18 @@ abstract class AbstractFactStoreTest {
     @Test
     fun testRemoveStore(): Unit = runBlocking {
         val storeName = StoreName("store-to-delete")
-        store.handle(CreateStoreRequest(storeName))
+        store.create(CreateStoreRequest(storeName))
 
         val factInput = input("TEST_SUBJECT", "TEST_FACT_TYPE", """DATA""".toFactPayload())
 
         assertThat(store.append(storeName, factInput))
             .isInstanceOf(AppendResult.Appended::class.java)
 
-        assertThat(store.handle(RemoveStoreRequest(storeName)))
+        assertThat(store.remove(RemoveStoreRequest(storeName)))
             .isInstanceOf(RemoveStoreResult.StoreRemoved::class.java)
 
         // a second time should result in StoreNotFound
-        assertThat(store.handle(RemoveStoreRequest(storeName)))
+        assertThat(store.remove(RemoveStoreRequest(storeName)))
             .isInstanceOf(RemoveStoreResult.StoreNotFound::class.java)
 
         assertThat(store.append(storeName, factInput))
