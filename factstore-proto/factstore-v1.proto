@@ -70,24 +70,21 @@ message TagTypeItem {
 message AppendCondition {
   oneof kind {
     ExpectedLastFact expected_last_fact = 1;
-    ExpectedMultiSubjectLastFact expected_multi_subject_last_fact = 2;
-    TagQueryBasedCondition tag_query_based = 3;
+    TagQueryBasedCondition tag_query_based = 2;
+    All all = 3;
   }
+}
+
+// Composite condition: all nested conditions must hold (logical AND). Conditions
+// may be nested arbitrarily. A multi-subject expectation is expressed as an
+// `All` of several `ExpectedLastFact` conditions.
+message All {
+  repeated AppendCondition conditions = 1;
 }
 
 // Append succeeds only if the last fact for `subject` has the given ID.
 // If expected_last_fact_id is absent, the condition requires no previous fact.
 message ExpectedLastFact {
-  string subject = 1;
-  optional string expected_last_fact_id = 2;
-}
-
-// Per-subject variant of ExpectedLastFact: each subject has its own expected last fact.
-message ExpectedMultiSubjectLastFact {
-  repeated SubjectExpectation expectations = 1;
-}
-
-message SubjectExpectation {
   string subject = 1;
   optional string expected_last_fact_id = 2;
 }

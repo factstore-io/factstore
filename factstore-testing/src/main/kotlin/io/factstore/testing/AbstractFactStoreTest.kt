@@ -423,16 +423,57 @@ abstract class AbstractFactStoreTest {
             storeName = testStore,
             facts = listOf(fact1, fact2, fact3),
             idempotencyKey = IdempotencyKey(),
-            condition = AppendCondition.ExpectedMultiSubjectLastFact(
-                expectations = mapOf(
-                    Subject(ALICE_SUBJECT_VALUE) to null,
-                    Subject(BOB_SUBJECT_VALUE) to null,
+            condition = AppendCondition.All(
+                conditions = listOf(
+                    AppendCondition.ExpectedLastFact(Subject(ALICE_SUBJECT_VALUE), null),
+                    AppendCondition.ExpectedLastFact(Subject(BOB_SUBJECT_VALUE), null),
                 )
             )
         )
 
         store.append(appendRequest).also {
             assertThat(it).isInstanceOf(AppendResult.Appended::class.java)
+        }
+
+    }
+
+    @Test
+    fun testCompositeConditionViolatedWhenOneConditionFails(): Unit = runBlocking {
+
+        // Seed Alice with a fact, so expecting her last fact to be null no longer holds.
+        val aliceFact = Fact(
+            id = FactId.generate(),
+            subject = Subject(ALICE_SUBJECT_VALUE),
+            type = "USER_CREATED".toFactType(),
+            payload = alicePayload,
+            appendedAt = Instant.now()
+        )
+        store.append(testStore, listOf(aliceFact))
+
+        val bobFact = Fact(
+            id = FactId.generate(),
+            subject = Subject(BOB_SUBJECT_VALUE),
+            type = "USER_CREATED".toFactType(),
+            payload = bobPayload,
+            appendedAt = Instant.now()
+        )
+
+        val appendRequest = AppendRequest(
+            storeName = testStore,
+            facts = listOf(bobFact),
+            idempotencyKey = IdempotencyKey(),
+            condition = AppendCondition.All(
+                conditions = listOf(
+                    // Bob has no facts yet -> satisfied
+                    AppendCondition.ExpectedLastFact(Subject(BOB_SUBJECT_VALUE), null),
+                    // Alice already has a fact -> expecting null is violated
+                    AppendCondition.ExpectedLastFact(Subject(ALICE_SUBJECT_VALUE), null),
+                )
+            )
+        )
+
+        store.append(appendRequest).also {
+            assertThat(it).isInstanceOf(AppendResult.AppendConditionViolated::class.java)
         }
 
     }

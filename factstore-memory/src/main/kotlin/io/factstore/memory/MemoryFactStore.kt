@@ -217,13 +217,7 @@ class MemoryFactStore : FactStore {
                 val lastFact = store.findLast { it.subject == condition.subject }
                 lastFact?.id == condition.expectedLastFactId
             }
-            is AppendCondition.ExpectedMultiSubjectLastFact -> {
-                val store = facts[storeId]?.toList() ?: return false
-                condition.expectations.all { (subject, expectedId) ->
-                    val lastFact = store.findLast { it.subject == subject }
-                    lastFact?.id == expectedId
-                }
-            }
+            is AppendCondition.All -> condition.conditions.all { checkAppendCondition(storeId, it) }
             is AppendCondition.TagQueryBased -> {
                 val store = facts[storeId]?.toList() ?: return false
                 val startIndex = if (condition.after != null) {

@@ -31,8 +31,8 @@ data class AppendHttpRequest(
         name = "expectedLastFact"
     ),
     JsonSubTypes.Type(
-        value = AppendConditionHttp.ExpectedMultiSubjectLastFact::class,
-        name = "expectedMultiSubjectLastFact"
+        value = AppendConditionHttp.All::class,
+        name = "all"
     ),
     JsonSubTypes.Type(
         value = AppendConditionHttp.TagQueryBased::class,
@@ -48,8 +48,8 @@ sealed interface AppendConditionHttp {
         val expectedLastFactId: UUID?
     ) : AppendConditionHttp
 
-    data class ExpectedMultiSubjectLastFact(
-        val expectations: Map<String, UUID?>
+    data class All(
+        val conditions: List<AppendConditionHttp>
     ) : AppendConditionHttp
 
     data class TagQueryBased(
