@@ -74,9 +74,3 @@ fun appendConditionViolatedError(): Response = apiErrorResponse(
     message = "The append condition was not satisfied.",
 )
 
-fun duplicateFactIdsError(factIds: List<FactId>): Response = apiErrorResponse(
-    status = CONFLICT,
-    reason = Reason.Conflict,
-    message = "One or more fact IDs are already in use.",
-    details = mapOf("factIds" to factIds.map { it.uuid }),
-)

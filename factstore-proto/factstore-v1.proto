@@ -255,8 +255,7 @@ message AppendFactsResponse {
     FactsAppended appended = 1;
     AlreadyApplied already_applied = 2;
     ConditionViolated condition_violated = 3;
-    DuplicateFactIds duplicate_fact_ids = 4;
-    StoreNotFound store_not_found = 5;
+    StoreNotFound store_not_found = 4;
   }
 }
 
@@ -269,10 +268,6 @@ message FactsAppended {
 }
 message AlreadyApplied {}
 message ConditionViolated {}
-
-message DuplicateFactIds {
-  repeated string fact_ids = 1;
-}
 
 // -- GetFact --
 

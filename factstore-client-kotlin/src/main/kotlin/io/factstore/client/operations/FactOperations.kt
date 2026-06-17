@@ -1,7 +1,6 @@
 package io.factstore.client.operations
 
 import io.factstore.client.exceptions.AppendConditionViolatedException
-import io.factstore.client.exceptions.DuplicateFactIdsException
 import io.factstore.client.exceptions.FactNotFoundException
 import io.factstore.client.exceptions.StoreNotFoundException
 import io.factstore.client.internal.grpcCall
@@ -61,7 +60,6 @@ class FactOperations internal constructor(
             )
             response.hasAlreadyApplied() -> AppendOutcome.AlreadyApplied
             response.hasConditionViolated() -> throw AppendConditionViolatedException()
-            response.hasDuplicateFactIds() -> throw DuplicateFactIdsException(response.duplicateFactIds.factIdsList)
             response.hasStoreNotFound() -> throw StoreNotFoundException(storeName)
             else -> error("Unexpected response: $response")
         }
