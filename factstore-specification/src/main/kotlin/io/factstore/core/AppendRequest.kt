@@ -77,15 +77,26 @@ sealed interface AppendCondition {
     ) : AppendCondition
 
     /**
-     * Requires that the last facts associated with multiple subjects match
-     * the provided expectations.
+     * Composite condition requiring that **all** nested conditions are
+     * satisfied (logical AND).
      *
-     * @property expectations a mapping from subject references to their expected
-     *         last fact identifiers
+     * Conditions may be nested arbitrarily, allowing callers to compose complex
+     * consistency expectations from the primitive conditions. For example, a
+     * multi-subject expectation is expressed as an [All] of several
+     * [ExpectedLastFact] conditions.
+     *
+     * @property conditions the conditions that must all be satisfied; must not
+     *         be empty
      */
-    data class ExpectedMultiSubjectLastFact(
-        val expectations: Map<Subject, FactId?>
-    ) : AppendCondition
+    data class All(
+        val conditions: List<AppendCondition>
+    ) : AppendCondition {
+        init {
+            require(conditions.isNotEmpty()) {
+                "All condition must contain at least one condition"
+            }
+        }
+    }
 
     /**
      * Requires that no facts matching the given tag query exist after the

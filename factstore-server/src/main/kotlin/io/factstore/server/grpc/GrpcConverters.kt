@@ -77,12 +77,8 @@ internal fun FactStoreProto.AppendCondition.toDomain(): AppendCondition = when (
         else null
     )
 
-    FactStoreProto.AppendCondition.KindCase.EXPECTED_MULTI_SUBJECT_LAST_FACT -> AppendCondition.ExpectedMultiSubjectLastFact(
-        expectations = expectedMultiSubjectLastFact.expectationsList.associate { exp ->
-            Subject(exp.subject) to
-                    if (exp.hasExpectedLastFactId()) exp.expectedLastFactId.toFactId()
-                    else null
-        }
+    FactStoreProto.AppendCondition.KindCase.ALL -> AppendCondition.All(
+        conditions = all.conditionsList.map { it.toDomain() }
     )
 
     FactStoreProto.AppendCondition.KindCase.TAG_QUERY_BASED -> AppendCondition.TagQueryBased(

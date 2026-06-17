@@ -103,7 +103,7 @@ class FdbFactAppender(
             AppendCondition.None -> CompletableFuture.completedFuture(true)
             is AppendCondition.ExpectedLastFact -> isSatisfied()
             is AppendCondition.TagQueryBased -> isSatisfied()
-            is AppendCondition.ExpectedMultiSubjectLastFact -> isSatisfied()
+            is AppendCondition.All -> isSatisfied()
         }
 
     context(tr: Transaction, storeId: StoreId)
@@ -114,9 +114,11 @@ class FdbFactAppender(
     }
 
     context(tr: Transaction, storeId: StoreId)
-    private fun AppendCondition.ExpectedMultiSubjectLastFact.isSatisfied(): CompletableFuture<Boolean> {
-        val isSatisfied = expectations.all { it.key.getLastFactId() == it.value }
-        return CompletableFuture.completedFuture(isSatisfied)
+    private fun AppendCondition.All.isSatisfied(): CompletableFuture<Boolean> {
+        val futures = conditions.map { it.isSatisfied() }
+        return CompletableFuture.allOf(*futures.toTypedArray()).thenApply {
+            futures.all { it.resultNow() }
+        }
     }
 
     context(tr: Transaction, storeId: StoreId)

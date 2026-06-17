@@ -7,17 +7,17 @@ sealed class AppendCondition {
         val expectedLastFactId: String? = null,
     ) : AppendCondition()
 
-    data class ExpectedMultiSubjectLastFact(
-        val expectations: List<SubjectExpectation>,
-    ) : AppendCondition()
-
     data class TagQueryBased(
         val failIfEventsMatch: TagQuery,
         val afterFactId: String? = null,
     ) : AppendCondition()
-}
 
-data class SubjectExpectation(
-    val subject: String,
-    val expectedLastFactId: String? = null,
-)
+    /**
+     * Composite condition: all nested conditions must be satisfied (logical AND).
+     * Conditions may be nested arbitrarily. A multi-subject expectation is
+     * expressed as an [All] of several [ExpectedLastFact] conditions.
+     */
+    data class All(
+        val conditions: List<AppendCondition>,
+    ) : AppendCondition()
+}

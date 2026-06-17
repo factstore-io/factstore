@@ -9,16 +9,14 @@ import io.factstore.client.model.FactPayload
 import io.factstore.client.model.ReadDirection
 import io.factstore.client.model.ServerInfo
 import io.factstore.client.model.StoreInfo
-import io.factstore.client.model.SubjectExpectation
 import io.factstore.client.model.TagQuery
 import io.factstore.client.model.TagQueryItem
 import io.factstore.grpc.v1.FactStoreProto
+import io.factstore.grpc.v1.all
 import io.factstore.grpc.v1.appendCondition
 import io.factstore.grpc.v1.expectedLastFact
-import io.factstore.grpc.v1.expectedMultiSubjectLastFact
 import io.factstore.grpc.v1.factInput
 import io.factstore.grpc.v1.factPayload
-import io.factstore.grpc.v1.subjectExpectation
 import io.factstore.grpc.v1.tagOnlyItem
 import io.factstore.grpc.v1.tagQuery
 import io.factstore.grpc.v1.tagQueryBasedCondition
@@ -88,19 +86,14 @@ internal fun AppendCondition.toProto(): FactStoreProto.AppendCondition = appendC
             subject = c.subject
             c.expectedLastFactId?.let { expectedLastFactId = it }
         }
-        is AppendCondition.ExpectedMultiSubjectLastFact -> expectedMultiSubjectLastFact = expectedMultiSubjectLastFact {
-            expectations += c.expectations.map { it.toProto() }
-        }
         is AppendCondition.TagQueryBased -> tagQueryBased = tagQueryBasedCondition {
             failIfEventsMatch = c.failIfEventsMatch.toProto()
             c.afterFactId?.let { afterFactId = it }
         }
+        is AppendCondition.All -> all = all {
+            conditions += c.conditions.map { it.toProto() }
+        }
     }
-}
-
-internal fun SubjectExpectation.toProto(): FactStoreProto.SubjectExpectation = subjectExpectation {
-    subject = this@toProto.subject
-    this@toProto.expectedLastFactId?.let { expectedLastFactId = it }
 }
 
 internal fun TagQuery.toProto(): FactStoreProto.TagQuery = tagQuery {

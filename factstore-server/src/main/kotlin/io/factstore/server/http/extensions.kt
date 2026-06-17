@@ -47,13 +47,9 @@ fun AppendConditionHttp.toAppendCondition(): AppendCondition =
                 expectedLastFactId = expectedLastFactId?.toFactId()
             )
 
-        is AppendConditionHttp.ExpectedMultiSubjectLastFact ->
-            AppendCondition.ExpectedMultiSubjectLastFact(
-                expectations = expectations.mapKeys { (subject, _) ->
-                    Subject(subject)
-                }.mapValues { (_, factId) ->
-                    factId?.toFactId()
-                }
+        is AppendConditionHttp.All ->
+            AppendCondition.All(
+                conditions = conditions.map { it.toAppendCondition() }
             )
 
         is AppendConditionHttp.TagQueryBased ->
