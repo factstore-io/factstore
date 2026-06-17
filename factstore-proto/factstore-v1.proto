@@ -235,15 +235,12 @@ service FactService {
 // -- AppendFacts --
 
 // Input shape for a single fact to be appended.
-// id and appended_at are optional and will be auto-generated if absent.
 message FactInput {
-  optional string id = 1;
-  string type = 2;
-  string subject = 3;
-  optional google.protobuf.Timestamp appended_at = 4;
-  FactPayload payload = 5;
-  map<string, string> metadata = 6;
-  map<string, string> tags = 7;
+  string type = 1;
+  string subject = 2;
+  FactPayload payload = 3;
+  map<string, string> metadata = 4;
+  map<string, string> tags = 5;
 }
 
 message AppendFactsRequest {
@@ -263,7 +260,13 @@ message AppendFactsResponse {
   }
 }
 
-message FactsAppended {}
+message FactsAppended {
+  // Ids assigned by the server to the appended facts, in the same order as the
+  // request's facts (fact_ids[i] corresponds to the i-th input fact).
+  repeated string fact_ids = 1;
+  // Shared ingestion timestamp assigned to all facts in this append.
+  google.protobuf.Timestamp appended_at = 2;
+}
 message AlreadyApplied {}
 message ConditionViolated {}
 

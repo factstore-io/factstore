@@ -5,6 +5,7 @@ import com.apple.foundationdb.Transaction
 import com.apple.foundationdb.tuple.Tuple
 import io.factstore.core.*
 import kotlinx.coroutines.future.await
+import java.time.Instant
 import java.util.concurrent.CompletableFuture
 
 const val REVERSED = true
@@ -16,10 +17,10 @@ class FdbFactAppender(
     private val store: FdbFactStore,
 ) : FactAppender {
 
-    override suspend fun append(storeName: StoreName, fact: Fact): AppendResult =
+    override suspend fun append(storeName: StoreName, fact: FactInput): AppendResult =
         append(storeName, listOf(fact))
 
-    override suspend fun append(storeName: StoreName, facts: List<Fact>): AppendResult =
+    override suspend fun append(storeName: StoreName, facts: List<FactInput>): AppendResult =
         append(
             AppendRequest(
                 storeName = storeName,
@@ -55,11 +56,14 @@ class FdbFactAppender(
                 CompletableFuture.completedFuture(AppendResult.AlreadyApplied)
             } else {
                 with(storeId) {
-                    request.checkDuplicatedFactIds().thenCompose { duplicateFactIds ->
+                    val appendedAt = Instant.now()
+                    val facts = request.facts.map { it.toFact(FactId.generate(), appendedAt) }
+
+                    facts.checkDuplicatedFactIds().thenCompose { duplicateFactIds ->
                         if (duplicateFactIds.isNotEmpty()) {
                             CompletableFuture.completedFuture(AppendResult.DuplicateFactIds(duplicateFactIds))
                         } else {
-                            request.appendNew()
+                            request.appendNew(facts, appendedAt)
                         }
                     }
                 }
@@ -68,8 +72,8 @@ class FdbFactAppender(
     }
 
     context(transaction: Transaction, storeId: StoreId)
-    private fun AppendRequest.checkDuplicatedFactIds(): CompletableFuture<List<FactId>> {
-        val checks: List<CompletableFuture<FactId?>> = facts.map { fact ->
+    private fun List<Fact>.checkDuplicatedFactIds(): CompletableFuture<List<FactId>> {
+        val checks: List<CompletableFuture<FactId?>> = map { fact ->
             store.context.factPositionIndexSubspace.exists(storeId, fact.id).thenApply { exists ->
                 if (exists) fact.id else null
             }
@@ -84,18 +88,19 @@ class FdbFactAppender(
     }
 
     context(tr: Transaction, storeId: StoreId)
-    private fun AppendRequest.appendNew(): CompletableFuture<AppendResult> {
-
-        return this.condition.isSatisfied().thenApply { satisfied ->
+    private fun AppendRequest.appendNew(
+        facts: List<Fact>,
+        appendedAt: Instant,
+    ): CompletableFuture<AppendResult> =
+        condition.isSatisfied().thenApply { satisfied ->
             if (!satisfied) {
                 AppendResult.AppendConditionViolated
             } else {
-                this.facts.store()
+                facts.store()
                 store.context.idempotencySubspace.save(storeId, idempotencyKey)
-                AppendResult.Appended
+                AppendResult.Appended(facts.map { it.id }, appendedAt)
             }
         }
-    }
 
     context(tr: Transaction, storeId: StoreId)
     private fun AppendCondition.isSatisfied(): CompletableFuture<Boolean> =

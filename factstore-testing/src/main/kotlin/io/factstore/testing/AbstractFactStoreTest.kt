@@ -4,6 +4,7 @@ import io.factstore.core.*
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
@@ -15,6 +16,7 @@ import org.junit.jupiter.api.*
 import java.time.Instant
 import java.util.UUID
 import kotlin.system.measureTimeMillis
+import kotlin.time.Duration.Companion.milliseconds
 
 private const val ALICE_SUBJECT_VALUE = "USER:ALICE"
 private const val BOB_SUBJECT_VALUE = "USER:BOB"
@@ -33,6 +35,47 @@ abstract class AbstractFactStoreTest {
     abstract fun reset()
 
     abstract fun initializeFactStore(): FactStore
+
+    // ===== Test helpers =====
+    //
+    // Facts are appended as FactInputs; the store assigns their id and appendedAt.
+    // These helpers append inputs and read back the stored facts (by their
+    // server-assigned ids) so tests can assert on the canonical stored shape.
+
+    private fun input(
+        subject: String,
+        type: String,
+        payload: FactPayload,
+        metadata: Map<String, String> = emptyMap(),
+        tags: Map<TagKey, TagValue> = emptyMap(),
+    ) = FactInput(
+        type = FactType(type),
+        subject = Subject(subject),
+        payload = payload,
+        metadata = metadata,
+        tags = tags,
+    )
+
+    private fun userInput(
+        subjectId: String,
+        username: String,
+        role: String,
+        region: String,
+    ) = input(
+        subject = "USER:$subjectId",
+        type = "USER_CREATED",
+        payload = """{ "username": "$username" }""".toFactPayload(),
+        tags = mapOf(TagKey("role") to TagValue(role), TagKey("region") to TagValue(region)),
+    )
+
+    private suspend fun appendStored(inputs: List<FactInput>, storeName: StoreName = testStore): List<Fact> {
+        val result = store.append(AppendRequest(storeName, inputs, IdempotencyKey()))
+        val ids = (result as AppendResult.Appended).factIds
+        return ids.map { (store.findById(FindByIdRequest(storeName, it)) as FindByIdResult.Found).fact }
+    }
+
+    private suspend fun appendStored(input: FactInput, storeName: StoreName = testStore): Fact =
+        appendStored(listOf(input), storeName).single()
 
 
     @BeforeEach
@@ -84,19 +127,10 @@ abstract class AbstractFactStoreTest {
 
     @Test
     fun testSimpleAppend(): Unit = runBlocking {
-        val id = FactId.generate()
         val payload = """ { "username": "Peter" } """.toFactPayload()
-        val createdAt = Instant.now()
 
-        val fact = Fact(
-            id = id,
-            subject = Subject(ALICE_SUBJECT_VALUE),
-            type = "USER_ONBOARDED".toFactType(),
-            payload = payload,
-            appendedAt = createdAt
-        )
-
-        store.append(testStore, fact)
+        val fact = appendStored(input(ALICE_SUBJECT_VALUE, "USER_ONBOARDED", payload))
+        val id = fact.id
 
         store.stream(StreamFactsRequest(testStore)).let { (it as StreamResult.FactStream).stream }.transform { batch -> batch.forEach { emit(it) } }.take(1).collect {
             println("Streamed fact: $it")
@@ -133,42 +167,22 @@ abstract class AbstractFactStoreTest {
 
     @Test
     fun testFindInTimeRange(): Unit = runBlocking {
-        val now = Instant.now()
-
-        val fact1 = Fact(
-            id = FactId.generate(),
-            subject = Subject(ALICE_SUBJECT_VALUE),
-            type = "USER_CREATED".toFactType(),
-            payload = alicePayload,
-            appendedAt = now.minusSeconds(60) // 1 minute ago
+        // appendedAt is server-assigned; small delays guarantee distinct, increasing timestamps.
+        val fact1 = appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload))
+        delay(10.milliseconds)
+        val fact2 = appendStored(
+            input(ALICE_SUBJECT_VALUE, "USER_UPDATED", """{ "username": "Alice", "status": "active" }""".toFactPayload())
         )
+        delay(10.milliseconds)
+        val fact3 = appendStored(input(BOB_SUBJECT_VALUE, "USER_DELETED", bobPayload))
 
-        val fact2 = Fact(
-            id = FactId.generate(),
-            subject = Subject(ALICE_SUBJECT_VALUE),
-            type = "USER_UPDATED".toFactType(),
-            payload = """{ "username": "Alice", "status": "active" }""".toFactPayload(),
-            appendedAt = now
-        )
-
-        val fact3 = Fact(
-            id = FactId.generate(),
-            subject = Subject(BOB_SUBJECT_VALUE),
-            type = "USER_DELETED".toFactType(),
-            payload = bobPayload,
-            appendedAt = now.plusSeconds(60) // 1 minute in the future
-        )
-
-        // Append all three
-        store.append(testStore, listOf(fact1, fact2, fact3))
-
-        // Query range covering fact1 + fact2, but excluding fact3
+        // Half-open [fact1, fact3): covers fact1 + fact2, excludes fact3 (end is exclusive).
         val result = store.findInTimeRange(
             FindInTimeRangeRequest(
                 storeName = testStore,
                 timeRange = TimeRange(
-                    start = now.minusSeconds(120),
-                    end = now.plusSeconds(10)
+                    start = fact1.appendedAt,
+                    end = fact3.appendedAt
                 )
             )
         )
@@ -177,6 +191,35 @@ abstract class AbstractFactStoreTest {
         val foundFacts = (result as FindInTimeRangeResult.Found).facts
         assertThat(foundFacts).containsExactlyInAnyOrder(fact1, fact2)
         assertThat(foundFacts).doesNotContain(fact3)
+    }
+
+    @Test
+    fun testFindInTimeRangeBoundariesAreHalfOpen(): Unit = runBlocking {
+        // Use the fact's own server-assigned timestamp as the boundary, so the
+        // assertion is exact regardless of the backend's timestamp precision.
+        val fact = appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload))
+        val t = fact.appendedAt
+
+        // end is exclusive: a fact exactly at `end` must NOT be returned.
+        val endExclusive = store.findInTimeRange(
+            FindInTimeRangeRequest(
+                storeName = testStore,
+                timeRange = TimeRange(start = t.minusSeconds(10), end = t)
+            )
+        )
+        assertThat(endExclusive).isInstanceOf(FindInTimeRangeResult.Found::class.java)
+        assertThat((endExclusive as FindInTimeRangeResult.Found).facts).isEmpty()
+
+        // start is inclusive: a fact exactly at `start` must be returned.
+        val startInclusive = store.findInTimeRange(
+            FindInTimeRangeRequest(
+                storeName = testStore,
+                timeRange = TimeRange(start = t, end = t.plusSeconds(10))
+            )
+        )
+        assertThat(startInclusive).isInstanceOf(FindInTimeRangeResult.Found::class.java)
+        assertThat((startInclusive as FindInTimeRangeResult.Found).facts)
+            .containsExactly(fact)
     }
 
     @Test
@@ -196,36 +239,16 @@ abstract class AbstractFactStoreTest {
 
     @Test
     fun testFindInTimeRangeWithLimit(): Unit = runBlocking {
-        val now = Instant.now()
-
-        val fact1 = Fact(
-            id = FactId.generate(),
-            subject = Subject(ALICE_SUBJECT_VALUE),
-            type = "USER_CREATED".toFactType(),
-            payload = alicePayload,
-            appendedAt = now.minusSeconds(120),
-        )
-        val fact2 = Fact(
-            id = FactId.generate(),
-            subject = Subject(BOB_SUBJECT_VALUE),
-            type = "USER_CREATED".toFactType(),
-            payload = bobPayload,
-            appendedAt = now.minusSeconds(60),
-        )
-        val fact3 = Fact(
-            id = FactId.generate(),
-            subject = Subject(CHARLIE_SUBJECT_VALUE),
-            type = "USER_CREATED".toFactType(),
-            payload = charliePayload,
-            appendedAt = now,
-        )
-
-        store.append(testStore, listOf(fact1, fact2, fact3))
+        val fact1 = appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload))
+        delay(10.milliseconds)
+        val fact2 = appendStored(input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload))
+        delay(10.milliseconds)
+        val fact3 = appendStored(input(CHARLIE_SUBJECT_VALUE, "USER_CREATED", charliePayload))
 
         val result = store.findInTimeRange(
             FindInTimeRangeRequest(
                 storeName = testStore,
-                timeRange = TimeRange(start = Instant.MIN, end = now.plusSeconds(10)),
+                timeRange = TimeRange(start = Instant.MIN, end = fact3.appendedAt.plusSeconds(10)),
                 limit = Limit.of(2),
             )
         )
@@ -237,36 +260,16 @@ abstract class AbstractFactStoreTest {
 
     @Test
     fun testFindInTimeRangeWithReadDirectionBackward(): Unit = runBlocking {
-        val now = Instant.now()
-
-        val fact1 = Fact(
-            id = FactId.generate(),
-            subject = Subject(ALICE_SUBJECT_VALUE),
-            type = "USER_CREATED".toFactType(),
-            payload = alicePayload,
-            appendedAt = now.minusSeconds(120),
-        )
-        val fact2 = Fact(
-            id = FactId.generate(),
-            subject = Subject(BOB_SUBJECT_VALUE),
-            type = "USER_CREATED".toFactType(),
-            payload = bobPayload,
-            appendedAt = now.minusSeconds(60),
-        )
-        val fact3 = Fact(
-            id = FactId.generate(),
-            subject = Subject(CHARLIE_SUBJECT_VALUE),
-            type = "USER_CREATED".toFactType(),
-            payload = charliePayload,
-            appendedAt = now,
-        )
-
-        store.append(testStore, listOf(fact1, fact2, fact3))
+        val fact1 = appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload))
+        delay(10.milliseconds)
+        val fact2 = appendStored(input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload))
+        delay(10.milliseconds)
+        val fact3 = appendStored(input(CHARLIE_SUBJECT_VALUE, "USER_CREATED", charliePayload))
 
         val result = store.findInTimeRange(
             FindInTimeRangeRequest(
                 storeName = testStore,
-                timeRange = TimeRange(start = Instant.MIN, end = now.plusSeconds(10)),
+                timeRange = TimeRange(start = Instant.MIN, end = fact3.appendedAt.plusSeconds(10)),
                 direction = ReadDirection.Backward,
             )
         )
@@ -278,36 +281,16 @@ abstract class AbstractFactStoreTest {
 
     @Test
     fun testFindInTimeRangeWithLimitAndBackwardDirection(): Unit = runBlocking {
-        val now = Instant.now()
-
-        val fact1 = Fact(
-            id = FactId.generate(),
-            subject = Subject(ALICE_SUBJECT_VALUE),
-            type = "USER_CREATED".toFactType(),
-            payload = alicePayload,
-            appendedAt = now.minusSeconds(120),
-        )
-        val fact2 = Fact(
-            id = FactId.generate(),
-            subject = Subject(BOB_SUBJECT_VALUE),
-            type = "USER_CREATED".toFactType(),
-            payload = bobPayload,
-            appendedAt = now.minusSeconds(60),
-        )
-        val fact3 = Fact(
-            id = FactId.generate(),
-            subject = Subject(CHARLIE_SUBJECT_VALUE),
-            type = "USER_CREATED".toFactType(),
-            payload = charliePayload,
-            appendedAt = now,
-        )
-
-        store.append(testStore, listOf(fact1, fact2, fact3))
+        val fact1 = appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload))
+        delay(10.milliseconds)
+        val fact2 = appendStored(input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload))
+        delay(10.milliseconds)
+        val fact3 = appendStored(input(CHARLIE_SUBJECT_VALUE, "USER_CREATED", charliePayload))
 
         val result = store.findInTimeRange(
             FindInTimeRangeRequest(
                 storeName = testStore,
-                timeRange = TimeRange(start = Instant.MIN, end = now.plusSeconds(10)),
+                timeRange = TimeRange(start = Instant.MIN, end = fact3.appendedAt.plusSeconds(10)),
                 limit = Limit.of(2),
                 direction = ReadDirection.Backward,
             )
@@ -320,108 +303,60 @@ abstract class AbstractFactStoreTest {
 
     @Test
     fun testConditionalAppendWithSubject(): Unit = runBlocking {
-        // append first event without an append condition
-        val fact1Id = FactId.generate()
-        val fact1 = Fact(
-            id = fact1Id,
-            subject = Subject(ALICE_SUBJECT_VALUE),
-            type = "USER_CREATED".toFactType(),
-            payload = alicePayload,
-            appendedAt = Instant.now()
-        )
-
-        // append fact1
-        val appendRequestWithEmptySubjectCondition = AppendRequest(
-            storeName = testStore,
-            facts = listOf(fact1),
-            idempotencyKey = IdempotencyKey(),
-            condition = AppendCondition.ExpectedLastFact(
-                subject = Subject(ALICE_SUBJECT_VALUE),
-                expectedLastFactId = null
+        // append fact1 expecting no prior fact for the subject
+        val appended1 = store.append(
+            AppendRequest(
+                storeName = testStore,
+                facts = listOf(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload)),
+                idempotencyKey = IdempotencyKey(),
+                condition = AppendCondition.ExpectedLastFact(
+                    subject = Subject(ALICE_SUBJECT_VALUE),
+                    expectedLastFactId = null
+                )
             )
         )
+        assertThat(appended1).isInstanceOf(AppendResult.Appended::class.java)
+        val fact1Id = (appended1 as AppendResult.Appended).factIds.single()
 
-        store.append(appendRequestWithEmptySubjectCondition).also {
-            assertThat(it).isInstanceOf(AppendResult.Appended::class.java)
-        }
-
-
-        // append fact2
-        val fact2Id = FactId.generate()
-        val fact2 = Fact(
-            id = fact2Id,
-            subject = Subject(ALICE_SUBJECT_VALUE),
-            type = "USER_LOCKED".toFactType(),
-            payload = alicePayload,
-            appendedAt = Instant.now()
-        )
-
-        val appendRequestWithFirstFactSubjectCondition = AppendRequest(
-            storeName = testStore,
-            facts = listOf(fact2),
-            idempotencyKey = IdempotencyKey(),
-            condition = AppendCondition.ExpectedLastFact(
-                subject = Subject(ALICE_SUBJECT_VALUE),
-                expectedLastFactId = fact1Id
+        // append fact2 expecting fact1 to be the last fact
+        val appended2 = store.append(
+            AppendRequest(
+                storeName = testStore,
+                facts = listOf(input(ALICE_SUBJECT_VALUE, "USER_LOCKED", alicePayload)),
+                idempotencyKey = IdempotencyKey(),
+                condition = AppendCondition.ExpectedLastFact(
+                    subject = Subject(ALICE_SUBJECT_VALUE),
+                    expectedLastFactId = fact1Id
+                )
             )
         )
+        assertThat(appended2).isInstanceOf(AppendResult.Appended::class.java)
 
-        store.append(appendRequestWithFirstFactSubjectCondition).also {
-            assertThat(it).isInstanceOf(AppendResult.Appended::class.java)
-        }
-
-        // appending a third fact with the same fact ID in the append condition should fail
+        // appending again with the now-stale expected last fact id should fail;
         // this simulates two concurrent/conflicting append requests
-        val fact3 = fact2.copy(id = FactId.generate())
-        val appendRequestWithViolatingSubjectCondition = AppendRequest(
-            storeName = testStore,
-            facts = listOf(fact3),
-            idempotencyKey = IdempotencyKey(),
-            condition = AppendCondition.ExpectedLastFact(
-                subject = Subject(ALICE_SUBJECT_VALUE),
-                expectedLastFactId = fact1Id // <-- this will cause the violation
+        val violated = store.append(
+            AppendRequest(
+                storeName = testStore,
+                facts = listOf(input(ALICE_SUBJECT_VALUE, "USER_LOCKED", alicePayload)),
+                idempotencyKey = IdempotencyKey(),
+                condition = AppendCondition.ExpectedLastFact(
+                    subject = Subject(ALICE_SUBJECT_VALUE),
+                    expectedLastFactId = fact1Id // <-- this will cause the violation
+                )
             )
         )
-
-        store.append(appendRequestWithViolatingSubjectCondition).also {
-            assertThat(it).isInstanceOf(AppendResult.AppendConditionViolated::class.java)
-        }
+        assertThat(violated).isInstanceOf(AppendResult.AppendConditionViolated::class.java)
     }
 
     @Test
     fun testMultipleFactsOptimisticAppend(): Unit = runBlocking {
-
-        val fact1Id = FactId.generate()
-        val fact2Id = FactId.generate()
-        val fact3Id = FactId.generate()
-
-        val fact1 = Fact(
-            id = fact1Id,
-            subject = Subject(ALICE_SUBJECT_VALUE),
-            type = "USER_CREATED".toFactType(),
-            payload = alicePayload,
-            appendedAt = Instant.now()
-        )
-
-        val fact2 = Fact(
-            id = fact2Id,
-            subject = Subject(BOB_SUBJECT_VALUE),
-            type = "USER_CREATED".toFactType(),
-            payload = bobPayload,
-            appendedAt = Instant.now()
-        )
-
-        val fact3 = Fact(
-            id = fact3Id,
-            subject = Subject(ALICE_SUBJECT_VALUE),
-            type = "USER_LOCKED".toFactType(),
-            payload = alicePayload,
-            appendedAt = Instant.now()
-        )
-
         val appendRequest = AppendRequest(
             storeName = testStore,
-            facts = listOf(fact1, fact2, fact3),
+            facts = listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
+                input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload),
+                input(ALICE_SUBJECT_VALUE, "USER_LOCKED", alicePayload),
+            ),
             idempotencyKey = IdempotencyKey(),
             condition = AppendCondition.All(
                 conditions = listOf(
@@ -441,26 +376,11 @@ abstract class AbstractFactStoreTest {
     fun testCompositeConditionViolatedWhenOneConditionFails(): Unit = runBlocking {
 
         // Seed Alice with a fact, so expecting her last fact to be null no longer holds.
-        val aliceFact = Fact(
-            id = FactId.generate(),
-            subject = Subject(ALICE_SUBJECT_VALUE),
-            type = "USER_CREATED".toFactType(),
-            payload = alicePayload,
-            appendedAt = Instant.now()
-        )
-        store.append(testStore, listOf(aliceFact))
-
-        val bobFact = Fact(
-            id = FactId.generate(),
-            subject = Subject(BOB_SUBJECT_VALUE),
-            type = "USER_CREATED".toFactType(),
-            payload = bobPayload,
-            appendedAt = Instant.now()
-        )
+        appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload))
 
         val appendRequest = AppendRequest(
             storeName = testStore,
-            facts = listOf(bobFact),
+            facts = listOf(input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload)),
             idempotencyKey = IdempotencyKey(),
             condition = AppendCondition.All(
                 conditions = listOf(
@@ -481,37 +401,13 @@ abstract class AbstractFactStoreTest {
     @Test
     fun testSubjectQueries(): Unit = runBlocking {
 
-        val fact1Id = FactId.generate()
-        val fact2Id = FactId.generate()
-        val fact3Id = FactId.generate()
-
-        val fact1 = Fact(
-            id = fact1Id,
-            subject = Subject(ALICE_SUBJECT_VALUE),
-            type = "USER_CREATED".toFactType(),
-            payload = alicePayload,
-            appendedAt = Instant.now()
+        val (fact1, fact2, fact3) = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
+                input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload),
+                input(ALICE_SUBJECT_VALUE, "USER_LOCKED", alicePayload),
+            )
         )
-
-        val fact2 = Fact(
-            id = fact2Id,
-            subject = Subject(BOB_SUBJECT_VALUE),
-            type = "USER_CREATED".toFactType(),
-            payload = bobPayload,
-            appendedAt = Instant.now()
-        )
-
-        val fact3 = Fact(
-            id = fact3Id,
-            subject = Subject(ALICE_SUBJECT_VALUE),
-            type = "USER_LOCKED".toFactType(),
-            payload = alicePayload,
-            appendedAt = Instant.now()
-        )
-
-        val factsToAppend = listOf(fact1, fact2, fact3)
-
-        store.append(testStore, factsToAppend)
 
         val aliceResult = store.findBySubject(FindBySubjectRequest(testStore, Subject(ALICE_SUBJECT_VALUE)))
         assertThat(aliceResult).isInstanceOf(FindBySubjectResult.Found::class.java)
@@ -540,29 +436,13 @@ abstract class AbstractFactStoreTest {
 
     @Test
     fun testFindBySubjectWithLimit(): Unit = runBlocking {
-        val fact1 = Fact(
-            id = FactId.generate(),
-            subject = Subject(ALICE_SUBJECT_VALUE),
-            type = "USER_CREATED".toFactType(),
-            payload = alicePayload,
-            appendedAt = Instant.now(),
+        val (fact1, fact2, fact3) = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
+                input(ALICE_SUBJECT_VALUE, "USER_UPDATED", alicePayload),
+                input(ALICE_SUBJECT_VALUE, "USER_LOCKED", alicePayload),
+            )
         )
-        val fact2 = Fact(
-            id = FactId.generate(),
-            subject = Subject(ALICE_SUBJECT_VALUE),
-            type = "USER_UPDATED".toFactType(),
-            payload = alicePayload,
-            appendedAt = Instant.now(),
-        )
-        val fact3 = Fact(
-            id = FactId.generate(),
-            subject = Subject(ALICE_SUBJECT_VALUE),
-            type = "USER_LOCKED".toFactType(),
-            payload = alicePayload,
-            appendedAt = Instant.now(),
-        )
-
-        store.append(testStore, listOf(fact1, fact2, fact3))
 
         val result = store.findBySubject(
             FindBySubjectRequest(
@@ -579,29 +459,13 @@ abstract class AbstractFactStoreTest {
 
     @Test
     fun testFindBySubjectWithReadDirectionBackward(): Unit = runBlocking {
-        val fact1 = Fact(
-            id = FactId.generate(),
-            subject = Subject(ALICE_SUBJECT_VALUE),
-            type = "USER_CREATED".toFactType(),
-            payload = alicePayload,
-            appendedAt = Instant.now(),
+        val (fact1, fact2, fact3) = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
+                input(ALICE_SUBJECT_VALUE, "USER_UPDATED", alicePayload),
+                input(ALICE_SUBJECT_VALUE, "USER_LOCKED", alicePayload),
+            )
         )
-        val fact2 = Fact(
-            id = FactId.generate(),
-            subject = Subject(ALICE_SUBJECT_VALUE),
-            type = "USER_UPDATED".toFactType(),
-            payload = alicePayload,
-            appendedAt = Instant.now(),
-        )
-        val fact3 = Fact(
-            id = FactId.generate(),
-            subject = Subject(ALICE_SUBJECT_VALUE),
-            type = "USER_LOCKED".toFactType(),
-            payload = alicePayload,
-            appendedAt = Instant.now(),
-        )
-
-        store.append(testStore, listOf(fact1, fact2, fact3))
 
         val result = store.findBySubject(
             FindBySubjectRequest(
@@ -618,29 +482,13 @@ abstract class AbstractFactStoreTest {
 
     @Test
     fun testFindBySubjectWithLimitAndBackwardDirection(): Unit = runBlocking {
-        val fact1 = Fact(
-            id = FactId.generate(),
-            subject = Subject(ALICE_SUBJECT_VALUE),
-            type = "USER_CREATED".toFactType(),
-            payload = alicePayload,
-            appendedAt = Instant.now(),
+        val (fact1, fact2, fact3) = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
+                input(ALICE_SUBJECT_VALUE, "USER_UPDATED", alicePayload),
+                input(ALICE_SUBJECT_VALUE, "USER_LOCKED", alicePayload),
+            )
         )
-        val fact2 = Fact(
-            id = FactId.generate(),
-            subject = Subject(ALICE_SUBJECT_VALUE),
-            type = "USER_UPDATED".toFactType(),
-            payload = alicePayload,
-            appendedAt = Instant.now(),
-        )
-        val fact3 = Fact(
-            id = FactId.generate(),
-            subject = Subject(ALICE_SUBJECT_VALUE),
-            type = "USER_LOCKED".toFactType(),
-            payload = alicePayload,
-            appendedAt = Instant.now(),
-        )
-
-        store.append(testStore, listOf(fact1, fact2, fact3))
 
         val result = store.findBySubject(
             FindBySubjectRequest(
@@ -660,69 +508,28 @@ abstract class AbstractFactStoreTest {
     @Test
     fun testWithMetadata(): Unit = runBlocking {
 
-        val fact1Id = FactId.generate()
-        val fact2Id = FactId.generate()
-
-        val fact1 = Fact(
-            id = fact1Id,
-            subject = Subject(ALICE_SUBJECT_VALUE),
-            type = "USER_CREATED".toFactType(),
-            payload = alicePayload,
-            appendedAt = Instant.now(),
-            metadata = mapOf("test" to "123", "loc" to "world")
+        val (fact1, fact2) = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload, metadata = mapOf("test" to "123", "loc" to "world")),
+                input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload),
+            )
         )
 
-        val fact2 = Fact(
-            id = fact2Id,
-            subject = Subject(BOB_SUBJECT_VALUE),
-            type = "USER_CREATED".toFactType(),
-            payload = bobPayload,
-            appendedAt = Instant.now()
-        )
-
-        val factsToAppend = listOf(fact1, fact2)
-
-        store.append(testStore, factsToAppend)
-
-        assertThat(store.findById(FindByIdRequest(testStore, fact1Id))).isInstanceOf(FindByIdResult.Found::class.java)
-        assertThat((store.findById(FindByIdRequest(testStore, fact1Id)) as FindByIdResult.Found).fact).isEqualTo(fact1)
-        assertThat(store.findById(FindByIdRequest(testStore, fact2Id))).isInstanceOf(FindByIdResult.Found::class.java)
-        assertThat((store.findById(FindByIdRequest(testStore, fact2Id)) as FindByIdResult.Found).fact).isEqualTo(fact2)
+        assertThat(store.findById(FindByIdRequest(testStore, fact1.id))).isInstanceOf(FindByIdResult.Found::class.java)
+        assertThat((store.findById(FindByIdRequest(testStore, fact1.id)) as FindByIdResult.Found).fact).isEqualTo(fact1)
+        assertThat(store.findById(FindByIdRequest(testStore, fact2.id))).isInstanceOf(FindByIdResult.Found::class.java)
+        assertThat((store.findById(FindByIdRequest(testStore, fact2.id)) as FindByIdResult.Found).fact).isEqualTo(fact2)
     }
 
     @Test
     fun appendEventsWithTagsAndFindThem(): Unit = runBlocking {
-        val fact1 = Fact(
-            id = FactId.generate(),
-            subject = Subject(ALICE_SUBJECT_VALUE),
-            type = "USER_CREATED".toFactType(),
-            payload = alicePayload,
-            appendedAt = Instant.now(),
-            metadata = emptyMap(),
-            tags = mapOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("eu"))
+        val (fact1, fact2, fact3) = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload, tags = mapOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("eu"))),
+                input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload, tags = mapOf(TagKey("role") to TagValue("user"), TagKey("region") to TagValue("us"))),
+                input(CHARLIE_SUBJECT_VALUE, "USER_CREATED", charliePayload, tags = mapOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("us"))),
+            )
         )
-
-        val fact2 = Fact(
-            id = FactId.generate(),
-            subject = Subject(BOB_SUBJECT_VALUE),
-            type = "USER_CREATED".toFactType(),
-            payload = bobPayload,
-            appendedAt = Instant.now(),
-            metadata = emptyMap(),
-            tags = mapOf(TagKey("role") to TagValue("user"), TagKey("region") to TagValue("us"))
-        )
-
-        val fact3 = Fact(
-            id = FactId.generate(),
-            subject = Subject(CHARLIE_SUBJECT_VALUE),
-            type = "USER_CREATED".toFactType(),
-            payload = charliePayload,
-            appendedAt = Instant.now(),
-            metadata = emptyMap(),
-            tags = mapOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("us"))
-        )
-
-        store.append(testStore, listOf(fact1, fact2, fact3))
 
         // --- Query 1: Find all role=admin (AND semantics → fact1 + fact3, both have role=admin)
         val adminResult = store.findByTags(FindByTagsRequest(testStore, listOf(TagKey("role") to TagValue("admin"))))
@@ -779,32 +586,13 @@ abstract class AbstractFactStoreTest {
 
     @Test
     fun testFindByTagsWithLimit(): Unit = runBlocking {
-        val fact1 = Fact(
-            id = FactId.generate(),
-            subject = Subject(ALICE_SUBJECT_VALUE),
-            type = "USER_CREATED".toFactType(),
-            payload = alicePayload,
-            appendedAt = Instant.now(),
-            tags = mapOf(TagKey("role") to TagValue("admin")),
+        val (fact1, fact2, fact3) = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload, tags = mapOf(TagKey("role") to TagValue("admin"))),
+                input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload, tags = mapOf(TagKey("role") to TagValue("admin"))),
+                input(CHARLIE_SUBJECT_VALUE, "USER_CREATED", charliePayload, tags = mapOf(TagKey("role") to TagValue("admin"))),
+            )
         )
-        val fact2 = Fact(
-            id = FactId.generate(),
-            subject = Subject(BOB_SUBJECT_VALUE),
-            type = "USER_CREATED".toFactType(),
-            payload = bobPayload,
-            appendedAt = Instant.now(),
-            tags = mapOf(TagKey("role") to TagValue("admin")),
-        )
-        val fact3 = Fact(
-            id = FactId.generate(),
-            subject = Subject(CHARLIE_SUBJECT_VALUE),
-            type = "USER_CREATED".toFactType(),
-            payload = charliePayload,
-            appendedAt = Instant.now(),
-            tags = mapOf(TagKey("role") to TagValue("admin")),
-        )
-
-        store.append(testStore, listOf(fact1, fact2, fact3))
 
         val result = store.findByTags(
             FindByTagsRequest(
@@ -821,32 +609,13 @@ abstract class AbstractFactStoreTest {
 
     @Test
     fun testFindByTagsWithReadDirectionBackward(): Unit = runBlocking {
-        val fact1 = Fact(
-            id = FactId.generate(),
-            subject = Subject(ALICE_SUBJECT_VALUE),
-            type = "USER_CREATED".toFactType(),
-            payload = alicePayload,
-            appendedAt = Instant.now(),
-            tags = mapOf(TagKey("role") to TagValue("admin")),
+        val (fact1, fact2, fact3) = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload, tags = mapOf(TagKey("role") to TagValue("admin"))),
+                input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload, tags = mapOf(TagKey("role") to TagValue("admin"))),
+                input(CHARLIE_SUBJECT_VALUE, "USER_CREATED", charliePayload, tags = mapOf(TagKey("role") to TagValue("admin"))),
+            )
         )
-        val fact2 = Fact(
-            id = FactId.generate(),
-            subject = Subject(BOB_SUBJECT_VALUE),
-            type = "USER_CREATED".toFactType(),
-            payload = bobPayload,
-            appendedAt = Instant.now(),
-            tags = mapOf(TagKey("role") to TagValue("admin")),
-        )
-        val fact3 = Fact(
-            id = FactId.generate(),
-            subject = Subject(CHARLIE_SUBJECT_VALUE),
-            type = "USER_CREATED".toFactType(),
-            payload = charliePayload,
-            appendedAt = Instant.now(),
-            tags = mapOf(TagKey("role") to TagValue("admin")),
-        )
-
-        store.append(testStore, listOf(fact1, fact2, fact3))
 
         val result = store.findByTags(
             FindByTagsRequest(
@@ -863,32 +632,13 @@ abstract class AbstractFactStoreTest {
 
     @Test
     fun testFindByTagsWithLimitAndBackwardDirection(): Unit = runBlocking {
-        val fact1 = Fact(
-            id = FactId.generate(),
-            subject = Subject(ALICE_SUBJECT_VALUE),
-            type = "USER_CREATED".toFactType(),
-            payload = alicePayload,
-            appendedAt = Instant.now(),
-            tags = mapOf(TagKey("role") to TagValue("admin")),
+        val (fact1, fact2, fact3) = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload, tags = mapOf(TagKey("role") to TagValue("admin"))),
+                input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload, tags = mapOf(TagKey("role") to TagValue("admin"))),
+                input(CHARLIE_SUBJECT_VALUE, "USER_CREATED", charliePayload, tags = mapOf(TagKey("role") to TagValue("admin"))),
+            )
         )
-        val fact2 = Fact(
-            id = FactId.generate(),
-            subject = Subject(BOB_SUBJECT_VALUE),
-            type = "USER_CREATED".toFactType(),
-            payload = bobPayload,
-            appendedAt = Instant.now(),
-            tags = mapOf(TagKey("role") to TagValue("admin")),
-        )
-        val fact3 = Fact(
-            id = FactId.generate(),
-            subject = Subject(CHARLIE_SUBJECT_VALUE),
-            type = "USER_CREATED".toFactType(),
-            payload = charliePayload,
-            appendedAt = Instant.now(),
-            tags = mapOf(TagKey("role") to TagValue("admin")),
-        )
-
-        store.append(testStore, listOf(fact1, fact2, fact3))
 
         val result = store.findByTags(
             FindByTagsRequest(
@@ -907,32 +657,13 @@ abstract class AbstractFactStoreTest {
     @Test
     fun testFindByTagsWithLimitAndBackwardDirectionMultipleTags(): Unit = runBlocking {
         // Verifies that limit + direction work correctly on the multi-tag intersection path
-        val fact1 = Fact(
-            id = FactId.generate(),
-            subject = Subject(ALICE_SUBJECT_VALUE),
-            type = "USER_CREATED".toFactType(),
-            payload = alicePayload,
-            appendedAt = Instant.now(),
-            tags = mapOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("eu")),
+        val (fact1, fact2, fact3) = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload, tags = mapOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("eu"))),
+                input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload, tags = mapOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("eu"))),
+                input(CHARLIE_SUBJECT_VALUE, "USER_CREATED", charliePayload, tags = mapOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("eu"))),
+            )
         )
-        val fact2 = Fact(
-            id = FactId.generate(),
-            subject = Subject(BOB_SUBJECT_VALUE),
-            type = "USER_CREATED".toFactType(),
-            payload = bobPayload,
-            appendedAt = Instant.now(),
-            tags = mapOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("eu")),
-        )
-        val fact3 = Fact(
-            id = FactId.generate(),
-            subject = Subject(CHARLIE_SUBJECT_VALUE),
-            type = "USER_CREATED".toFactType(),
-            payload = charliePayload,
-            appendedAt = Instant.now(),
-            tags = mapOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("eu")),
-        )
-
-        store.append(testStore, listOf(fact1, fact2, fact3))
 
         val result = store.findByTags(
             FindByTagsRequest(
@@ -950,22 +681,12 @@ abstract class AbstractFactStoreTest {
 
     @Test
     fun testLimitLargerThanResultSetReturnsAll(): Unit = runBlocking {
-        val fact1 = Fact(
-            id = FactId.generate(),
-            subject = Subject(ALICE_SUBJECT_VALUE),
-            type = "USER_CREATED".toFactType(),
-            payload = alicePayload,
-            appendedAt = Instant.now(),
+        val (fact1, fact2) = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
+                input(ALICE_SUBJECT_VALUE, "USER_UPDATED", alicePayload),
+            )
         )
-        val fact2 = Fact(
-            id = FactId.generate(),
-            subject = Subject(ALICE_SUBJECT_VALUE),
-            type = "USER_UPDATED".toFactType(),
-            payload = alicePayload,
-            appendedAt = Instant.now(),
-        )
-
-        store.append(testStore, listOf(fact1, fact2))
 
         val result = store.findBySubject(
             FindBySubjectRequest(
@@ -1001,15 +722,10 @@ abstract class AbstractFactStoreTest {
                 }
         }
 
-        // Create facts
-        val fact1 = createUserFact("ALICE", "Alice", "admin", "eu")
-        val fact2 = createUserFact("BOB", "Bob", "user", "us")
-        val fact3 = createUserFact("CHARLIE", "Charlie", "admin", "us")
-
-        // Append
-        store.append(testStore, fact1)
-        store.append(testStore, fact2)
-        store.append(testStore, fact3)
+        // Create + append (the store assigns ids/appendedAt and returns the stored facts)
+        val fact1 = appendStored(userInput("ALICE", "Alice", "admin", "eu"))
+        val fact2 = appendStored(userInput("BOB", "Bob", "user", "us"))
+        val fact3 = appendStored(userInput("CHARLIE", "Charlie", "admin", "us"))
 
         // Wait deterministically until 3 facts are received
         firstThreeReceived.await()
@@ -1045,11 +761,8 @@ abstract class AbstractFactStoreTest {
     fun testFactStreamingStartPositionEnd() = runBlocking {
 
         // Append initial facts BEFORE starting the stream
-        val initialFact1 = createUserFact("ALICE", "Alice", "admin", "eu")
-        val initialFact2 = createUserFact("BOB", "Bob", "user", "us")
-
-        store.append(testStore, initialFact1)
-        store.append(testStore, initialFact2)
+        appendStored(userInput("ALICE", "Alice", "admin", "eu"))
+        appendStored(userInput("BOB", "Bob", "user", "us"))
 
         val received = mutableListOf<Fact>()
         val receivedLatch = CompletableDeferred<Unit>()
@@ -1076,11 +789,8 @@ abstract class AbstractFactStoreTest {
         streamStartedLatch.await()
 
         // Append facts AFTER stream started
-        val newFact1 = createUserFact("CHARLIE", "Charlie", "admin", "us")
-        val newFact2 = createUserFact("DAVID", "David", "user", "eu")
-
-        store.append(testStore, newFact1)
-        store.append(testStore, newFact2)
+        val newFact1 = appendStored(userInput("CHARLIE", "Charlie", "admin", "us"))
+        val newFact2 = appendStored(userInput("DAVID", "David", "user", "eu"))
 
         // Wait deterministically until 2 facts received
         receivedLatch.await()
@@ -1090,25 +800,6 @@ abstract class AbstractFactStoreTest {
 
         job.cancelAndJoin()
     }
-
-    private fun createUserFact(
-        subjectId: String,
-        username: String,
-        role: String,
-        region: String
-    ): Fact =
-        Fact(
-            id = FactId.generate(),
-            subject = Subject("USER:$subjectId"),
-            type = "USER_CREATED".toFactType(),
-            payload = """{ "username": "$username" }""".toFactPayload(),
-            appendedAt = Instant.now(),
-            metadata = emptyMap(),
-            tags = mapOf(
-                TagKey("role") to TagValue(role),
-                TagKey("region") to TagValue(region)
-            )
-        )
 
     @Test
     fun testStreamingNonExistingFactstore(): Unit = runBlocking {
@@ -1121,37 +812,13 @@ abstract class AbstractFactStoreTest {
 
         // define facts to append
 
-        val fact1 = Fact(
-            id = FactId.generate(),
-            subject = Subject(ALICE_SUBJECT_VALUE),
-            type = "USER_CREATED".toFactType(),
-            payload = alicePayload,
-            appendedAt = Instant.now(),
-            metadata = emptyMap(),
-            tags = mapOf(TagKey("username") to TagValue("alice"), TagKey("region") to TagValue("eu"))
+        val (fact1, fact2, fact3) = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload, tags = mapOf(TagKey("username") to TagValue("alice"), TagKey("region") to TagValue("eu"))),
+                input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload, tags = mapOf(TagKey("username") to TagValue("bob"), TagKey("region") to TagValue("us"))),
+                input(CHARLIE_SUBJECT_VALUE, "USER_CREATED", charliePayload, tags = mapOf(TagKey("username") to TagValue("charlie"), TagKey("region") to TagValue("us"))),
+            )
         )
-
-        val fact2 = Fact(
-            id = FactId.generate(),
-            subject = Subject(BOB_SUBJECT_VALUE),
-            type = "USER_CREATED".toFactType(),
-            payload = bobPayload,
-            appendedAt = Instant.now(),
-            metadata = emptyMap(),
-            tags = mapOf(TagKey("username") to TagValue("bob"), TagKey("region") to TagValue("us"))
-        )
-
-        val fact3 = Fact(
-            id = FactId.generate(),
-            subject = Subject(CHARLIE_SUBJECT_VALUE),
-            type = "USER_CREATED".toFactType(),
-            payload = charliePayload,
-            appendedAt = Instant.now(),
-            metadata = emptyMap(),
-            tags = mapOf(TagKey("username") to TagValue("charlie"), TagKey("region") to TagValue("us"))
-        )
-
-        store.append(testStore, listOf(fact1, fact2, fact3))
 
 
         // Test 1: Query with a single tag (username = "bob")
@@ -1285,37 +952,13 @@ abstract class AbstractFactStoreTest {
     @Test
     fun testMultipleFactTypesOneQueryItem(): Unit = runBlocking {
         // Create facts with different types
-        val fact1 = Fact(
-            id = FactId.generate(),
-            subject = Subject(ALICE_SUBJECT_VALUE),
-            type = "USER_CREATED".toFactType(),
-            payload = alicePayload,
-            appendedAt = Instant.now(),
-            metadata = emptyMap(),
-            tags = mapOf(TagKey("username") to TagValue("alice"), TagKey("region") to TagValue("eu"))
+        val (fact1, fact2, fact3) = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload, tags = mapOf(TagKey("username") to TagValue("alice"), TagKey("region") to TagValue("eu"))),
+                input(BOB_SUBJECT_VALUE, "USER_UPDATED", bobPayload, tags = mapOf(TagKey("username") to TagValue("bob"), TagKey("region") to TagValue("us"))),
+                input(CHARLIE_SUBJECT_VALUE, "USER_CREATED", charliePayload, tags = mapOf(TagKey("username") to TagValue("charlie"), TagKey("region") to TagValue("us"))),
+            )
         )
-
-        val fact2 = Fact(
-            id = FactId.generate(),
-            subject = Subject(BOB_SUBJECT_VALUE),
-            type = "USER_UPDATED".toFactType(),
-            payload = bobPayload,
-            appendedAt = Instant.now(),
-            metadata = emptyMap(),
-            tags = mapOf(TagKey("username") to TagValue("bob"), TagKey("region") to TagValue("us"))
-        )
-
-        val fact3 = Fact(
-            id = FactId.generate(),
-            subject = Subject(CHARLIE_SUBJECT_VALUE),
-            type = "USER_CREATED".toFactType(),
-            payload = charliePayload,
-            appendedAt = Instant.now(),
-            metadata = emptyMap(),
-            tags = mapOf(TagKey("username") to TagValue("charlie"), TagKey("region") to TagValue("us"))
-        )
-
-        store.append(testStore, listOf(fact1, fact2, fact3))
 
         // Query for facts with types "USER_CREATED" or "USER_UPDATED" and with tags "username" = "alice"
         val query = TagQuery(
@@ -1337,37 +980,13 @@ abstract class AbstractFactStoreTest {
     @Test
     fun testMultipleQueryItems(): Unit = runBlocking {
         // Create facts with different types and tags
-        val fact1 = Fact(
-            id = FactId.generate(),
-            subject = Subject(ALICE_SUBJECT_VALUE),
-            type = "USER_CREATED".toFactType(),
-            payload = alicePayload,
-            appendedAt = Instant.now(),
-            metadata = emptyMap(),
-            tags = mapOf(TagKey("username") to TagValue("alice"), TagKey("region") to TagValue("eu"))
+        val (fact1, fact2, fact3) = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload, tags = mapOf(TagKey("username") to TagValue("alice"), TagKey("region") to TagValue("eu"))),
+                input(BOB_SUBJECT_VALUE, "USER_UPDATED", bobPayload, tags = mapOf(TagKey("username") to TagValue("bob"), TagKey("region") to TagValue("us"))),
+                input(CHARLIE_SUBJECT_VALUE, "USER_CREATED", charliePayload, tags = mapOf(TagKey("username") to TagValue("charlie"), TagKey("region") to TagValue("us"))),
+            )
         )
-
-        val fact2 = Fact(
-            id = FactId.generate(),
-            subject = Subject(BOB_SUBJECT_VALUE),
-            type = "USER_UPDATED".toFactType(),
-            payload = bobPayload,
-            appendedAt = Instant.now(),
-            metadata = emptyMap(),
-            tags = mapOf(TagKey("username") to TagValue("bob"), TagKey("region") to TagValue("us"))
-        )
-
-        val fact3 = Fact(
-            id = FactId.generate(),
-            subject = Subject(CHARLIE_SUBJECT_VALUE),
-            type = "USER_CREATED".toFactType(),
-            payload = charliePayload,
-            appendedAt = Instant.now(),
-            metadata = emptyMap(),
-            tags = mapOf(TagKey("username") to TagValue("charlie"), TagKey("region") to TagValue("us"))
-        )
-
-        store.append(testStore, listOf(fact1, fact2, fact3))
 
         // Query for facts with type "USER_CREATED" or "USER_UPDATED", tagged with "username" = "bob"
         val query = TagQuery(
@@ -1395,37 +1014,13 @@ abstract class AbstractFactStoreTest {
     @Test
     fun testMixedTypesAndTagsQueryItems(): Unit = runBlocking {
         // Create facts with different types and tags
-        val fact1 = Fact(
-            id = FactId.generate(),
-            subject = Subject(ALICE_SUBJECT_VALUE),
-            type = "USER_CREATED".toFactType(),
-            payload = alicePayload,
-            appendedAt = Instant.now(),
-            metadata = emptyMap(),
-            tags = mapOf(TagKey("username") to TagValue("alice"), TagKey("region") to TagValue("eu"))
+        val (fact1, fact2, fact3) = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload, tags = mapOf(TagKey("username") to TagValue("alice"), TagKey("region") to TagValue("eu"))),
+                input(BOB_SUBJECT_VALUE, "USER_UPDATED", bobPayload, tags = mapOf(TagKey("username") to TagValue("bob"), TagKey("region") to TagValue("us"))),
+                input(CHARLIE_SUBJECT_VALUE, "USER_CREATED", charliePayload, tags = mapOf(TagKey("username") to TagValue("charlie"), TagKey("region") to TagValue("us"))),
+            )
         )
-
-        val fact2 = Fact(
-            id = FactId.generate(),
-            subject = Subject(BOB_SUBJECT_VALUE),
-            type = "USER_UPDATED".toFactType(),
-            payload = bobPayload,
-            appendedAt = Instant.now(),
-            metadata = emptyMap(),
-            tags = mapOf(TagKey("username") to TagValue("bob"), TagKey("region") to TagValue("us"))
-        )
-
-        val fact3 = Fact(
-            id = FactId.generate(),
-            subject = Subject(CHARLIE_SUBJECT_VALUE),
-            type = "USER_CREATED".toFactType(),
-            payload = charliePayload,
-            appendedAt = Instant.now(),
-            metadata = emptyMap(),
-            tags = mapOf(TagKey("username") to TagValue("charlie"), TagKey("region") to TagValue("us"))
-        )
-
-        store.append(testStore, listOf(fact1, fact2, fact3))
 
         // Query with multiple query items
         val query = TagQuery(
@@ -1452,17 +1047,9 @@ abstract class AbstractFactStoreTest {
     @Test
     fun testNoMatchingFacts(): Unit = runBlocking {
         // Create facts with different types and tags
-        val fact1 = Fact(
-            id = FactId.generate(),
-            subject = Subject(ALICE_SUBJECT_VALUE),
-            type = "USER_CREATED".toFactType(),
-            payload = alicePayload,
-            appendedAt = Instant.now(),
-            metadata = emptyMap(),
-            tags = mapOf(TagKey("username") to TagValue("alice"), TagKey("region") to TagValue("eu"))
+        appendStored(
+            input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload, tags = mapOf(TagKey("username") to TagValue("alice"), TagKey("region") to TagValue("eu")))
         )
-
-        store.append(testStore, listOf(fact1))
 
         // Query for facts with a non-matching type and tag
         val query = TagQuery(
@@ -1488,13 +1075,10 @@ abstract class AbstractFactStoreTest {
             val tag = if (index % 2 == 0) "user" else "admin" // Use alternating tags
             val region = if (index % 2 == 0) "us" else "eu" // Use alternating regions
 
-            Fact(
-                id = FactId.generate(),
-                subject = Subject("USER:user-$index"),
-                type = "USER_CREATED".toFactType(),
+            input(
+                subject = "USER:user-$index",
+                type = "USER_CREATED",
                 payload = """{ "username": "user$index" }""".toFactPayload(),
-                appendedAt = Instant.now(),
-                metadata = emptyMap(),
                 tags = mapOf(
                     TagKey("role") to TagValue(tag),
                     TagKey("region") to TagValue(region)
@@ -1510,13 +1094,10 @@ abstract class AbstractFactStoreTest {
         // append a few more events
         store.append(
             testStore,
-            Fact(
-                id = FactId.generate(),
-                subject = Subject("USER:user-${FactId.generate()}"),
-                type = "USER_CREATED".toFactType(),
+            input(
+                subject = "USER:user-${FactId.generate()}",
+                type = "USER_CREATED",
                 payload = """{ "username": "user" }""".toFactPayload(),
-                appendedAt = Instant.now(),
-                metadata = emptyMap(),
                 tags = mapOf(
                     TagKey("role") to TagValue("custom"),
                     TagKey("region") to TagValue("eu")
@@ -1599,20 +1180,7 @@ abstract class AbstractFactStoreTest {
     @Test
     fun testConditionalAppendWithTagQuery(): Unit = runBlocking {
 
-        // append first event without an append condition
-        val fact1Id = FactId.generate()
-        val fact1 = Fact(
-            id = fact1Id,
-            subject = Subject(ALICE_SUBJECT_VALUE),
-            type = "USER_CREATED".toFactType(),
-            payload = alicePayload,
-            appendedAt = Instant.now(),
-            tags = mapOf(
-                TagKey("user") to TagValue("ALICE"),
-            )
-        )
-
-
+        val aliceTags = mapOf(TagKey("user") to TagValue("ALICE"))
         val tagQuery = TagQuery(
             queryItems = listOf(
                 TagTypeItem(
@@ -1622,71 +1190,43 @@ abstract class AbstractFactStoreTest {
             )
         )
 
-        println("appending $fact1Id")
+        // append fact1: no matching USER_CREATED/user=ALICE exists yet → appended
+        val appended1 = store.append(
+            AppendRequest(
+                storeName = testStore,
+                facts = listOf(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload, tags = aliceTags)),
+                idempotencyKey = IdempotencyKey(),
+                condition = AppendCondition.TagQueryBased(failIfEventsMatch = tagQuery, after = null)
+            )
+        )
+        assertThat(appended1).isInstanceOf(AppendResult.Appended::class.java)
+        val fact1Id = (appended1 as AppendResult.Appended).factIds.single()
+
+        // append fact2: only fact1 matches and we exclude everything up to it → appended
+        val appended2 = store.append(
+            AppendRequest(
+                storeName = testStore,
+                facts = listOf(input(ALICE_SUBJECT_VALUE, "USER_LOCKED", alicePayload, tags = aliceTags)),
+                idempotencyKey = IdempotencyKey(),
+                condition = AppendCondition.TagQueryBased(failIfEventsMatch = tagQuery, after = fact1Id)
+            )
+        )
+        assertThat(appended2).isInstanceOf(AppendResult.Appended::class.java)
+
+        // appending again without an `after` cursor sees fact1 and is rejected
         store.append(
             AppendRequest(
                 storeName = testStore,
-                facts = listOf(fact1),
+                facts = listOf(input(ALICE_SUBJECT_VALUE, "USER_LOCKED", alicePayload, tags = aliceTags)),
                 idempotencyKey = IdempotencyKey(),
-                condition = AppendCondition.TagQueryBased(
-                    failIfEventsMatch = tagQuery,
-                    after = null
-                )
+                condition = AppendCondition.TagQueryBased(failIfEventsMatch = tagQuery, after = null)
             )
-        ).also { assertThat(it).isInstanceOf(AppendResult.Appended::class.java) }
-
-        val fact2Id = FactId.generate()
-        val fact2 = Fact(
-            id = fact2Id,
-            subject = Subject(ALICE_SUBJECT_VALUE),
-            type = "USER_LOCKED".toFactType(),
-            payload = alicePayload,
-            appendedAt = Instant.now(),
-            tags = mapOf(
-                TagKey("user") to TagValue("ALICE"),
-            )
-        )
-
-        val appendRequest2 = AppendRequest(
-            storeName = testStore,
-            facts = listOf(fact2),
-            idempotencyKey = IdempotencyKey(),
-            condition = AppendCondition.TagQueryBased(
-                failIfEventsMatch = tagQuery,
-                after = fact1Id
-            )
-        )
-
-        store.append(appendRequest2).also { assertThat(it).isInstanceOf(AppendResult.Appended::class.java) }
-
-        val appendRequest3 = AppendRequest(
-            storeName = testStore,
-            facts = listOf(fact2.copy(id = FactId.generate())),
-            idempotencyKey = IdempotencyKey(),
-            condition = AppendCondition.TagQueryBased(
-                failIfEventsMatch = tagQuery,
-                after = null
-            )
-        )
-
-        store.append(appendRequest3).also {
+        ).also {
             assertThat(it).isInstanceOf(AppendResult.AppendConditionViolated::class.java)
         }
 
-
         // append another user fact with another tag
-        val fact3Id = FactId.generate()
-        val fact3 = Fact(
-            id = fact3Id,
-            subject = Subject(BOB_SUBJECT_VALUE),
-            type = "USER_CREATED".toFactType(),
-            payload = bobPayload,
-            appendedAt = Instant.now(),
-            tags = mapOf(
-                TagKey("user") to TagValue("BOB"),
-            )
-        )
-
+        val bobTags = mapOf(TagKey("user") to TagValue("BOB"))
         val tagQuery2 = TagQuery(
             queryItems = listOf(
                 TagTypeItem(
@@ -1696,41 +1236,25 @@ abstract class AbstractFactStoreTest {
             )
         )
 
-        println("appending $fact3Id")
-        val appendRequest4 = AppendRequest(
-            storeName = testStore,
-            facts = listOf(fact3),
-            idempotencyKey = IdempotencyKey(),
-            condition = AppendCondition.TagQueryBased(
-                failIfEventsMatch = tagQuery2,
-                after = null
+        val appended3 = store.append(
+            AppendRequest(
+                storeName = testStore,
+                facts = listOf(input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload, tags = bobTags)),
+                idempotencyKey = IdempotencyKey(),
+                condition = AppendCondition.TagQueryBased(failIfEventsMatch = tagQuery2, after = null)
             )
         )
-        store.append(appendRequest4).also { assertThat(it).isInstanceOf(AppendResult.Appended::class.java) }
+        assertThat(appended3).isInstanceOf(AppendResult.Appended::class.java)
+        val fact3Id = (appended3 as AppendResult.Appended).factIds.single()
 
-        val fact4Id = FactId.generate()
-        val fact4 = Fact(
-            id = fact4Id,
-            subject = Subject(BOB_SUBJECT_VALUE),
-            type = "USER_LOCKED".toFactType(),
-            payload = bobPayload,
-            appendedAt = Instant.now(),
-            tags = mapOf(
-                TagKey("user") to TagValue("BOB"),
+        store.append(
+            AppendRequest(
+                storeName = testStore,
+                facts = listOf(input(BOB_SUBJECT_VALUE, "USER_LOCKED", bobPayload, tags = bobTags)),
+                idempotencyKey = IdempotencyKey(),
+                condition = AppendCondition.TagQueryBased(failIfEventsMatch = tagQuery2, after = fact3Id)
             )
-        )
-
-        val appendRequestThatShouldAppendFact4 = AppendRequest(
-            storeName = testStore,
-            facts = listOf(fact4),
-            idempotencyKey = IdempotencyKey(),
-            condition = AppendCondition.TagQueryBased(
-                failIfEventsMatch = tagQuery2,
-                after = fact3Id
-            )
-        )
-
-        store.append(appendRequestThatShouldAppendFact4).also {
+        ).also {
             assertThat(it).isInstanceOf(AppendResult.Appended::class.java)
         }
 
@@ -1750,26 +1274,8 @@ abstract class AbstractFactStoreTest {
         store.handle(CreateStoreRequest(storeName1))
         store.handle(CreateStoreRequest(storeName2))
 
-        val fact1 = Fact(
-            id = FactId.generate(),
-            subject = Subject(BOB_SUBJECT_VALUE),
-            type = "USER_LOCKED".toFactType(),
-            payload = bobPayload,
-            appendedAt = Instant.now(),
-            tags = emptyMap()
-        )
-
-        val fact2 = Fact(
-            id = FactId.generate(),
-            subject = Subject(ALICE_SUBJECT_VALUE),
-            type = "USER_LOCKED".toFactType(),
-            payload = alicePayload,
-            appendedAt = Instant.now(),
-            tags = emptyMap()
-        )
-
-        store.append(storeName1, fact1)
-        store.append(storeName2, fact2)
+        val fact1 = appendStored(input(BOB_SUBJECT_VALUE, "USER_LOCKED", bobPayload), storeName1)
+        val fact2 = appendStored(input(ALICE_SUBJECT_VALUE, "USER_LOCKED", alicePayload), storeName2)
 
         assertThat(store.existsById(ExistsByIdRequest(storeName1, fact1.id))).isEqualTo(ExistsByIdResult.Exists)
         assertThat(store.existsById(ExistsByIdRequest(storeName1, fact2.id))).isEqualTo(ExistsByIdResult.DoesNotExist)
@@ -1780,25 +1286,17 @@ abstract class AbstractFactStoreTest {
 
     @Test
     fun testAppendWithoutFactStore(): Unit = runBlocking {
-        val result = store.append(nonExistingStore, createUserFact("TEST", "Test User", "user", "eu"))
+        val result = store.append(nonExistingStore, userInput("TEST", "Test User", "user", "eu"))
         assertThat(result).isInstanceOf(AppendResult.StoreNotFound::class.java)
     }
 
     @Test
     fun testNewAppend(): Unit = runBlocking {
 
-        val fact1 = Fact(
-            id = FactId.generate(),
-            subject = Subject("USER:DOMI"),
-            type = "USER_LOCKED".toFactType(),
-            payload = """{ "username": "DOMI" }""".toFactPayload(),
-            appendedAt = Instant.now(),
-            tags = emptyMap()
-        )
         val idempotencyKey = IdempotencyKey(UUID.randomUUID())
         val appendRequest = AppendRequest(
             storeName = testStore,
-            facts = listOf(fact1),
+            facts = listOf(input("USER:DOMI", "USER_LOCKED", """{ "username": "DOMI" }""".toFactPayload())),
             idempotencyKey = idempotencyKey,
             condition = AppendCondition.ExpectedLastFact(
                 subject = Subject("USER:DOMI"),
@@ -1820,62 +1318,13 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
-    fun testEnforceUniquenessOfFactIds(): Unit = runBlocking {
-        val factId = FactId.generate()
-
-        val fact1 = Fact(
-            id = factId,
-            subject = Subject("TEST_SUBJECT"),
-            type = "TEST_FACT_TYPE".toFactType(),
-            payload = """DATA""".toFactPayload(),
-            appendedAt = Instant.now(),
-            tags = emptyMap()
-        )
-
-        val fact2 = fact1.copy()
-
-        store.append(testStore, fact1)
-
-        val appendResult2 = store.append(testStore, fact2)
-        assertThat(appendResult2)
-            .isInstanceOf(AppendResult.DuplicateFactIds::class.java)
-            .matches {
-                val duplicateResult = it as AppendResult.DuplicateFactIds
-                assertThat(duplicateResult.factIds)
-                    .containsExactly(factId)
-                true
-            }
-
-        store.append(
-            AppendRequest(
-                storeName = testStore,
-                facts = listOf(fact2),
-                idempotencyKey = IdempotencyKey(),
-                condition = AppendCondition.None
-            )
-        ).let {
-            assertThat(it).isInstanceOf(AppendResult.DuplicateFactIds::class.java)
-            val duplicateResult = it as AppendResult.DuplicateFactIds
-            assertThat(duplicateResult.factIds)
-                .containsExactly(factId)
-        }
-    }
-
-    @Test
     fun testRemoveStore(): Unit = runBlocking {
         val storeName = StoreName("store-to-delete")
         store.handle(CreateStoreRequest(storeName))
 
-        val fact = Fact(
-            id = FactId.generate(),
-            subject = Subject("TEST_SUBJECT"),
-            type = "TEST_FACT_TYPE".toFactType(),
-            payload = """DATA""".toFactPayload(),
-            appendedAt = Instant.now(),
-            tags = emptyMap()
-        )
+        val factInput = input("TEST_SUBJECT", "TEST_FACT_TYPE", """DATA""".toFactPayload())
 
-        assertThat(store.append(storeName, fact))
+        assertThat(store.append(storeName, factInput))
             .isInstanceOf(AppendResult.Appended::class.java)
 
         assertThat(store.handle(RemoveStoreRequest(storeName)))
@@ -1885,7 +1334,7 @@ abstract class AbstractFactStoreTest {
         assertThat(store.handle(RemoveStoreRequest(storeName)))
             .isInstanceOf(RemoveStoreResult.StoreNotFound::class.java)
 
-        assertThat(store.append(storeName, fact))
+        assertThat(store.append(storeName, factInput))
             .isInstanceOf(AppendResult.StoreNotFound::class.java)
     }
 

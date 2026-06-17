@@ -65,10 +65,8 @@ internal fun Instant.toProtoTimestamp(): com.google.protobuf.Timestamp = timesta
 }
 
 internal fun FactInput.toProto(): FactStoreProto.FactInput = factInput {
-    this@toProto.id?.let { id = it }
     type = this@toProto.type
     subject = this@toProto.subject
-    this@toProto.appendedAt?.let { appendedAt = it.toProtoTimestamp() }
     payload = this@toProto.payload.toProto()
     metadata.putAll(this@toProto.metadata)
     tags.putAll(this@toProto.tags)

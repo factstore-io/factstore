@@ -26,7 +26,8 @@ class GrpcFactServiceTest {
     @GrpcClient
     lateinit var storeService: StoreService
 
-    val seedFactId: UUID = UUID.randomUUID()
+    // Assigned by the server during the Order(1) append and reused by later ordered tests.
+    lateinit var seedFactId: String
     val seedIdempotencyKey: String = UUID.randomUUID().toString()
 
     companion object {
@@ -45,13 +46,11 @@ class GrpcFactServiceTest {
     @Order(1)
     @DisplayName("AppendFacts - should return FactsAppended when facts are new")
     fun appendFacts(): Unit = runBlocking {
-        val fid = seedFactId.toString()
         val ikey = seedIdempotencyKey
         val response = factService.appendFacts(appendFactsRequest {
             storeName = STORE
             idempotencyKey = ikey
             facts += factInput {
-                id = fid
                 type = "order.created"
                 subject = SUBJECT
                 payload = factPayload { data = ByteString.copyFromUtf8("{}") }
@@ -60,6 +59,8 @@ class GrpcFactServiceTest {
         }).awaitSuspending()
 
         assertThat(response.hasAppended()).isTrue()
+
+        seedFactId = response.appended.factIdsList.single()
     }
 
     @Test
@@ -104,25 +105,6 @@ class GrpcFactServiceTest {
     }
 
     @Test
-    @Order(4)
-    @DisplayName("AppendFacts - should return DuplicateFactIds when a fact ID is already in use")
-    fun appendFactsDuplicateIds(): Unit = runBlocking {
-        val fid = seedFactId.toString()
-        val response = factService.appendFacts(appendFactsRequest {
-            storeName = STORE
-            facts += factInput {
-                id = fid
-                type = "order.created"
-                subject = SUBJECT
-                payload = factPayload { data = ByteString.copyFromUtf8("{}") }
-            }
-        }).awaitSuspending()
-
-        assertThat(response.hasDuplicateFactIds()).isTrue()
-        assertThat(response.duplicateFactIds.factIdsList).containsExactly(seedFactId.toString())
-    }
-
-    @Test
     @Order(5)
     @DisplayName("AppendFacts - should return StoreNotFound when store does not exist")
     fun appendFactsStoreNotFound(): Unit = runBlocking {
@@ -147,11 +129,11 @@ class GrpcFactServiceTest {
     fun getFact(): Unit = runBlocking {
         val response = factService.getFact(getFactRequest {
             storeName = STORE
-            factId = seedFactId.toString()
+            factId = seedFactId
         }).awaitSuspending()
 
         assertThat(response.hasFound()).isTrue()
-        assertThat(response.found.fact.id).isEqualTo(seedFactId.toString())
+        assertThat(response.found.fact.id).isEqualTo(seedFactId)
         assertThat(response.found.fact.subject).isEqualTo(SUBJECT)
         assertThat(response.found.fact.type).isEqualTo("order.created")
     }
@@ -174,7 +156,7 @@ class GrpcFactServiceTest {
     fun getFactStoreNotFound(): Unit = runBlocking {
         val response = factService.getFact(getFactRequest {
             storeName = "ghost-store"
-            factId = seedFactId.toString()
+            factId = seedFactId
         }).awaitSuspending()
 
         assertThat(response.hasStoreNotFound()).isTrue()
@@ -189,7 +171,7 @@ class GrpcFactServiceTest {
     fun factExists(): Unit = runBlocking {
         val response = factService.factExists(factExistsRequest {
             storeName = STORE
-            factId = seedFactId.toString()
+            factId = seedFactId
         }).awaitSuspending()
 
         assertThat(response.hasPresent()).isTrue()
@@ -213,7 +195,7 @@ class GrpcFactServiceTest {
     fun factExistsStoreNotFound(): Unit = runBlocking {
         val response = factService.factExists(factExistsRequest {
             storeName = "ghost-store"
-            factId = seedFactId.toString()
+            factId = seedFactId
         }).awaitSuspending()
 
         assertThat(response.hasStoreNotFound()).isTrue()
@@ -390,7 +372,7 @@ class GrpcFactServiceTest {
 
         assertThat(responses).hasSize(1)
         assertThat(responses.first().hasBatch()).isTrue()
-        assertThat(responses.first().batch.factsList.first().id).isEqualTo(seedFactId.toString())
+        assertThat(responses.first().batch.factsList.first().id).isEqualTo(seedFactId)
     }
 
     @Test

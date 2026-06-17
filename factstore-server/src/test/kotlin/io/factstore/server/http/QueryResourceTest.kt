@@ -22,8 +22,7 @@ class QueryResourceTest {
     @DisplayName("GET /v1/stores/{name}/facts/{factId} - Should return 200 when fact exists")
     fun findById() {
         // 1. Seed a fact
-        val factId = UUID.randomUUID()
-        seedFact(factId, subject)
+        val factId = seedFact(subject)
 
         // 2. Query by ID
         val response = given()
@@ -78,7 +77,7 @@ class QueryResourceTest {
     @DisplayName("GET /v1/stores/{name}/facts - Should return facts filtered by tags")
     fun findByTags() {
         // Seeding a specific tagged fact
-        seedFact(UUID.randomUUID(), "tagged-sub", mapOf("region" to "europe"))
+        seedFact("tagged-sub", mapOf("region" to "europe"))
 
         val results = given()
             .pathParam("storeName", storeName)
@@ -111,8 +110,9 @@ class QueryResourceTest {
         assertThat(error.details).containsEntry("id", randomId.toString())
     }
 
-    // Helper to seed data via the already tested Store and Append APIs
-    private fun seedFact(id: UUID, sub: String, tags: Map<String, String> = emptyMap()) {
+    // Helper to seed data via the already tested Store and Append APIs.
+    // Returns the server-assigned fact id.
+    private fun seedFact(sub: String, tags: Map<String, String> = emptyMap()): UUID {
         // Ensure store exists
         given().contentType(JSON).body(mapOf("name" to storeName)).post("/api/v1/stores")
 
@@ -120,7 +120,6 @@ class QueryResourceTest {
         val appendRequest = mapOf(
             "facts" to listOf(
                 mapOf(
-                    "id" to id,
                     "type" to "test.type",
                     "subject" to sub,
                     "payload" to mapOf("data" to base64Data),
@@ -128,12 +127,14 @@ class QueryResourceTest {
                 )
             )
         )
-        given()
+        val appended = given()
             .pathParam("storeName", storeName)
             .contentType(JSON)
             .body(appendRequest)
             .post("/api/v1/stores/{storeName}/facts")
             .then().statusCode(200)
+            .extract().`as`(AppendedHttp::class.java)
+        return appended.factIds.single()
     }
 
 }
