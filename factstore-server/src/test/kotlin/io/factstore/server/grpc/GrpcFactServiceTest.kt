@@ -2,7 +2,6 @@ package io.factstore.server.grpc
 
 import com.google.protobuf.ByteString
 import io.factstore.grpc.v1.*
-import io.grpc.StatusRuntimeException
 import io.quarkus.grpc.GrpcClient
 import io.quarkus.test.junit.QuarkusTest
 import io.smallrye.mutiny.coroutines.awaitSuspending
@@ -385,24 +384,38 @@ class GrpcFactServiceTest {
     @Order(22)
     @DisplayName("StreamFacts - should emit existing facts from the beginning of the store")
     fun streamFacts(): Unit = runBlocking {
-        val facts = factService.streamFacts(streamFactsRequest {
+        val responses = factService.streamFacts(streamFactsRequest {
             storeName = STORE
         }).asFlow().take(1).toList()
 
-        assertThat(facts).hasSize(1)
-        assertThat(facts.first().factsList.first().id).isEqualTo(seedFactId.toString())
+        assertThat(responses).hasSize(1)
+        assertThat(responses.first().hasBatch()).isTrue()
+        assertThat(responses.first().batch.factsList.first().id).isEqualTo(seedFactId.toString())
     }
 
     @Test
     @Order(23)
-    @DisplayName("StreamFacts - should fail with StatusRuntimeException when store does not exist")
-    fun streamFactsStoreNotFound() {
-        assertThrows<StatusRuntimeException> {
-            runBlocking {
-                factService.streamFacts(streamFactsRequest {
-                    storeName = "ghost-store"
-                }).asFlow().toList()
-            }
-        }
+    @DisplayName("StreamFacts - should emit a store_not_found message when the store does not exist")
+    fun streamFactsStoreNotFound(): Unit = runBlocking {
+        val responses = factService.streamFacts(streamFactsRequest {
+            storeName = "ghost-store"
+        }).asFlow().toList()
+
+        assertThat(responses).hasSize(1)
+        assertThat(responses.first().hasStoreNotFound()).isTrue()
+        assertThat(responses.first().storeNotFound.storeName).isEqualTo("ghost-store")
+    }
+
+    @Test
+    @Order(24)
+    @DisplayName("StreamFacts - should emit an after_fact_not_found message for an unknown cursor")
+    fun streamFactsCursorNotFound(): Unit = runBlocking {
+        val responses = factService.streamFacts(streamFactsRequest {
+            storeName = STORE
+            afterFactId = UUID.randomUUID().toString()
+        }).asFlow().toList()
+
+        assertThat(responses).hasSize(1)
+        assertThat(responses.first().hasAfterFactNotFound()).isTrue()
     }
 }

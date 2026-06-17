@@ -4,13 +4,15 @@ import io.factstore.core.*
 import io.factstore.grpc.v1.FactService
 import io.factstore.grpc.v1.FactStoreProto
 import io.factstore.grpc.v1.FactStoreProto.*
-import io.grpc.Status
-import io.grpc.StatusRuntimeException
+import io.factstore.grpc.v1.factNotFound
+import io.factstore.grpc.v1.storeNotFound
+import io.factstore.grpc.v1.streamFactsResponse
 import io.quarkus.grpc.GrpcService
 import io.smallrye.mutiny.Multi
 import io.smallrye.mutiny.Uni
 import io.vertx.core.Vertx
 import io.vertx.kotlin.coroutines.dispatcher
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 
 @GrpcService
@@ -65,15 +67,17 @@ class GrpcFactService(
 
     override fun streamFacts(
         request: FactStoreProto.StreamFactsRequest
-    ): Multi<FactBatch> = toMulti(grpcContext) {
+    ): Multi<StreamFactsResponse> = toMulti(grpcContext) {
         when (val result = request.toDomainRequest().publishTo(factStore)) {
-            is StreamResult.StoreNotFound -> throw StatusRuntimeException(
-                Status.FAILED_PRECONDITION.withDescription("Store '${result.storeName.value}' not found - create it first")
-            )
-            is StreamResult.FactIdNotFound -> throw StatusRuntimeException(
-                Status.FAILED_PRECONDITION.withDescription("Fact '${result.id.uuid}' not found - cannot use it as a stream cursor")
-            )
-            is StreamResult.FactStream -> result.stream.map { it.toProtoFactBatch() }
+            is StreamResult.StoreNotFound -> flowOf(streamFactsResponse {
+                storeNotFound = storeNotFound { storeName = result.storeName.value }
+            })
+            is StreamResult.FactIdNotFound -> flowOf(streamFactsResponse {
+                afterFactNotFound = factNotFound { }
+            })
+            is StreamResult.FactStream -> result.stream.map { facts ->
+                streamFactsResponse { batch = facts.toProtoFactBatch() }
+            }
         }
     }
 }

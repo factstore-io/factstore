@@ -5,15 +5,12 @@ import io.factstore.cli.command.printSingle
 import io.factstore.cli.config.FactStoreConfigResolver
 import io.factstore.client.FactStoreClient
 import io.factstore.client.model.StreamStartPosition
-import io.smallrye.mutiny.coroutines.asFlow
-import io.vertx.core.http.HttpClosedException
 import jakarta.inject.Inject
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.runBlocking
 import picocli.CommandLine
-import java.util.UUID
+import java.util.*
 import java.util.concurrent.Callable
-import kotlin.coroutines.cancellation.CancellationException
 
 @CommandLine.Command(
     name = "stream",
@@ -75,18 +72,22 @@ class StreamFactsCommand : Callable<Int> {
             ?: StreamStartPosition.Beginning
 
         client.facts.stream(storeName, streamStartPosition)
-            .catch { cause -> cause.handleStreamTermination() }
+            .catch { cause -> if (!jvmIsShuttingDown()) throw cause }
             .collect { fact -> fact.printSingle(outputFormat) }
 
         CommandLine.ExitCode.OK
     }
 
-    private fun Throwable.handleStreamTermination() {
-        val underlying = (this as? CancellationException)?.cause ?: this
-        when (underlying) {
-            is HttpClosedException -> return  // normal termination (user Ctrl+C or server closed stream)
-            else -> throw underlying
-        }
-    }
+    // Ctrl+C triggers JVM shutdown, during which Quarkus closes the gRPC channel and the in-flight
+    // stream fails. That's the user asking to quit, not an error, so terminate quietly. The JVM
+    // rejects (de)registering shutdown hooks once shutdown is in progress; use that to detect it.
+    // Reliable here because the channel is closed from within a shutdown hook, so shutdown is
+    // already in progress by the time the failure reaches us.
+    private fun jvmIsShuttingDown(): Boolean =
+        runCatching {
+            val probe = Thread {}
+            Runtime.getRuntime().addShutdownHook(probe)
+            Runtime.getRuntime().removeShutdownHook(probe)
+        }.isFailure
 
 }
