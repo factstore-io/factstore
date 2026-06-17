@@ -8,7 +8,7 @@ class FdbStoreFactory(
     private val store: FdbFactStore
 ) : StoreFactory {
 
-    override suspend fun handle(request: CreateStoreRequest): CreateStoreResult {
+    override suspend fun create(request: CreateStoreRequest): CreateStoreResult {
         // create...
         return store.db.runAsync { tr ->
             with(tr) {

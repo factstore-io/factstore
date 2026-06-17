@@ -28,7 +28,7 @@ class StoreResource(
     suspend fun createStore(
         @Valid request: CreateStoreHttpRequest
     ): Response = store
-        .handle(CreateStoreRequest(StoreName(request.name)))
+        .create(CreateStoreRequest(StoreName(request.name)))
         .toResponse()
 
     private fun CreateStoreResult.toResponse(): Response = when (this) {
@@ -85,7 +85,7 @@ class StoreResource(
         @PathParam("name") @ValidStoreName name: String
     ): Response =
         store
-            .handle(RemoveStoreRequest(StoreName(name)))
+            .remove(RemoveStoreRequest(StoreName(name)))
             .toResponse()
 
     private fun RemoveStoreResult.toResponse(): Response = when (this) {

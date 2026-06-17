@@ -36,7 +36,7 @@ class MemoryFactStore : FactStore {
 
     // ===== FactStoreFactory Implementation =====
 
-    override suspend fun handle(request: CreateStoreRequest): CreateStoreResult = lock.withLock {
+    override suspend fun create(request: CreateStoreRequest): CreateStoreResult = lock.withLock {
         if (nameToId.containsKey(request.storeName.value)) {
             return CreateStoreResult.NameAlreadyExists(request.storeName)
         }
@@ -63,7 +63,7 @@ class MemoryFactStore : FactStore {
     }
 
     override suspend fun existsByName(request: ExistsStoreByNameRequest): ExistsStoreByNameResult = lock.withLock {
-        if (nameToId.containsKey(request.name.value)) {
+        if (nameToId.containsKey(request.storeName.value)) {
             ExistsStoreByNameResult.StoreExists
         } else {
             ExistsStoreByNameResult.StoreAbsent
@@ -71,7 +71,7 @@ class MemoryFactStore : FactStore {
     }
 
     override suspend fun findByName(request: FindStoreByNameRequest): FindStoreByNameResult = lock.withLock {
-        resolveId(request.name)?.let { stores[it] }?.let { FindStoreByNameResult.Found(it) } ?: FindStoreByNameResult.NotFound(request.name)
+        resolveId(request.storeName)?.let { stores[it] }?.let { FindStoreByNameResult.Found(it) } ?: FindStoreByNameResult.NotFound(request.storeName)
     }
 
     override suspend fun append(storeName: StoreName, fact: FactInput): AppendResult =
@@ -247,7 +247,7 @@ class MemoryFactStore : FactStore {
         }
     }
 
-    override suspend fun handle(request: RemoveStoreRequest): RemoveStoreResult {
+    override suspend fun remove(request: RemoveStoreRequest): RemoveStoreResult {
         val storeId = resolveId(request.storeName) ?: return RemoveStoreResult.StoreNotFound(request.storeName)
         lock.withLock {
             nameToId.remove(request.storeName.value)
