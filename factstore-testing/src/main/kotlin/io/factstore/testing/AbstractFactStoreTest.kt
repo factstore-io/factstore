@@ -2,8 +2,12 @@ package io.factstore.testing
 
 import io.factstore.core.*
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.take
@@ -373,6 +377,44 @@ abstract class AbstractFactStoreTest {
             )
         )
         assertThat(violated).isInstanceOf(AppendResult.AppendConditionViolated::class.java)
+    }
+
+    @Test
+    fun testConcurrentConditionalAppendsOnlyOneWins(): Unit = runBlocking {
+        // Seed an initial fact; all contenders will expect it to still be the last fact.
+        val seed = appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload))
+
+        val contenders = 8
+
+        // Fire many conditional appends at the same subject concurrently, each expecting
+        // `seed` to be the last fact. This is the optimistic-concurrency race that
+        // ExpectedLastFact exists to arbitrate.
+        val results = coroutineScope {
+            (1..contenders).map {
+                async(Dispatchers.Default) {
+                    store.append(
+                        AppendRequest(
+                            storeName = testStore,
+                            facts = listOf(input(ALICE_SUBJECT_VALUE, "USER_LOCKED", alicePayload)),
+                            idempotencyKey = IdempotencyKey(),
+                            condition = AppendCondition.ExpectedLastFact(
+                                subject = Subject(ALICE_SUBJECT_VALUE),
+                                expectedLastFactId = seed.id,
+                            ),
+                        )
+                    )
+                }
+            }.awaitAll()
+        }
+
+        // Exactly one contender may win; every other must be rejected as a condition violation.
+        assertThat(results.filterIsInstance<AppendResult.Appended>()).hasSize(1)
+        assertThat(results.count { it is AppendResult.AppendConditionViolated }).isEqualTo(contenders - 1)
+
+        // The subject history therefore contains exactly the seed plus the single winner.
+        val subjectFacts = store.findBySubject(FindBySubjectRequest(testStore, Subject(ALICE_SUBJECT_VALUE)))
+        assertThat(subjectFacts).isInstanceOf(FindBySubjectResult.Found::class.java)
+        assertThat((subjectFacts as FindBySubjectResult.Found).facts).hasSize(2)
     }
 
     @Test
