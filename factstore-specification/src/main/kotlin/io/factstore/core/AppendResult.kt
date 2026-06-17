@@ -46,10 +46,4 @@ sealed interface AppendResult {
      */
     data class StoreNotFound(val storeName: StoreName) : AppendResult
 
-    /**
-     * Indicates that the append operation failed because at least one fact ID in the request
-     * is already used by another fact.
-     */
-    data class DuplicateFactIds(val factIds: List<FactId>) : AppendResult
-
 }

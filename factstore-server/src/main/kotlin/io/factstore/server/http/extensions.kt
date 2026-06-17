@@ -26,7 +26,6 @@ fun AppendResult.toResponse(): Response = when(this) {
     is AppendResult.AlreadyApplied ->  Response.ok().build()
     is AppendResult.AppendConditionViolated -> appendConditionViolatedError()
     is AppendResult.StoreNotFound -> storeNotFoundError(storeName)
-    is AppendResult.DuplicateFactIds -> duplicateFactIdsError(factIds)
 }
 
 fun AppendHttpRequest.toAppendRequest(storeName: StoreName): AppendRequest = AppendRequest(

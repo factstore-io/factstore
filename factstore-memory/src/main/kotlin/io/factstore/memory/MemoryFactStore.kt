@@ -101,14 +101,6 @@ class MemoryFactStore : FactStore {
         val appendedAt = Instant.now()
         val materializedFacts = request.facts.map { it.toFact(FactId.generate(), appendedAt) }
 
-        // Check for duplicate fact IDs
-        val store = facts[storeId] ?: throw IllegalStateException("Facts list should be initialized for store $storeId")
-        val existingIds = store.map { it.id.uuid }.toSet()
-        val duplicates = materializedFacts.filter { it.id.uuid in existingIds }
-        if (duplicates.isNotEmpty()) {
-            return AppendResult.DuplicateFactIds(duplicates.map { it.id })
-        }
-
         // Check append condition
         if (!checkAppendCondition(storeId, request.condition)) {
             return AppendResult.AppendConditionViolated

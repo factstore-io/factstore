@@ -16,9 +16,6 @@ class FactNotFoundException(val factId: String) :
 class AppendConditionViolatedException :
     FactStoreException("Append condition was violated")
 
-class DuplicateFactIdsException(val factIds: List<String>) :
-    FactStoreException("Duplicate fact IDs: ${factIds.joinToString()}")
-
 // ─── Transport / connectivity errors ────────────────────────────────────────
 
 sealed class FactStoreConnectivityException(message: String, cause: Throwable?) :
