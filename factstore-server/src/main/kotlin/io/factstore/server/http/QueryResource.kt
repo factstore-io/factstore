@@ -80,7 +80,7 @@ class QueryResource(
                 .findByTags(
                     FindByTagsRequest(
                         storeName = StoreName(storeName),
-                        tags = tags.map { it.toTagPair() },
+                        tags = tags.associate { it.toTagPair() },
                         limit = limit.toLimit(),
                         direction = direction,
                     )

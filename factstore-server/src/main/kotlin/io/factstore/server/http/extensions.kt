@@ -67,15 +67,15 @@ fun TagQueryItemHttp.toTagQueryItem(): TagQueryItem =
     when (this) {
         is TagQueryItemHttp.TagOnly ->
             TagOnlyQueryItem(
-                tags = tags.entries.map { (k, v) ->
+                tags = tags.entries.associate { (k, v) ->
                     k.toTagKey() to v.toTagValue()
                 }
             )
 
         is TagQueryItemHttp.TagType ->
             TagTypeItem(
-                types = types.map { it.toFactType() },
-                tags = tags.entries.map { (k, v) ->
+                types = types.map { it.toFactType() }.toSet(),
+                tags = tags.entries.associate { (k, v) ->
                     k.toTagKey() to v.toTagValue()
                 }
             )

@@ -94,12 +94,12 @@ internal fun FactStoreProto.TagQuery.toDomain(): TagQuery = TagQuery(
 
 internal fun FactStoreProto.TagQueryItem.toDomain(): TagQueryItem = when (kindCase) {
     FactStoreProto.TagQueryItem.KindCase.TAG_ONLY -> TagOnlyQueryItem(
-        tags = tagOnly.tagsMap.entries.map { (k, v) -> k.toTagKey() to v.toTagValue() }
+        tags = tagOnly.tagsMap.entries.associate { (k, v) -> k.toTagKey() to v.toTagValue() }
     )
 
     FactStoreProto.TagQueryItem.KindCase.TAG_TYPE -> TagTypeItem(
-        types = tagType.typesList.map { it.toFactType() },
-        tags = tagType.tagsMap.entries.map { (k, v) -> k.toTagKey() to v.toTagValue() }
+        types = tagType.typesList.map { it.toFactType() }.toSet(),
+        tags = tagType.tagsMap.entries.associate { (k, v) -> k.toTagKey() to v.toTagValue() }
     )
 
     else -> throw IllegalArgumentException("TagQueryItem has no kind set")
@@ -314,7 +314,7 @@ typealias GrpcFindByTagsRequest = FactStoreProto.FindFactsByTagsRequest
 internal fun GrpcFindByTagsRequest.toDomainRequest(): FindByTagsRequest =
     FindByTagsRequest(
         storeName = StoreName(storeName),
-        tags = tagsMap.entries.map { (k, v) -> k.toTagKey() to v.toTagValue() },
+        tags = tagsMap.entries.associate { (k, v) -> k.toTagKey() to v.toTagValue() },
         limit = if (hasLimit()) Limit.of(limit) else Limit.None,
         direction = direction.toCore()
     )
