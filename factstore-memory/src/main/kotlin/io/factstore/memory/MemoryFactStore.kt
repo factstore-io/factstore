@@ -7,6 +7,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.time.Instant
 import java.util.*
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * In-memory implementation of FactStore for testing and evaluation purposes.
@@ -167,42 +168,68 @@ class MemoryFactStore : FactStore {
         FindByTagQueryResult.Found(foundFacts)
     }
 
-    // ===== FactStreamer Implementation =====
+    // ===== FactSubscriber Implementation =====
 
-    override suspend fun stream(request: StreamFactsRequest): StreamResult {
+    override suspend fun subscribe(request: SubscribeRequest): SubscribeResult = lock.withLock {
         val storeName = request.storeName
-        val internalId = lock.withLock { resolveId(storeName) } ?: return StreamResult.StoreNotFound(storeName)
+        val internalId = resolveId(storeName) ?: return SubscribeResult.StoreNotFound(storeName)
+        val store = facts[internalId] ?: return SubscribeResult.StoreNotFound(storeName)
 
         val startIndex = when (val position = request.startPosition) {
             StartPosition.Beginning -> 0
-            StartPosition.End -> lock.withLock { facts[internalId]?.size ?: 0 }
+            StartPosition.End -> store.size
             is StartPosition.After -> {
-                lock.withLock {
-                    val store = facts[internalId] ?: return StreamResult.StoreNotFound(storeName)
-                    val index = store.indexOfFirst { it.id == position.factId }
-                    if (index == -1) return StreamResult.FactIdNotFound(position.factId)
-                    index + 1
-                }
+                val index = store.indexOfFirst { it.id == position.factId }
+                if (index == -1) return SubscribeResult.FactIdNotFound(position.factId)
+                index + 1
             }
         }
 
-        return StreamResult.FactStream(streamFacts(internalId, startIndex))
+        // No upper bound: the subscription follows the live tail indefinitely.
+        SubscribeResult.FactStream(scanFlow(internalId, startIndex, endIndex = null))
     }
 
-    private fun streamFacts(internalId: UUID, startIndex: Int) = flow<List<Fact>> {
+    // ===== FactReplayer Implementation =====
+
+    override suspend fun replay(request: ReplayRequest): ReplayResult = lock.withLock {
+        val storeName = request.storeName
+        val internalId = resolveId(storeName) ?: return ReplayResult.StoreNotFound(storeName)
+        val store = facts[internalId] ?: return ReplayResult.StoreNotFound(storeName)
+
+        val startIndex = when (val start = request.start) {
+            ReplayStart.Beginning -> 0
+            is ReplayStart.After -> {
+                val index = store.indexOfFirst { it.id == start.factId }
+                if (index == -1) return ReplayResult.FactIdNotFound(start.factId)
+                index + 1
+            }
+        }
+
+        // Pin the end at replay start; the flow completes once it is reached.
+        ReplayResult.FactStream(scanFlow(internalId, startIndex, endIndex = store.size))
+    }
+
+    private fun scanFlow(internalId: UUID, startIndex: Int, endIndex: Int?) = flow<List<Fact>> {
         var currentIndex = startIndex
         while (true) {
             val batch = lock.withLock {
                 val store = facts[internalId]
-                if (store != null && currentIndex < store.size) {
-                    val newFacts = store.subList(currentIndex, store.size).toList()
-                    currentIndex = store.size
+                // A replay (endIndex != null) never reads past its pinned end.
+                val upperBound = endIndex ?: store?.size ?: 0
+                if (store != null && currentIndex < upperBound) {
+                    val newFacts = store.subList(currentIndex, upperBound).toList()
+                    currentIndex = upperBound
                     newFacts
                 } else {
                     emptyList()
                 }
             }
-            if (batch.isNotEmpty()) emit(batch) else delay(100)
+            when {
+                batch.isNotEmpty() -> emit(batch)
+                // Replay reached its pinned end => complete.
+                endIndex != null -> return@flow
+                else -> delay(100.milliseconds)
+            }
         }
     }
 

@@ -119,7 +119,7 @@ export function createFactStream(
     params.set("after", position.after)
   }
 
-  const url = `${BASE_URL}/v1/stores/${encodeURIComponent(storeName)}/facts/stream?${params}`
+  const url = `${BASE_URL}/v1/stores/${encodeURIComponent(storeName)}/facts/subscribe?${params}`
   const es = new EventSource(url)
 
   es.onmessage = (e) => {

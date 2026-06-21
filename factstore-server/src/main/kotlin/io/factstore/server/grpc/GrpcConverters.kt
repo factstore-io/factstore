@@ -349,22 +349,38 @@ internal fun GrpcFindInTimeRangeRequest.toDomainRequest(): FindInTimeRangeReques
 internal suspend fun FindInTimeRangeRequest.publishTo(factStore: FactStore): FindInTimeRangeResult =
     factStore.findInTimeRange(this)
 
-typealias GrpcStreamFactsRequest = FactStoreProto.StreamFactsRequest
+typealias GrpcSubscribeFactsRequest = FactStoreProto.SubscribeFactsRequest
 
-internal fun GrpcStreamFactsRequest.toDomainRequest(): StreamFactsRequest {
+internal fun GrpcSubscribeFactsRequest.toDomainRequest(): SubscribeRequest {
     val startPosition = when (startPositionCase) {
-        FactStoreProto.StreamFactsRequest.StartPositionCase.FROM_END -> StartPosition.End
-        FactStoreProto.StreamFactsRequest.StartPositionCase.AFTER_FACT_ID -> StartPosition.After(afterFactId.toFactId())
+        FactStoreProto.SubscribeFactsRequest.StartPositionCase.FROM_END -> StartPosition.End
+        FactStoreProto.SubscribeFactsRequest.StartPositionCase.AFTER_FACT_ID -> StartPosition.After(afterFactId.toFactId())
         else -> StartPosition.Beginning
     }
-    return StreamFactsRequest(
+    return SubscribeRequest(
         storeName = StoreName(storeName),
         startPosition = startPosition,
     )
 }
 
-internal suspend fun StreamFactsRequest.publishTo(factStore: FactStore): StreamResult =
-    factStore.stream(this)
+internal suspend fun SubscribeRequest.publishTo(factStore: FactStore): SubscribeResult =
+    factStore.subscribe(this)
+
+typealias GrpcReplayFactsRequest = FactStoreProto.ReplayFactsRequest
+
+internal fun GrpcReplayFactsRequest.toDomainRequest(): ReplayRequest {
+    val start = when (startCase) {
+        FactStoreProto.ReplayFactsRequest.StartCase.AFTER_FACT_ID -> ReplayStart.After(afterFactId.toFactId())
+        else -> ReplayStart.Beginning
+    }
+    return ReplayRequest(
+        storeName = StoreName(storeName),
+        start = start,
+    )
+}
+
+internal suspend fun ReplayRequest.publishTo(factStore: FactStore): ReplayResult =
+    factStore.replay(this)
 
 typealias GrpcExistsStoreRequest = FactStoreProto.StoreExistsRequest
 

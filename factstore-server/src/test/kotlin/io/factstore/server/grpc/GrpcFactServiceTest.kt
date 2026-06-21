@@ -360,13 +360,13 @@ class GrpcFactServiceTest {
         assertThat(response.hasStoreNotFound()).isTrue()
     }
 
-    // ─── StreamFacts ──────────────────────────────────────────────────────────
+    // ─── SubscribeFacts ─────────────────────────────────────────────────────────
 
     @Test
     @Order(22)
-    @DisplayName("StreamFacts - should emit existing facts from the beginning of the store")
-    fun streamFacts(): Unit = runBlocking {
-        val responses = factService.streamFacts(streamFactsRequest {
+    @DisplayName("SubscribeFacts - should emit existing facts from the beginning of the store")
+    fun subscribeFacts(): Unit = runBlocking {
+        val responses = factService.subscribeFacts(subscribeFactsRequest {
             storeName = STORE
         }).asFlow().take(1).toList()
 
@@ -377,9 +377,9 @@ class GrpcFactServiceTest {
 
     @Test
     @Order(23)
-    @DisplayName("StreamFacts - should emit a store_not_found message when the store does not exist")
-    fun streamFactsStoreNotFound(): Unit = runBlocking {
-        val responses = factService.streamFacts(streamFactsRequest {
+    @DisplayName("SubscribeFacts - should emit a store_not_found message when the store does not exist")
+    fun subscribeFactsStoreNotFound(): Unit = runBlocking {
+        val responses = factService.subscribeFacts(subscribeFactsRequest {
             storeName = "ghost-store"
         }).asFlow().toList()
 
@@ -390,14 +390,43 @@ class GrpcFactServiceTest {
 
     @Test
     @Order(24)
-    @DisplayName("StreamFacts - should emit an after_fact_not_found message for an unknown cursor")
-    fun streamFactsCursorNotFound(): Unit = runBlocking {
-        val responses = factService.streamFacts(streamFactsRequest {
+    @DisplayName("SubscribeFacts - should emit an after_fact_not_found message for an unknown cursor")
+    fun subscribeFactsCursorNotFound(): Unit = runBlocking {
+        val responses = factService.subscribeFacts(subscribeFactsRequest {
             storeName = STORE
             afterFactId = UUID.randomUUID().toString()
         }).asFlow().toList()
 
         assertThat(responses).hasSize(1)
         assertThat(responses.first().hasAfterFactNotFound()).isTrue()
+    }
+
+    // ─── ReplayFacts ────────────────────────────────────────────────────────────
+
+    @Test
+    @Order(25)
+    @DisplayName("ReplayFacts - should emit existing facts up to the head and then complete")
+    fun replayFacts(): Unit = runBlocking {
+        // A bounded replay terminates on its own, so collecting the whole flow returns.
+        val responses = factService.replayFacts(replayFactsRequest {
+            storeName = STORE
+        }).asFlow().toList()
+
+        assertThat(responses).isNotEmpty()
+        assertThat(responses.first().hasBatch()).isTrue()
+        assertThat(responses.first().batch.factsList.first().id).isEqualTo(seedFactId)
+    }
+
+    @Test
+    @Order(26)
+    @DisplayName("ReplayFacts - should emit a store_not_found message when the store does not exist")
+    fun replayFactsStoreNotFound(): Unit = runBlocking {
+        val responses = factService.replayFacts(replayFactsRequest {
+            storeName = "ghost-store"
+        }).asFlow().toList()
+
+        assertThat(responses).hasSize(1)
+        assertThat(responses.first().hasStoreNotFound()).isTrue()
+        assertThat(responses.first().storeNotFound.storeName).isEqualTo("ghost-store")
     }
 }

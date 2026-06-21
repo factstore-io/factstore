@@ -8,7 +8,8 @@ import picocli.CommandLine.Command
     description = ["Operations around facts"],
     subcommands = [
         AppendFactCommand::class,
-        StreamFactsCommand::class,
+        SubscribeFactsCommand::class,
+        ReplayFactsCommand::class,
         FindBySubjectCommand::class,
         FindByTagsCommand::class,
         FindInTimeRangeCommand::class,

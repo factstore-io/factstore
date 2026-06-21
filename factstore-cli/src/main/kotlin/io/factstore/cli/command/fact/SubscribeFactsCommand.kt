@@ -4,7 +4,7 @@ import io.factstore.cli.command.OutputFormat
 import io.factstore.cli.command.printSingle
 import io.factstore.cli.config.FactStoreConfigResolver
 import io.factstore.client.FactStoreClient
-import io.factstore.client.model.StreamStartPosition
+import io.factstore.client.model.SubscribeStartPosition
 import jakarta.inject.Inject
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.runBlocking
@@ -13,10 +13,11 @@ import java.util.*
 import java.util.concurrent.Callable
 
 @CommandLine.Command(
-    name = "stream",
-    description = ["Stream facts from a store in real-time (similar to tail -f)"]
+    name = "subscribe",
+    aliases = ["stream"],
+    description = ["Subscribe to a store and stream facts in real-time (similar to tail -f)"]
 )
-class StreamFactsCommand : Callable<Int> {
+class SubscribeFactsCommand : Callable<Int> {
 
     @Inject
     lateinit var client: FactStoreClient
@@ -26,7 +27,7 @@ class StreamFactsCommand : Callable<Int> {
 
     @CommandLine.Option(
         names = ["--store", "-s"],
-        description = ["The name of the store to stream from (env: FACTSTORE_STORE, config: store)"],
+        description = ["The name of the store to subscribe to (env: FACTSTORE_STORE, config: store)"],
     )
     var storeName: String? = null
 
@@ -67,11 +68,11 @@ class StreamFactsCommand : Callable<Int> {
         val fromValue = startPosition.from
         val afterValue = startPosition.after
 
-        val streamStartPosition = afterValue?.let { StreamStartPosition.AfterFact(afterValue.toString()) }
-            ?: fromValue?.let { if (fromValue == FromOption.beginning) StreamStartPosition.Beginning else StreamStartPosition.End }
-            ?: StreamStartPosition.Beginning
+        val subscribeStart = afterValue?.let { SubscribeStartPosition.AfterFact(afterValue.toString()) }
+            ?: fromValue?.let { if (fromValue == FromOption.beginning) SubscribeStartPosition.Beginning else SubscribeStartPosition.End }
+            ?: SubscribeStartPosition.Beginning
 
-        client.facts.stream(storeName, streamStartPosition)
+        client.facts.subscribe(storeName, subscribeStart)
             .catch { cause -> if (!jvmIsShuttingDown()) throw cause }
             .collect { fact -> fact.printSingle(outputFormat) }
 

@@ -15,12 +15,14 @@ import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.flow.transform
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.assertj.core.api.Assertions.*
 import org.junit.jupiter.api.*
 import java.time.Instant
 import java.util.UUID
 import kotlin.system.measureTimeMillis
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 
 private const val ALICE_SUBJECT_VALUE = "USER:ALICE"
 private const val BOB_SUBJECT_VALUE = "USER:BOB"
@@ -136,7 +138,7 @@ abstract class AbstractFactStoreTest {
         val fact = appendStored(input(ALICE_SUBJECT_VALUE, "USER_ONBOARDED", payload))
         val id = fact.id
 
-        store.stream(StreamFactsRequest(testStore)).let { (it as StreamResult.FactStream).stream }.transform { batch -> batch.forEach { emit(it) } }.take(1).collect {
+        store.subscribe(SubscribeRequest(testStore)).let { (it as SubscribeResult.FactStream).stream }.transform { batch -> batch.forEach { emit(it) } }.take(1).collect {
             println("Streamed fact: $it")
         }
 
@@ -777,10 +779,10 @@ abstract class AbstractFactStoreTest {
         val collectedFacts = mutableListOf<Fact>()
         val firstThreeReceived = CompletableDeferred<Unit>()
 
-        // Start streaming from beginning
+        // Subscribe from the beginning
         val streamJob = launch {
-            store.stream(StreamFactsRequest(testStore))
-                .let { (it as StreamResult.FactStream).stream }
+            store.subscribe(SubscribeRequest(testStore))
+                .let { (it as SubscribeResult.FactStream).stream }
                 .transform { batch -> batch.forEach { emit(it) } }
                 .take(3)
                 .collect {
@@ -805,9 +807,9 @@ abstract class AbstractFactStoreTest {
 
         // ---- Test StartPosition.After ----
 
-        val streamedEvents = store.stream(
-            StreamFactsRequest(testStore, startPosition = StartPosition.After(fact1.id))
-        ).let { (it as StreamResult.FactStream).stream }
+        val streamedEvents = store.subscribe(
+            SubscribeRequest(testStore, startPosition = StartPosition.After(fact1.id))
+        ).let { (it as SubscribeResult.FactStream).stream }
             .transform { batch -> batch.forEach { emit(it) } }
             .take(2)
             .toList()
@@ -818,11 +820,11 @@ abstract class AbstractFactStoreTest {
 
         val nonExistingFactId = FactId.generate()
 
-        val streamResult = store.stream(
-            StreamFactsRequest(testStore, startPosition = StartPosition.After(nonExistingFactId))
+        val subscribeResult = store.subscribe(
+            SubscribeRequest(testStore, startPosition = StartPosition.After(nonExistingFactId))
         )
 
-        assertThat(streamResult).isInstanceOf(StreamResult.FactIdNotFound::class.java)
+        assertThat(subscribeResult).isInstanceOf(SubscribeResult.FactIdNotFound::class.java)
     }
 
     @OptIn(FlowPreview::class)
@@ -839,10 +841,10 @@ abstract class AbstractFactStoreTest {
 
         // Start stream from END (should NOT see initialFact1/2)
         val job = launch {
-            store.stream(
-                StreamFactsRequest(testStore, startPosition = StartPosition.End)
+            store.subscribe(
+                SubscribeRequest(testStore, startPosition = StartPosition.End)
             )
-                .let { (it as StreamResult.FactStream).stream }
+                .let { (it as SubscribeResult.FactStream).stream }
                 .transform { batch -> batch.forEach { emit(it) } }
                 .take(2)
                 .onStart { streamStartedLatch.complete(Unit) }
@@ -871,9 +873,96 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
-    fun testStreamingNonExistingFactstore(): Unit = runBlocking {
-        val streamResult = store.stream(StreamFactsRequest(nonExistingStore))
-        assertThat(streamResult).isInstanceOf(StreamResult.StoreNotFound::class.java)
+    fun testSubscribeNonExistingFactstore(): Unit = runBlocking {
+        val result = store.subscribe(SubscribeRequest(nonExistingStore))
+        assertThat(result).isInstanceOf(SubscribeResult.StoreNotFound::class.java)
+    }
+
+    @Test
+    fun testReplayNonExistingFactstore(): Unit = runBlocking {
+        val result = store.replay(ReplayRequest(nonExistingStore))
+        assertThat(result).isInstanceOf(ReplayResult.StoreNotFound::class.java)
+    }
+
+    @Test
+    fun testReplayCompletesAtPinnedHead(): Unit = runBlocking {
+        val fact1 = appendStored(userInput("ALICE", "Alice", "admin", "eu"))
+        val fact2 = appendStored(userInput("BOB", "Bob", "user", "us"))
+        val fact3 = appendStored(userInput("CHARLIE", "Charlie", "admin", "us"))
+
+        // replay completes on its own; toList() returning proves termination.
+        val replayed = replayToList(ReplayRequest(testStore))
+
+        assertThat(replayed).containsExactly(fact1, fact2, fact3)
+    }
+
+    @Test
+    fun testReplayExcludesFactsAppendedAfterOpen(): Unit = runBlocking {
+        val fact1 = appendStored(userInput("ALICE", "Alice", "admin", "eu"))
+        val fact2 = appendStored(userInput("BOB", "Bob", "user", "us"))
+
+        // The end is pinned when the replay is opened.
+        val stream = (store.replay(ReplayRequest(testStore)) as ReplayResult.FactStream).stream
+
+        // Appended after the replay was opened => excluded.
+        appendStored(userInput("CHARLIE", "Charlie", "admin", "us"))
+
+        val replayed = withTimeout(10.seconds) {
+            stream.transform { batch -> batch.forEach { emit(it) } }.toList()
+        }
+
+        assertThat(replayed).containsExactly(fact1, fact2)
+    }
+
+    @Test
+    fun testReplayFromAfterReturnsDelta(): Unit = runBlocking {
+        val fact1 = appendStored(userInput("ALICE", "Alice", "admin", "eu"))
+        val fact2 = appendStored(userInput("BOB", "Bob", "user", "us"))
+        val fact3 = appendStored(userInput("CHARLIE", "Charlie", "admin", "us"))
+
+        val replayed = replayToList(
+            ReplayRequest(testStore, start = ReplayStart.After(fact1.id))
+        )
+
+        assertThat(replayed).containsExactly(fact2, fact3)
+    }
+
+    @Test
+    fun testReplayEmptyDeltaCompletesImmediately(): Unit = runBlocking {
+        val fact1 = appendStored(userInput("ALICE", "Alice", "admin", "eu"))
+
+        // Nothing after the head => completes immediately with nothing.
+        val replayed = replayToList(
+            ReplayRequest(testStore, start = ReplayStart.After(fact1.id))
+        )
+
+        assertThat(replayed).isEmpty()
+    }
+
+    @Test
+    fun testReplayEmptyStoreCompletesImmediately(): Unit = runBlocking {
+        // Empty store => replay completes immediately with nothing.
+        val replayed = replayToList(ReplayRequest(testStore))
+
+        assertThat(replayed).isEmpty()
+    }
+
+    @Test
+    fun testReplayUnknownCursor(): Unit = runBlocking {
+        appendStored(userInput("ALICE", "Alice", "admin", "eu"))
+
+        val result = store.replay(
+            ReplayRequest(testStore, start = ReplayStart.After(FactId.generate()))
+        )
+
+        assertThat(result).isInstanceOf(ReplayResult.FactIdNotFound::class.java)
+    }
+
+    private suspend fun replayToList(request: ReplayRequest): List<Fact> {
+        val stream = (store.replay(request) as ReplayResult.FactStream).stream
+        return withTimeout(10.seconds) {
+            stream.transform { batch -> batch.forEach { emit(it) } }.toList()
+        }
     }
 
     @Test
