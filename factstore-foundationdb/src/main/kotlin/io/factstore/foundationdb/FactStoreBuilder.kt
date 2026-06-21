@@ -15,10 +15,12 @@ suspend fun buildFdbFactStore(
     val rootDirectory = FactStoreRootDirectory(rootDir)
     val context = FdbFactStoreContext.create(rootDirectory)
     val fdbFactStore = FdbFactStore(db, context)
+    val streamer = FdbFactStreamer(fdbFactStore)
     return FactStore(
         factAppender = FdbFactAppender(fdbFactStore),
         factFinder = FdbFactFinder(fdbFactStore),
-        factStreamer = FdbFactStreamer(fdbFactStore),
+        factSubscriber = streamer,
+        factReplayer = streamer,
         storeFactory = FdbStoreFactory(fdbFactStore),
         storeFinder = FdbStoreFinder(fdbFactStore),
         storeRemover = FdbStoreRemover(fdbFactStore),

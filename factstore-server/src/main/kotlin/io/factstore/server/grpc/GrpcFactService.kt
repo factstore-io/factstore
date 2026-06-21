@@ -65,17 +65,33 @@ class GrpcFactService(
         request.toDomainRequest().publishTo(factStore).toGrpcResponse()
     }
 
-    override fun streamFacts(
-        request: FactStoreProto.StreamFactsRequest
+    override fun subscribeFacts(
+        request: SubscribeFactsRequest
     ): Multi<StreamFactsResponse> = toMulti(grpcContext) {
         when (val result = request.toDomainRequest().publishTo(factStore)) {
-            is StreamResult.StoreNotFound -> flowOf(streamFactsResponse {
+            is SubscribeResult.StoreNotFound -> flowOf(streamFactsResponse {
                 storeNotFound = storeNotFound { storeName = result.storeName.value }
             })
-            is StreamResult.FactIdNotFound -> flowOf(streamFactsResponse {
+            is SubscribeResult.FactIdNotFound -> flowOf(streamFactsResponse {
                 afterFactNotFound = factNotFound { }
             })
-            is StreamResult.FactStream -> result.stream.map { facts ->
+            is SubscribeResult.FactStream -> result.stream.map { facts ->
+                streamFactsResponse { batch = facts.toProtoFactBatch() }
+            }
+        }
+    }
+
+    override fun replayFacts(
+        request: ReplayFactsRequest
+    ): Multi<StreamFactsResponse> = toMulti(grpcContext) {
+        when (val result = request.toDomainRequest().publishTo(factStore)) {
+            is ReplayResult.StoreNotFound -> flowOf(streamFactsResponse {
+                storeNotFound = storeNotFound { storeName = result.storeName.value }
+            })
+            is ReplayResult.FactIdNotFound -> flowOf(streamFactsResponse {
+                afterFactNotFound = factNotFound { }
+            })
+            is ReplayResult.FactStream -> result.stream.map { facts ->
                 streamFactsResponse { batch = facts.toProtoFactBatch() }
             }
         }

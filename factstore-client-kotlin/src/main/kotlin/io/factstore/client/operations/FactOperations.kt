@@ -15,9 +15,11 @@ import io.factstore.client.model.AppendOutcome
 import io.factstore.client.model.Fact
 import io.factstore.client.model.FactInput
 import io.factstore.client.model.ReadDirection
-import io.factstore.client.model.StreamStartPosition
+import io.factstore.client.model.ReplayStartPosition
+import io.factstore.client.model.SubscribeStartPosition
 import io.factstore.client.model.TagQuery
 import io.factstore.grpc.v1.FactServiceGrpcKt.FactServiceCoroutineStub
+import io.factstore.grpc.v1.FactStoreProto
 import io.factstore.grpc.v1.appendFactsRequest
 import io.factstore.grpc.v1.factExistsRequest
 import io.factstore.grpc.v1.findFactsBySubjectRequest
@@ -27,7 +29,8 @@ import io.factstore.grpc.v1.fromBeginning
 import io.factstore.grpc.v1.fromEnd
 import io.factstore.grpc.v1.getFactRequest
 import io.factstore.grpc.v1.queryFactsRequest
-import io.factstore.grpc.v1.streamFactsRequest
+import io.factstore.grpc.v1.replayFactsRequest
+import io.factstore.grpc.v1.subscribeFactsRequest
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.transform
@@ -169,22 +172,39 @@ class FactOperations internal constructor(
         }
     }
 
-    fun stream(
+    /** Live subscription: drains history then follows the tail indefinitely. */
+    fun subscribe(
         storeName: String,
-        startPosition: StreamStartPosition = StreamStartPosition.Beginning,
-    ): Flow<Fact> = stub.streamFacts(streamFactsRequest {
+        startPosition: SubscribeStartPosition = SubscribeStartPosition.Beginning,
+    ): Flow<Fact> = stub.subscribeFacts(subscribeFactsRequest {
         this.storeName = storeName
         when (startPosition) {
-            StreamStartPosition.Beginning -> fromBeginning = fromBeginning {}
-            StreamStartPosition.End -> fromEnd = fromEnd {}
-            is StreamStartPosition.AfterFact -> afterFactId = startPosition.factId
+            SubscribeStartPosition.Beginning -> fromBeginning = fromBeginning {}
+            SubscribeStartPosition.End -> fromEnd = fromEnd {}
+            is SubscribeStartPosition.AfterFact -> afterFactId = startPosition.factId
         }
-    }).transform { response ->
+    }).toFactFlow(storeName, (startPosition as? SubscribeStartPosition.AfterFact)?.factId)
+
+    /** Bounded replay: drains history up to the pinned head, then completes. */
+    fun replay(
+        storeName: String,
+        start: ReplayStartPosition = ReplayStartPosition.Beginning,
+    ): Flow<Fact> = stub.replayFacts(replayFactsRequest {
+        this.storeName = storeName
+        when (start) {
+            ReplayStartPosition.Beginning -> fromBeginning = fromBeginning {}
+            is ReplayStartPosition.AfterFact -> afterFactId = start.factId
+        }
+    }).toFactFlow(storeName, (start as? ReplayStartPosition.AfterFact)?.factId)
+
+    private fun Flow<FactStoreProto.StreamFactsResponse>.toFactFlow(
+        storeName: String,
+        cursorFactId: String?,
+    ): Flow<Fact> = transform { response ->
         when {
             response.hasBatch() -> response.batch.factsList.forEach { emit(it.toDomain()) }
             response.hasStoreNotFound() -> throw StoreNotFoundException(storeName)
-            response.hasAfterFactNotFound() ->
-                throw FactNotFoundException((startPosition as StreamStartPosition.AfterFact).factId)
+            response.hasAfterFactNotFound() -> throw FactNotFoundException(cursorFactId ?: "")
             else -> error("Unexpected stream message: $response")
         }
     }.catch { throw it.toFactStoreException() }

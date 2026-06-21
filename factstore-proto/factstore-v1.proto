@@ -223,13 +223,18 @@ service FactService {
   // Find facts within a half-open time range [from, to).
   rpc FindFactsInTimeRange(FindFactsInTimeRangeRequest) returns (FindFactsInTimeRangeResponse);
 
-  // Open a server-side stream that emits existing facts and then continues to emit
-  // new facts as they are appended. Facts are delivered in batches for higher
-  // throughput. Pre-stream errors (store not found, after_fact_id not found) are
-  // delivered as the first and only StreamFactsResponse message, after which the
-  // stream completes normally; terminal failures that occur once facts are already
-  // flowing are surfaced as gRPC status errors.
-  rpc StreamFacts(StreamFactsRequest) returns (stream StreamFactsResponse);
+  // Open a live subscription: emit existing facts from the start position and then
+  // continue emitting new facts as they are appended. The stream never completes on
+  // its own. Facts are delivered in batches for higher throughput. Pre-stream errors
+  // (store not found, after_fact_id not found) are delivered as the first and only
+  // StreamFactsResponse message, after which the stream completes normally; terminal
+  // failures that occur once facts are already flowing are surfaced as gRPC status errors.
+  rpc SubscribeFacts(SubscribeFactsRequest) returns (stream StreamFactsResponse);
+
+  // Open a bounded replay: emit existing facts from the start position up to the head
+  // pinned at call time, then complete. Facts appended during the replay are excluded.
+  // Error and batching semantics mirror SubscribeFacts.
+  rpc ReplayFacts(ReplayFactsRequest) returns (stream StreamFactsResponse);
 }
 
 // -- AppendFacts --
@@ -388,17 +393,28 @@ message StreamFactsResponse {
 
 // Marker for streaming from the very first fact in the store.
 message FromBeginning {}
-// Marker for streaming only facts appended after the stream is opened.
+// Marker for subscribing only to facts appended after the subscription is opened.
 message FromEnd {}
 
-message StreamFactsRequest {
+message SubscribeFactsRequest {
   string store_name = 1;
-  // If start_position is not set, streaming starts from the beginning (equivalent to from_beginning).
+  // If start_position is not set, the subscription starts from the beginning (equivalent to from_beginning).
   oneof start_position {
     FromBeginning from_beginning = 2;
     FromEnd from_end = 3;
-    // Stream facts appended after the given fact ID, then continue with new ones.
+    // Subscribe to facts appended after the given fact ID, then continue with new ones.
     string after_fact_id = 4;
+  }
+}
+
+message ReplayFactsRequest {
+  string store_name = 1;
+  // If start is not set, the replay starts from the beginning (equivalent to from_beginning).
+  // There is deliberately no from_end: replaying "from the end" would always be empty.
+  oneof start {
+    FromBeginning from_beginning = 2;
+    // Replay facts appended after the given fact ID, up to the pinned head.
+    string after_fact_id = 3;
   }
 }
 

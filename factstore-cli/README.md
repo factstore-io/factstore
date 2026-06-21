@@ -32,8 +32,8 @@ export FACTSTORE_URL=http://localhost:8080
 factstore store create orders
 factstore fact append '{"orderId": "12345", "amount": 100.0}' --store orders --subject order-12345 --type ORDER_PLACED
 
-# Stream facts in real time
-factstore fact stream --store orders --from beginning
+# Subscribe to facts in real time
+factstore fact subscribe --store orders --from beginning
 ```
 
 ---
@@ -133,22 +133,44 @@ factstore fact find-in-time-range --store orders \
 
 ---
 
-### Streaming Facts
+### Subscribing to Facts
 
-Stream facts in real time, similar to `tail -f`:
+Subscribe to a store and stream facts in real time, similar to `tail -f`. A
+subscription catches up on existing facts and then keeps emitting new ones; it runs
+until you stop it.
 
 ```bash
-# Stream new facts as they arrive (from the end)
-factstore fact stream --store orders --from end
+# Only new facts as they arrive (from the end)
+factstore fact subscribe --store orders --from end
 
-# Replay all facts from the beginning
-factstore fact stream --store orders --from beginning
+# Catch up from the beginning, then keep following
+factstore fact subscribe --store orders --from beginning
 
-# Resume from a specific fact ID
-factstore fact stream --store orders --after 550e8400-e29b-41d4-a716-446655440000
+# Resume from a specific fact ID, then keep following
+factstore fact subscribe --store orders --after 550e8400-e29b-41d4-a716-446655440000
 ```
 
-Press `Ctrl+C` to stop streaming.
+Press `Ctrl+C` to stop. (`factstore fact stream` is kept as an alias for `subscribe`.)
+
+---
+
+### Replaying Facts
+
+Replay drains existing facts **up to the current head and then exits** — ideal for
+exports, projection rebuilds, and incremental batch jobs that need a terminating read
+rather than a live tail. Facts appended while the replay runs are excluded.
+
+```bash
+# Replay everything currently in the store, then exit
+factstore fact replay --store orders
+
+# Incremental replay: only facts after a checkpoint, then exit
+factstore fact replay --store orders --after 550e8400-e29b-41d4-a716-446655440000
+```
+
+Because every printed fact carries its id, a resumable batch job can persist the last
+processed id and pass it to `--after` on the next run to continue exactly where it
+left off.
 
 ---
 
@@ -184,7 +206,7 @@ export FACTSTORE_STORE=orders
 
 # --store is no longer needed
 factstore fact find-in-time-range --since 5m
-factstore fact stream
+factstore fact subscribe
 ```
 
 ---
