@@ -30,7 +30,7 @@
     "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
-    "@react-router/dev": "^7.18.0",
+    "@react-router/dev": "^8.0.1",
     "@tailwindcss/vite": "^4.3.1",
     "@types/node": "^26",
     "@types/react": "^19.2.17",
