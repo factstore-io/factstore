@@ -17,7 +17,7 @@
     "@radix-ui/react-separator": "^1.1.9",
     "@radix-ui/react-slot": "^1.2.5",
     "@radix-ui/react-tooltip": "^1.2.9",
-    "@react-router/node": "^7.17.0",
+    "@react-router/node": "^8.0.1",
     "@react-router/serve": "^7.17.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
