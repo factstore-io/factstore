@@ -15,7 +15,7 @@ import java.util.concurrent.Callable
 
 @Command(
     name = "find-in-time-range",
-    description = ["Find facts within a given range in time"]
+    description = ["Find facts within a given range in time (superseded by 'fact query --since <t> --until <t>')"]
 )
 class FindInTimeRangeCommand : Callable<Int> {
 

@@ -14,7 +14,7 @@ import java.util.concurrent.Callable
 
 @Command(
     name = "find-by-subject",
-    description = ["Find facts by their subject"]
+    description = ["Find facts by their subject (superseded by 'fact query --subject <value>')"]
 )
 class FindBySubjectCommand : Callable<Int> {
 

@@ -14,7 +14,7 @@ import java.util.concurrent.Callable
 
 @Command(
     name = "find-by-tags",
-    description = ["Find facts matching one or more tags"]
+    description = ["Find facts matching one or more tags (superseded by 'fact query --tag <key=value>')"]
 )
 class FindByTagsCommand : Callable<Int> {
 

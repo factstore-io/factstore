@@ -10,6 +10,7 @@ import picocli.CommandLine.Command
         AppendFactCommand::class,
         SubscribeFactsCommand::class,
         ReplayFactsCommand::class,
+        FactQueryCommand::class,
         FindBySubjectCommand::class,
         FindByTagsCommand::class,
         FindInTimeRangeCommand::class,

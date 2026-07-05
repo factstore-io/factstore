@@ -131,6 +131,48 @@ factstore fact find-in-time-range --store orders \
 | `1d` | 1 day ago |
 | `2024-01-01T00:00:00Z` | Absolute timestamp |
 
+#### Query (composable)
+
+`find-by-subject`, `find-by-tags`, and `find-in-time-range` above are each a single
+dimension. `fact query` composes all of them — subject, subject prefix, type, tags,
+metadata, and time range — in one call, AND'd together at the root:
+
+```bash
+# Subject AND type AND tag, all in one query
+factstore fact query --store orders --subject order/12345 --type ORDER_PLACED --tag region=eu
+
+# --last / --first bound the result to the N most-recent / N oldest matches
+factstore fact query --store orders --subject machine-1 --type ACTIVATED --last 1
+```
+
+For anything the flat AND model can't express — multiple types via OR, nested
+`anyOf`/`allOf` trees, DCB-style consistency-boundary patterns — pass a `FactFilter` as
+JSON via `--filter` (or `--filter-file <path>` for longer bodies). This is mutually
+exclusive with the flag-based filter options above, but composes with `--last`/`--first`,
+`--limit`, `--direction`, and `--cursor` the same way:
+
+```bash
+factstore fact query --store orders --filter '{
+  "type": "anyOf",
+  "filters": [
+    { "type": "allOf", "filters": [
+      { "type": "subject", "value": "course-1" },
+      { "type": "type", "value": "StudentSubscribed" }
+    ]},
+    { "type": "allOf", "filters": [
+      { "type": "subject", "value": "student-1" },
+      { "type": "type", "value": "StudentSubscribed" }
+    ]}
+  ]
+}'
+```
+
+This is the same JSON shape the HTTP API accepts, so a body written for one works
+unchanged for the other.
+
+Paginate with `--cursor` (a fact ID) and `--limit`; each fact printed carries its own
+id, so a script can pick up the last one and pass it as the next page's `--cursor`.
+
 ---
 
 ### Subscribing to Facts
@@ -174,19 +216,22 @@ left off.
 
 ---
 
-### Output Formats (TODO)
+### Output Formats
 
-All query and find commands support `--output` for machine-readable output:
+All query and find commands support `--output` (`table` / `json` / `ndjson`):
 
 ```bash
 # Default: human-readable table
 factstore fact find-in-time-range --store orders --since 1h
 
-# JSON output (pipe-friendly)
-factstore fact find-in-time-range --store orders --since 1h --output json
-
-# Pipe to jq
+# JSON output — a single pretty-printed array (fine for the older, non-streaming find-* commands)
 factstore fact find-in-time-range --store orders --since 1h --output json | jq '.[] | .type'
+
+# ndjson — one compact JSON object per line, printed as it arrives rather than
+# buffered. Use this for fact query/subscribe/replay: it composes with jq/grep
+# without waiting for the whole (potentially unbounded) result to finish.
+factstore fact query --store orders --type ORDER_PLACED --output ndjson | jq '.type'
+factstore fact subscribe --store orders --output ndjson | jq 'select(.type == "ORDER_PLACED")'
 ```
 
 ---
@@ -205,7 +250,7 @@ export FACTSTORE_URL=http://localhost:8080
 export FACTSTORE_STORE=orders
 
 # --store is no longer needed
-factstore fact find-in-time-range --since 5m
+factstore fact query --since 5m
 factstore fact subscribe
 ```
 

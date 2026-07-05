@@ -8,7 +8,7 @@ import kotlin.text.Charsets.UTF_8
 fun Fact.printSingle(outputFormat: OutputFormat) {
     when (outputFormat) {
         OutputFormat.Table -> printTable()
-        OutputFormat.Json -> printJson()
+        OutputFormat.Json, OutputFormat.Ndjson -> printJson()
     }
 }
 
@@ -24,13 +24,21 @@ fun Fact.printTable() {
 
 enum class OutputFormat {
     Table,
-    Json
+    Json,
+
+    /**
+     * Newline-delimited JSON: one compact JSON object per fact, printed as it
+     * arrives rather than buffered into a single array. The idiomatic format for
+     * piping streamed/potentially-unbounded output into `jq`/`grep`.
+     */
+    Ndjson,
 }
 
 fun List<Fact>.print(format: OutputFormat) {
     when (format) {
         OutputFormat.Table -> printTable()
         OutputFormat.Json -> printPrettyJson()
+        OutputFormat.Ndjson -> forEach { it.printJson() }
     }
 }
 
