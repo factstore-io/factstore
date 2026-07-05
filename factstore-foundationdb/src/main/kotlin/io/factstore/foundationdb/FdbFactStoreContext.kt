@@ -31,6 +31,7 @@ data class FdbFactStoreContext(
     val eventTypeIndexSubspace: EventTypeIndexSubspace,
     val createdAtIndexSubspace: CreatedAtIndexSubspace,
     val subjectIndexSubspace: SubjectIndexSubspace,
+    val subjectTypeIndexSubspace: SubjectTypeIndexSubspace,
     val metadataIndexSubspace: MetadataIndexSubspace,
     val tagsIndexSubspace: TagsIndexSubspace,
     val tagsTypeIndexSubspace: TagsTypeIndexSubspace,
@@ -50,6 +51,7 @@ data class FdbFactStoreContext(
                 eventTypeIndexSubspace = EventTypeIndexSubspace(root.subspace(Tuple.from(EVENT_TYPE_INDEX))),
                 createdAtIndexSubspace = CreatedAtIndexSubspace(root.subspace(Tuple.from(CREATED_AT_INDEX))),
                 subjectIndexSubspace = SubjectIndexSubspace(root.subspace(Tuple.from(SUBJECT_INDEX))),
+                subjectTypeIndexSubspace = SubjectTypeIndexSubspace(root.subspace(Tuple.from(SUBJECT_TYPE_INDEX))),
                 metadataIndexSubspace = MetadataIndexSubspace(root.subspace(Tuple.from(METADATA_INDEX))),
                 tagsIndexSubspace = TagsIndexSubspace(root.subspace(Tuple.from(TAGS_INDEX))),
                 tagsTypeIndexSubspace = TagsTypeIndexSubspace(root.subspace(Tuple.from(TAGS_TYPE_INDEX))),
@@ -211,6 +213,12 @@ value class FactPositionIndexSubspace(val subspace: Subspace) {
 @JvmInline
 value class EventTypeIndexSubspace(val subspace: Subspace) {
 
+    fun range(storeId: StoreId, factType: FactType): Range =
+        subspace.range(Tuple.from(storeId.uuid, factType.value))
+
+    fun unpackPosition(key: ByteArray): FactPosition =
+        subspace.unpack(key).getLastAsFactPosition()
+
     context(tr: Transaction)
     fun save(storeId: StoreId, factId: FactId, factType: FactType, incompleteVersionstamp: Versionstamp) {
         val eventTypeIndexKey = subspace.packWithVersionstamp(
@@ -280,6 +288,12 @@ value class SubjectIndexSubspace(val subspace: Subspace) {
 
 @JvmInline
 value class MetadataIndexSubspace(val subspace: Subspace) {
+
+    fun range(storeId: StoreId, key: String, value: String): Range =
+        subspace.range(Tuple.from(storeId.uuid, key, value))
+
+    fun unpackPosition(key: ByteArray): FactPosition =
+        subspace.unpack(key).getLastAsFactPosition()
 
     context(tr: Transaction)
     fun save(storeId: StoreId, factId: FactId, metadata: Map<String, String>, incompleteVersionstamp: Versionstamp) {
@@ -384,6 +398,45 @@ value class IdempotencySubspace(val subspace: Subspace) {
     fun save(storeId: StoreId, idempotencyKey: IdempotencyKey) {
         val key = pack(storeId, idempotencyKey)
         tr[key] = EMPTY_BYTE_ARRAY
+    }
+
+    context(tr: Transaction)
+    fun clearRange(storeId: StoreId) {
+        tr.clear(subspace.range(Tuple.from(storeId.uuid)))
+    }
+
+}
+
+/**
+ * Combined subject+type index with key `(storeId, subject, type, versionstamp)`.
+ *
+ * Provides an efficient fast path for [FactFilter.Predicate.Last]/[FactFilter.Predicate.First]
+ * when the inner predicate is [AllOf(Subject, Type)]: a direct backward or forward range
+ * scan on a tightly bounded prefix rather than a full subject scan with in-app type filtering.
+ *
+ * Constant: [SUBJECT_TYPE_INDEX] = 107.
+ */
+@JvmInline
+value class SubjectTypeIndexSubspace(val subspace: Subspace) {
+
+    fun range(storeId: StoreId, subject: Subject, factType: FactType): Range =
+        subspace.range(Tuple.from(storeId.uuid, subject.value, factType.value))
+
+    fun unpackPosition(key: ByteArray): FactPosition =
+        subspace.unpack(key).getLastAsFactPosition()
+
+    context(tr: Transaction)
+    fun save(
+        storeId: StoreId,
+        factId: FactId,
+        subject: Subject,
+        factType: FactType,
+        incompleteVersionstamp: Versionstamp,
+    ) {
+        val keyBytes = subspace.packWithVersionstamp(
+            Tuple.from(storeId.uuid, subject.value, factType.value, incompleteVersionstamp)
+        )
+        tr.mutate(SET_VERSIONSTAMPED_KEY, keyBytes, Tuple.from(factId.uuid).pack())
     }
 
     context(tr: Transaction)

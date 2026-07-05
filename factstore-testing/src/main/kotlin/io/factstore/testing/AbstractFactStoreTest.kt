@@ -24,6 +24,11 @@ import kotlin.system.measureTimeMillis
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
+private suspend fun FactQueryResult.collectFacts(): List<Fact> {
+    val stream = (this as FactQueryResult.FactStream).stream
+    return stream.toList().flatten()
+}
+
 private const val ALICE_SUBJECT_VALUE = "USER:ALICE"
 private const val BOB_SUBJECT_VALUE = "USER:BOB"
 private const val CHARLIE_SUBJECT_VALUE = "USER:CHARLIE"
@@ -1494,6 +1499,287 @@ abstract class AbstractFactStoreTest {
 
         assertThat(store.append(storeName, factInput))
             .isInstanceOf(AppendResult.StoreNotFound::class.java)
+    }
+
+    // ── query() tests ────────────────────────────────────────────────────────────
+
+    @Test
+    fun `query all returns all facts in forward order`(): Unit = runBlocking {
+        val f1 = appendStored(input(ALICE_SUBJECT_VALUE, "A", "p1".toFactPayload()))
+        val f2 = appendStored(input(BOB_SUBJECT_VALUE, "B", "p2".toFactPayload()))
+        val f3 = appendStored(input(CHARLIE_SUBJECT_VALUE, "C", "p3".toFactPayload()))
+
+        val facts = store.query(FactQuery(testStore)).collectFacts()
+
+        assertThat(facts).containsExactly(f1, f2, f3)
+    }
+
+    @Test
+    fun `query by subject`(): Unit = runBlocking {
+        val f1 = appendStored(input(ALICE_SUBJECT_VALUE, "A", "p".toFactPayload()))
+        appendStored(input(BOB_SUBJECT_VALUE, "A", "p".toFactPayload()))
+
+        val facts = store.query(
+            factQuery(testStore) { subject(ALICE_SUBJECT_VALUE) }
+        ).collectFacts()
+
+        assertThat(facts).containsExactly(f1)
+    }
+
+    @Test
+    fun `query by type`(): Unit = runBlocking {
+        val f1 = appendStored(input(ALICE_SUBJECT_VALUE, "TYPE_A", "p".toFactPayload()))
+        appendStored(input(BOB_SUBJECT_VALUE, "TYPE_B", "p".toFactPayload()))
+
+        val facts = store.query(
+            factQuery(testStore) { type("TYPE_A") }
+        ).collectFacts()
+
+        assertThat(facts).containsExactly(f1)
+    }
+
+    @Test
+    fun `query by tag`(): Unit = runBlocking {
+        val f1 = appendStored(input(ALICE_SUBJECT_VALUE, "A", "p".toFactPayload(),
+            tags = mapOf(TagKey("env") to TagValue("prod"))))
+        appendStored(input(BOB_SUBJECT_VALUE, "A", "p".toFactPayload(),
+            tags = mapOf(TagKey("env") to TagValue("dev"))))
+
+        val facts = store.query(
+            factQuery(testStore) { tag("env", "prod") }
+        ).collectFacts()
+
+        assertThat(facts).containsExactly(f1)
+    }
+
+    @Test
+    fun `query by subject prefix`(): Unit = runBlocking {
+        val f1 = appendStored(input("USER:100", "A", "p".toFactPayload()))
+        val f2 = appendStored(input("USER:200", "A", "p".toFactPayload()))
+        appendStored(input("ORDER:100", "A", "p".toFactPayload()))
+
+        val facts = store.query(
+            factQuery(testStore) { subjectPrefix("USER:") }
+        ).collectFacts()
+
+        assertThat(facts).containsExactlyInAnyOrder(f1, f2)
+    }
+
+    @Test
+    fun `query by metadata`(): Unit = runBlocking {
+        val f1 = appendStored(input(ALICE_SUBJECT_VALUE, "A", "p".toFactPayload(),
+            metadata = mapOf("source" to "web")))
+        appendStored(input(BOB_SUBJECT_VALUE, "A", "p".toFactPayload(),
+            metadata = mapOf("source" to "mobile")))
+
+        val facts = store.query(
+            factQuery(testStore) { metadata("source", "web") }
+        ).collectFacts()
+
+        assertThat(facts).containsExactly(f1)
+    }
+
+    @Test
+    fun `query anyOf matches union of branches`(): Unit = runBlocking {
+        val f1 = appendStored(input(ALICE_SUBJECT_VALUE, "A", "p".toFactPayload()))
+        val f2 = appendStored(input(BOB_SUBJECT_VALUE, "B", "p".toFactPayload()))
+        appendStored(input(CHARLIE_SUBJECT_VALUE, "C", "p".toFactPayload()))
+
+        val facts = store.query(
+            factQuery(testStore) {
+                anyOf {
+                    subject(ALICE_SUBJECT_VALUE)
+                    type("B")
+                }
+            }
+        ).collectFacts()
+
+        assertThat(facts).containsExactlyInAnyOrder(f1, f2)
+    }
+
+    @Test
+    fun `query allOf applies AND semantics`(): Unit = runBlocking {
+        val f1 = appendStored(input(ALICE_SUBJECT_VALUE, "LOGIN", "p".toFactPayload(),
+            tags = mapOf(TagKey("device") to TagValue("mobile"))))
+        appendStored(input(ALICE_SUBJECT_VALUE, "LOGIN", "p".toFactPayload(),
+            tags = mapOf(TagKey("device") to TagValue("desktop"))))
+        appendStored(input(BOB_SUBJECT_VALUE, "LOGIN", "p".toFactPayload(),
+            tags = mapOf(TagKey("device") to TagValue("mobile"))))
+
+        val facts = store.query(
+            factQuery(testStore) {
+                subject(ALICE_SUBJECT_VALUE)
+                tag("device", "mobile")
+            }
+        ).collectFacts()
+
+        assertThat(facts).containsExactly(f1)
+    }
+
+    @Test
+    fun `query last(1) returns most recent match`(): Unit = runBlocking {
+        appendStored(input("MACHINE:1", "ACTIVATED", "p".toFactPayload()))
+        appendStored(input("MACHINE:1", "DEACTIVATED", "p".toFactPayload()))
+        val f3 = appendStored(input("MACHINE:1", "ACTIVATED", "p".toFactPayload()))
+
+        val facts = store.query(
+            factQuery(testStore) {
+                last(1) { subject("MACHINE:1"); type("ACTIVATED") }
+            }
+        ).collectFacts()
+
+        assertThat(facts).containsExactly(f3)
+    }
+
+    @Test
+    fun `query first(1) returns earliest match`(): Unit = runBlocking {
+        val f1 = appendStored(input("MACHINE:1", "ACTIVATED", "p".toFactPayload()))
+        appendStored(input("MACHINE:1", "ACTIVATED", "p".toFactPayload()))
+        appendStored(input("MACHINE:1", "ACTIVATED", "p".toFactPayload()))
+
+        val facts = store.query(
+            factQuery(testStore) {
+                first(1) { type("ACTIVATED") }
+            }
+        ).collectFacts()
+
+        assertThat(facts).containsExactly(f1)
+    }
+
+    @Test
+    fun `query with limit caps results`(): Unit = runBlocking {
+        val f1 = appendStored(input(ALICE_SUBJECT_VALUE, "A", "p".toFactPayload()))
+        appendStored(input(BOB_SUBJECT_VALUE, "A", "p".toFactPayload()))
+        appendStored(input(CHARLIE_SUBJECT_VALUE, "A", "p".toFactPayload()))
+
+        val facts = store.query(
+            factQuery(testStore) { limit = Limit.of(1) }
+        ).collectFacts()
+
+        assertThat(facts).containsExactly(f1)
+    }
+
+    @Test
+    fun `query backward returns facts in reverse order`(): Unit = runBlocking {
+        val f1 = appendStored(input(ALICE_SUBJECT_VALUE, "A", "p".toFactPayload()))
+        val f2 = appendStored(input(BOB_SUBJECT_VALUE, "A", "p".toFactPayload()))
+        val f3 = appendStored(input(CHARLIE_SUBJECT_VALUE, "A", "p".toFactPayload()))
+
+        val facts = store.query(
+            factQuery(testStore) { direction = ReadDirection.Backward }
+        ).collectFacts()
+
+        assertThat(facts).containsExactly(f3, f2, f1)
+    }
+
+    @Test
+    fun `query with cursor starts after given fact`(): Unit = runBlocking {
+        val f1 = appendStored(input(ALICE_SUBJECT_VALUE, "A", "p".toFactPayload()))
+        val f2 = appendStored(input(BOB_SUBJECT_VALUE, "A", "p".toFactPayload()))
+        val f3 = appendStored(input(CHARLIE_SUBJECT_VALUE, "A", "p".toFactPayload()))
+
+        val facts = store.query(
+            factQuery(testStore) { cursor = f1.id }
+        ).collectFacts()
+
+        assertThat(facts).containsExactly(f2, f3)
+    }
+
+    @Test
+    fun `query anyOf with last - DCB state machine pattern`(): Unit = runBlocking {
+        appendStored(input("MACHINE:1", "STARTED", "p".toFactPayload()))
+        val f2 = appendStored(input("MACHINE:1", "ACTIVATED", "p".toFactPayload()))
+        appendStored(input("MACHINE:2", "STARTED", "p".toFactPayload()))
+        val f4 = appendStored(input("MACHINE:2", "ACTIVATED", "p".toFactPayload()))
+
+        val facts = store.query(
+            factQuery(testStore) {
+                anyOf {
+                    last(1) { subject("MACHINE:1"); type("ACTIVATED") }
+                    last(1) { subject("MACHINE:2"); type("ACTIVATED") }
+                }
+            }
+        ).collectFacts()
+
+        assertThat(facts).containsExactlyInAnyOrder(f2, f4)
+    }
+
+    @Test
+    fun `query returns StoreNotFound for missing store`(): Unit = runBlocking {
+        val result = store.query(FactQuery(StoreName("no-such-store")))
+        assertThat(result).isInstanceOf(FactQueryResult.StoreNotFound::class.java)
+    }
+
+    @Test
+    fun `query returns CursorNotFound for unknown fact id`(): Unit = runBlocking {
+        val result = store.query(FactQuery(testStore, cursor = FactId.generate()))
+        assertThat(result).isInstanceOf(FactQueryResult.CursorNotFound::class.java)
+    }
+
+    @Test
+    fun `query empty store returns empty stream`(): Unit = runBlocking {
+        val facts = store.query(FactQuery(testStore)).collectFacts()
+        assertThat(facts).isEmpty()
+    }
+
+    @Test
+    fun `IfNoneMatch allows append when no match exists`(): Unit = runBlocking {
+        appendStored(input("INVOICE:1", "DRAFT", "p".toFactPayload()))
+
+        val result = store.append(AppendRequest(
+            storeName = testStore,
+            facts = listOf(input("INVOICE:1", "SUBMITTED", "p".toFactPayload())),
+            idempotencyKey = IdempotencyKey(),
+            condition = AppendCondition.IfNoneMatch(
+                filter = FactFilter.Predicate.AllOf(listOf(
+                    FactFilter.Predicate.Subject(Subject("INVOICE:1")),
+                    FactFilter.Predicate.Type(FactType("SUBMITTED")),
+                ))
+            )
+        ))
+
+        assertThat(result).isInstanceOf(AppendResult.Appended::class.java)
+    }
+
+    @Test
+    fun `IfNoneMatch rejects append when match exists`(): Unit = runBlocking {
+        appendStored(input("INVOICE:1", "SUBMITTED", "p".toFactPayload()))
+
+        val result = store.append(AppendRequest(
+            storeName = testStore,
+            facts = listOf(input("INVOICE:1", "SUBMITTED", "p".toFactPayload())),
+            idempotencyKey = IdempotencyKey(),
+            condition = AppendCondition.IfNoneMatch(
+                filter = FactFilter.Predicate.AllOf(listOf(
+                    FactFilter.Predicate.Subject(Subject("INVOICE:1")),
+                    FactFilter.Predicate.Type(FactType("SUBMITTED")),
+                ))
+            )
+        ))
+
+        assertThat(result).isEqualTo(AppendResult.AppendConditionViolated)
+    }
+
+    @Test
+    fun `IfNoneMatch with after cursor ignores matching facts before cursor`(): Unit = runBlocking {
+        val f1 = appendStored(input("INVOICE:1", "SUBMITTED", "p".toFactPayload()))
+        // f1 is BEFORE the cursor — should be ignored
+        appendStored(input("INVOICE:1", "PAID", "p".toFactPayload()))
+
+        val result = store.append(AppendRequest(
+            storeName = testStore,
+            facts = listOf(input("INVOICE:1", "SUBMITTED", "p".toFactPayload())),
+            idempotencyKey = IdempotencyKey(),
+            condition = AppendCondition.IfNoneMatch(
+                filter = FactFilter.Predicate.AllOf(listOf(
+                    FactFilter.Predicate.Subject(Subject("INVOICE:1")),
+                    FactFilter.Predicate.Type(FactType("SUBMITTED")),
+                )),
+                after = f1.id,
+            )
+        ))
+
+        assertThat(result).isInstanceOf(AppendResult.Appended::class.java)
     }
 
 }

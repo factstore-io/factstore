@@ -6,7 +6,10 @@ import io.factstore.core.*
 import io.factstore.grpc.v1.*
 import java.time.Instant
 import java.util.*
+import io.factstore.core.FactFilter as CoreFactFilter
 import io.factstore.core.ReadDirection as CoreReadDirection
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 
 internal fun Instant.toTimestamp(): Timestamp = Timestamp.newBuilder()
     .setSeconds(epochSecond)
@@ -83,6 +86,11 @@ internal fun FactStoreProto.AppendCondition.toDomain(): AppendCondition = when (
         failIfEventsMatch = tagQueryBased.failIfEventsMatch.toDomain(),
         after = if (tagQueryBased.hasAfterFactId()) tagQueryBased.afterFactId.toFactId()
         else null
+    )
+
+    FactStoreProto.AppendCondition.KindCase.IF_NONE_MATCH -> AppendCondition.IfNoneMatch(
+        filter = ifNoneMatch.filter.toDomainPredicate(),
+        after = if (ifNoneMatch.hasAfterFactId()) ifNoneMatch.afterFactId.toFactId() else null
     )
 
     else -> AppendCondition.None
@@ -397,3 +405,75 @@ internal fun ExistsStoreByNameResult.toGrpcResponse(): GrpcStoreExistsResponse =
         ExistsStoreByNameResult.StoreExists -> storeExistsResponse { present = storePresent { } }
         ExistsStoreByNameResult.StoreAbsent -> storeExistsResponse { absent = storeAbsent { } }
     }
+
+// ── FactFilter converters ──────────────────────────────────────────────────────
+
+typealias GrpcStreamFactsRequest = FactStoreProto.StreamFactsRequest
+
+internal fun GrpcStreamFactsRequest.toDomainQuery(): FactQuery = FactQuery(
+    storeName = StoreName(storeName),
+    filter = if (hasFilter()) filter.toDomain() else CoreFactFilter.All,
+    limit = if (hasLimit()) Limit.of(limit) else Limit.None,
+    direction = direction.toCore(),
+    cursor = if (hasCursorFactId()) cursorFactId.toFactId() else null,
+)
+
+internal fun FactStoreProto.FactFilter.toDomain(): CoreFactFilter = when (kindCase) {
+    FactStoreProto.FactFilter.KindCase.ALL -> CoreFactFilter.All
+    FactStoreProto.FactFilter.KindCase.PREDICATE -> predicate.toDomainPredicate()
+    else -> CoreFactFilter.All
+}
+
+internal fun FactStoreProto.PredicateFilter.toDomainPredicate(): CoreFactFilter.Predicate =
+    when (kindCase) {
+        FactStoreProto.PredicateFilter.KindCase.SUBJECT ->
+            CoreFactFilter.Predicate.Subject(Subject(subject))
+
+        FactStoreProto.PredicateFilter.KindCase.SUBJECT_PREFIX ->
+            CoreFactFilter.Predicate.SubjectPrefix(subjectPrefix)
+
+        FactStoreProto.PredicateFilter.KindCase.TYPE ->
+            CoreFactFilter.Predicate.Type(FactType(type))
+
+        FactStoreProto.PredicateFilter.KindCase.TAG ->
+            CoreFactFilter.Predicate.Tag(TagKey(tag.key), TagValue(tag.value))
+
+        FactStoreProto.PredicateFilter.KindCase.METADATA ->
+            CoreFactFilter.Predicate.Metadata(metadata.key, metadata.value)
+
+        FactStoreProto.PredicateFilter.KindCase.TIME_RANGE ->
+            CoreFactFilter.Predicate.TimeRange(
+                TimeRange(
+                    start = if (timeRange.hasFrom()) timeRange.from.toInstant() else null,
+                    end = if (timeRange.hasTo()) timeRange.to.toInstant() else null,
+                )
+            )
+
+        FactStoreProto.PredicateFilter.KindCase.ANY_OF ->
+            CoreFactFilter.Predicate.AnyOf(anyOf.predicatesList.map { it.toDomainPredicate() })
+
+        FactStoreProto.PredicateFilter.KindCase.ALL_OF ->
+            CoreFactFilter.Predicate.AllOf(allOf.predicatesList.map { it.toDomainPredicate() })
+
+        FactStoreProto.PredicateFilter.KindCase.FIRST ->
+            CoreFactFilter.Predicate.First(first.n, first.predicate.toDomainPredicate())
+
+        FactStoreProto.PredicateFilter.KindCase.LAST ->
+            CoreFactFilter.Predicate.Last(last.n, last.predicate.toDomainPredicate())
+
+        else -> throw IllegalArgumentException("PredicateFilter has no kind set: $kindCase")
+    }
+
+internal fun FactQueryResult.toGrpcFlow(): Flow<FactStoreProto.StreamFactsResponse> = when (this) {
+    is FactQueryResult.StoreNotFound -> flow {
+        emit(streamFactsResponse { storeNotFound = storeNotFound { storeName = this@toGrpcFlow.storeName.value } })
+    }
+    is FactQueryResult.CursorNotFound -> flow {
+        emit(streamFactsResponse { afterFactNotFound = factNotFound { } })
+    }
+    is FactQueryResult.FactStream -> flow {
+        stream.collect { batch ->
+            emit(streamFactsResponse { this.batch = batch.toProtoFactBatch() })
+        }
+    }
+}

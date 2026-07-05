@@ -92,6 +92,22 @@ sealed interface AppendCondition {
     }
 
     /**
+     * Fails the append if any fact matching [filter] exists after [after].
+     *
+     * If [after] is `null`, the entire store history is checked. This is the
+     * preferred way to express DCB-style consistency boundaries — the full
+     * expressiveness of [FactFilter.Predicate] is available as the guard.
+     *
+     * @property filter the predicate that must not match any existing fact
+     * @property after an optional lower bound (exclusive); only facts appended
+     *         after this fact are checked
+     */
+    data class IfNoneMatch(
+        val filter: FactFilter.Predicate,
+        val after: FactId? = null,
+    ) : AppendCondition
+
+    /**
      * Requires that no facts matching the given tag query exist after the
      * specified fact identifier.
      *
@@ -99,6 +115,13 @@ sealed interface AppendCondition {
      * @property after an optional fact identifier defining the lower bound
      *         for the query
      */
+    @Deprecated(
+        message = "Use IfNoneMatch with a FactFilter.Predicate instead",
+        replaceWith = ReplaceWith(
+            expression = "AppendCondition.IfNoneMatch(filter = TODO(\"convert TagQuery to FactFilter.Predicate\"), after = after)",
+            imports = ["io.factstore.core.AppendCondition"],
+        ),
+    )
     data class TagQueryBased(
         val failIfEventsMatch: TagQuery,
         val after: FactId?

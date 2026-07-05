@@ -2,6 +2,7 @@ package io.factstore.memory
 
 import io.factstore.core.*
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -271,6 +272,95 @@ class MemoryFactStore : FactStore {
                 }
                 matchingFacts.isEmpty()
             }
+            is AppendCondition.IfNoneMatch -> {
+                val store = facts[storeId]?.toList() ?: return false
+                val startIndex = if (condition.after != null) {
+                    val index = store.indexOfFirst { it.id == condition.after }
+                    if (index == -1) return false
+                    index + 1
+                } else 0
+                collectFacts(store.drop(startIndex), condition.filter).isEmpty()
+            }
+        }
+    }
+
+    override suspend fun query(query: FactQuery): FactQueryResult = lock.withLock {
+        val storeId = resolveId(query.storeName) ?: return FactQueryResult.StoreNotFound(query.storeName)
+        val allFacts = facts[storeId]?.toList() ?: return FactQueryResult.StoreNotFound(query.storeName)
+
+        val cursorIndex = query.cursor?.let { factId ->
+            val idx = allFacts.indexOfFirst { it.id == factId }
+            if (idx == -1) return FactQueryResult.CursorNotFound(factId)
+            idx
+        }
+
+        val selected: List<Fact> = when (val f = query.filter) {
+            FactFilter.All -> allFacts
+            is FactFilter.Predicate -> collectFacts(allFacts, f)
+        }
+
+        val afterCursor: List<Fact> = if (cursorIndex == null) selected else {
+            when (query.direction) {
+                ReadDirection.Forward -> selected.filter { allFacts.indexOf(it) > cursorIndex }
+                ReadDirection.Backward -> selected.filter { allFacts.indexOf(it) < cursorIndex }
+            }
+        }
+
+        val sorted = afterCursor.sortedBy { allFacts.indexOf(it) }.let {
+            if (query.direction == ReadDirection.Backward) it.reversed() else it
+        }
+        val limited = query.limit.value?.let { sorted.take(it) } ?: sorted
+
+        if (limited.isEmpty()) return FactQueryResult.FactStream(emptyFlow())
+        FactQueryResult.FactStream(flow { emit(limited) })
+    }
+
+    /**
+     * Recursively collects facts matching [predicate] from [allFacts].
+     * [outerLeaves] carries leaf constraints from ancestor [FactFilter.Predicate.AllOf] nodes.
+     */
+    private fun collectFacts(
+        allFacts: List<Fact>,
+        predicate: FactFilter.Predicate,
+        outerLeaves: List<FactFilter.Predicate> = emptyList(),
+    ): List<Fact> = when (predicate) {
+
+        is FactFilter.Predicate.AnyOf ->
+            predicate.predicates
+                .flatMap { child -> collectFacts(allFacts, child, outerLeaves) }
+                .distinctBy { it.id }
+
+        is FactFilter.Predicate.AllOf -> {
+            val myLeaves = predicate.predicates.filter { it.isMemoryLeaf() }
+            val combined = outerLeaves + myLeaves
+            val nonLeaves = predicate.predicates.filter { !it.isMemoryLeaf() }
+
+            val leafFiltered = if (combined.isEmpty()) allFacts
+            else allFacts.filter { fact -> combined.all { leaf -> leaf.matches(fact) } }
+
+            when (nonLeaves.size) {
+                0 -> leafFiltered
+                1 -> collectFacts(leafFiltered, nonLeaves[0], combined)
+                else -> {
+                    val ids = nonLeaves
+                        .map { child -> collectFacts(leafFiltered, child, combined).map { it.id }.toSet() }
+                        .reduce { acc, set -> acc intersect set }
+                    leafFiltered.filter { it.id in ids }
+                }
+            }
+        }
+
+        // Inner predicate is self-contained after normalisation
+        is FactFilter.Predicate.Last ->
+            allFacts.filter { predicate.predicate.matches(it) }.takeLast(predicate.n)
+
+        is FactFilter.Predicate.First ->
+            allFacts.filter { predicate.predicate.matches(it) }.take(predicate.n)
+
+        else -> {
+            val effective = if (outerLeaves.isEmpty()) predicate
+            else FactFilter.Predicate.AllOf(outerLeaves + predicate)
+            allFacts.filter { effective.matches(it) }
         }
     }
 
@@ -296,10 +386,17 @@ class MemoryFactStore : FactStore {
     }
 }
 
-/**
- * Extension for cleaner matching logic in the memory implementation
- */
 private fun TagQueryItem.matches(fact: Fact): Boolean = when (this) {
     is TagTypeItem -> fact.type in this.types && this.tags.all { (k, v) -> fact.tags[k] == v }
     is TagOnlyQueryItem -> this.tags.all { (k, v) -> fact.tags[k] == v }
+}
+
+private fun FactFilter.Predicate.isMemoryLeaf(): Boolean = when (this) {
+    is FactFilter.Predicate.Subject,
+    is FactFilter.Predicate.SubjectPrefix,
+    is FactFilter.Predicate.Type,
+    is FactFilter.Predicate.Tag,
+    is FactFilter.Predicate.Metadata,
+    is FactFilter.Predicate.TimeRange -> true
+    else -> false
 }

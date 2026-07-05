@@ -36,6 +36,10 @@ data class TimeRange(
 
     override fun toString(): String = "[${start ?: "-∞"}, ${end ?: "∞"})"
 
+    /** Returns `true` if [instant] is within this half-open interval `[start, end)`. */
+    operator fun contains(instant: java.time.Instant): Boolean =
+        (start == null || !instant.isBefore(start)) && (end == null || instant.isBefore(end))
+
     companion object {
 
         /** A bounded range `[start, end)`. */

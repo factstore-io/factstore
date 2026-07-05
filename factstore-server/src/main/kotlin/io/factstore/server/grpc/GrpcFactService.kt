@@ -96,4 +96,10 @@ class GrpcFactService(
             }
         }
     }
+
+    override fun streamFacts(
+        request: FactStoreProto.StreamFactsRequest
+    ): Multi<StreamFactsResponse> = toMulti(grpcContext) {
+        factStore.query(request.toDomainQuery()).toGrpcFlow()
+    }
 }

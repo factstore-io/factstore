@@ -20,4 +20,13 @@ sealed class AppendCondition {
     data class All(
         val conditions: List<AppendCondition>,
     ) : AppendCondition()
+
+    /**
+     * Append fails if any fact matching [filter] exists after [afterFactId].
+     * If [afterFactId] is null, the entire store history is checked.
+     */
+    data class IfNoneMatch(
+        val filter: FactFilter,
+        val afterFactId: String? = null,
+    ) : AppendCondition()
 }

@@ -9,6 +9,43 @@ import jakarta.validation.constraints.NotEmpty
 import java.time.Instant
 import java.util.*
 
+// ── FactFilter HTTP DTOs ──────────────────────────────────────────────────────
+
+data class StreamFactsRequestHttp(
+    val filter: FactFilterHttp? = null,
+    val limit: Int? = null,
+    val direction: String? = null,
+    val cursor: UUID? = null,
+)
+
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "type")
+@JsonSubTypes(
+    JsonSubTypes.Type(value = FactFilterHttp.All::class,           name = "all"),
+    JsonSubTypes.Type(value = FactFilterHttp.Subject::class,       name = "subject"),
+    JsonSubTypes.Type(value = FactFilterHttp.SubjectPrefix::class, name = "subjectPrefix"),
+    JsonSubTypes.Type(value = FactFilterHttp.Type::class,          name = "type"),
+    JsonSubTypes.Type(value = FactFilterHttp.Tag::class,           name = "tag"),
+    JsonSubTypes.Type(value = FactFilterHttp.Metadata::class,      name = "metadata"),
+    JsonSubTypes.Type(value = FactFilterHttp.TimeRange::class,     name = "timeRange"),
+    JsonSubTypes.Type(value = FactFilterHttp.AnyOf::class,         name = "anyOf"),
+    JsonSubTypes.Type(value = FactFilterHttp.AllOf::class,         name = "allOf"),
+    JsonSubTypes.Type(value = FactFilterHttp.First::class,         name = "first"),
+    JsonSubTypes.Type(value = FactFilterHttp.Last::class,          name = "last"),
+)
+sealed interface FactFilterHttp {
+    data object All : FactFilterHttp
+    data class Subject(val value: String) : FactFilterHttp
+    data class SubjectPrefix(val prefix: String) : FactFilterHttp
+    data class Type(val value: String) : FactFilterHttp
+    data class Tag(val key: String, val value: String) : FactFilterHttp
+    data class Metadata(val key: String, val value: String) : FactFilterHttp
+    data class TimeRange(val from: Instant? = null, val to: Instant? = null) : FactFilterHttp
+    data class AnyOf(val predicates: List<FactFilterHttp>) : FactFilterHttp
+    data class AllOf(val predicates: List<FactFilterHttp>) : FactFilterHttp
+    data class First(val n: Int, val predicate: FactFilterHttp) : FactFilterHttp
+    data class Last(val n: Int, val predicate: FactFilterHttp) : FactFilterHttp
+}
+
 data class AppendHttpRequest(
     @field:NotEmpty
     val facts: List<@Valid FactInputHttp>,
@@ -53,7 +90,11 @@ data class AppendedHttp(
     JsonSubTypes.Type(
         value = AppendConditionHttp.TagQueryBased::class,
         name = "tagQueryBased"
-    )
+    ),
+    JsonSubTypes.Type(
+        value = AppendConditionHttp.IfNoneMatch::class,
+        name = "ifNoneMatch"
+    ),
 )
 sealed interface AppendConditionHttp {
 
@@ -71,6 +112,11 @@ sealed interface AppendConditionHttp {
     data class TagQueryBased(
         val failIfEventsMatch: FactQueryHttp,
         val after: UUID?
+    ) : AppendConditionHttp
+
+    data class IfNoneMatch(
+        val filter: FactFilterHttp,
+        val after: UUID? = null,
     ) : AppendConditionHttp
 }
 

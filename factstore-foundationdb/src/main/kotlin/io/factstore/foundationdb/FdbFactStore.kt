@@ -19,6 +19,7 @@ const val SUBJECT_INDEX = 103
 const val METADATA_INDEX = 104
 const val TAGS_INDEX = 105
 const val TAGS_TYPE_INDEX = 106
+const val SUBJECT_TYPE_INDEX = 107
 
 const val IDEMPOTENCY_KEYS = 200
 
@@ -85,6 +86,7 @@ data class FdbFactStore(
         context.eventTypeIndexSubspace.save(storeId, id, type, incompleteVersionstamp)
         context.createdAtIndexSubspace.save(storeId, id, appendedAt, incompleteVersionstamp)
         context.subjectIndexSubspace.save(storeId, id, subject, incompleteVersionstamp)
+        context.subjectTypeIndexSubspace.save(storeId, id, subject, type, incompleteVersionstamp)
         context.metadataIndexSubspace.save(storeId, id, metadata, incompleteVersionstamp)
         context.tagsIndexSubspace.save(storeId, id, tags, incompleteVersionstamp)
         context.tagsTypeIndexSubspace.save(storeId, id, type, tags, incompleteVersionstamp)

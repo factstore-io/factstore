@@ -8,11 +8,13 @@ import io.factstore.client.internal.toDomain
 import io.factstore.client.internal.toFactStoreException
 import io.factstore.client.internal.toInstant
 import io.factstore.client.internal.toProto
+import io.factstore.client.internal.toProtoPredicateFilter
 import io.factstore.client.internal.toProtoTimestamp
 import io.factstore.client.model.AppendCondition
 import io.factstore.client.model.AppendFactsBuilder
 import io.factstore.client.model.AppendOutcome
 import io.factstore.client.model.Fact
+import io.factstore.client.model.FactFilter
 import io.factstore.client.model.FactInput
 import io.factstore.client.model.ReadDirection
 import io.factstore.client.model.ReplayStartPosition
@@ -30,6 +32,7 @@ import io.factstore.grpc.v1.fromEnd
 import io.factstore.grpc.v1.getFactRequest
 import io.factstore.grpc.v1.queryFactsRequest
 import io.factstore.grpc.v1.replayFactsRequest
+import io.factstore.grpc.v1.streamFactsRequest
 import io.factstore.grpc.v1.subscribeFactsRequest
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -196,6 +199,33 @@ class FactOperations internal constructor(
             is ReplayStartPosition.AfterFact -> afterFactId = start.factId
         }
     }).toFactFlow(storeName, (start as? ReplayStartPosition.AfterFact)?.factId)
+
+    /**
+     * Executes a composable query and streams matching facts. The stream completes
+     * once all matching facts have been delivered.
+     *
+     * @param storeName the store to query
+     * @param filter the filter to apply; defaults to [FactFilter.All] (all facts)
+     * @param limit maximum number of facts to return; null means no limit
+     * @param direction read order; defaults to [ReadDirection.FORWARD]
+     * @param cursor start exclusively after this fact ID; null means from the beginning
+     */
+    fun streamFacts(
+        storeName: String,
+        filter: FactFilter = FactFilter.All,
+        limit: Int? = null,
+        direction: ReadDirection = ReadDirection.FORWARD,
+        cursor: String? = null,
+    ): Flow<Fact> = stub.streamFacts(streamFactsRequest {
+        this.storeName = storeName
+        this.filter = filter.let {
+            if (it is FactFilter.All) io.factstore.grpc.v1.factFilter { all = true }
+            else io.factstore.grpc.v1.factFilter { predicate = it.toProtoPredicateFilter() }
+        }
+        limit?.let { this.limit = it }
+        this.direction = direction.toProto()
+        cursor?.let { cursorFactId = it }
+    }).toFactFlow(storeName, cursor)
 
     private fun Flow<FactStoreProto.StreamFactsResponse>.toFactFlow(
         storeName: String,

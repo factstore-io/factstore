@@ -4,6 +4,7 @@ import com.google.protobuf.ByteString
 import com.google.protobuf.timestamp
 import io.factstore.client.model.AppendCondition
 import io.factstore.client.model.Fact
+import io.factstore.client.model.FactFilter
 import io.factstore.client.model.FactInput
 import io.factstore.client.model.FactPayload
 import io.factstore.client.model.ReadDirection
@@ -14,14 +15,23 @@ import io.factstore.client.model.TagQueryItem
 import io.factstore.grpc.v1.FactStoreProto
 import io.factstore.grpc.v1.all
 import io.factstore.grpc.v1.appendCondition
+import io.factstore.grpc.v1.boundedPredicateFilter
+import io.factstore.grpc.v1.compositePredicateFilter
 import io.factstore.grpc.v1.expectedLastFact
+import io.factstore.grpc.v1.factFilter
 import io.factstore.grpc.v1.factInput
 import io.factstore.grpc.v1.factPayload
+import io.factstore.grpc.v1.ifNoneMatchCondition
+import io.factstore.grpc.v1.metadataPredicateFilter
+import io.factstore.grpc.v1.predicateFilter
+import io.factstore.grpc.v1.streamFactsRequest
 import io.factstore.grpc.v1.tagOnlyItem
+import io.factstore.grpc.v1.tagPredicateFilter
 import io.factstore.grpc.v1.tagQuery
 import io.factstore.grpc.v1.tagQueryBasedCondition
 import io.factstore.grpc.v1.tagQueryItem
 import io.factstore.grpc.v1.tagTypeItem
+import io.factstore.grpc.v1.timeRangePredicateFilter
 import java.time.Instant
 
 // ─── Proto → Domain ───────────────────────────────────────────────────────────
@@ -90,6 +100,44 @@ internal fun AppendCondition.toProto(): FactStoreProto.AppendCondition = appendC
         }
         is AppendCondition.All -> all = all {
             conditions += c.conditions.map { it.toProto() }
+        }
+        is AppendCondition.IfNoneMatch -> ifNoneMatch = ifNoneMatchCondition {
+            filter = c.filter.toProtoPredicateFilter()
+            c.afterFactId?.let { afterFactId = it }
+        }
+    }
+}
+
+internal fun FactFilter.toProto(): FactStoreProto.FactFilter = factFilter {
+    when (val f = this@toProto) {
+        is FactFilter.All -> all = true
+        else -> predicate = f.toProtoPredicateFilter()
+    }
+}
+
+internal fun FactFilter.toProtoPredicateFilter(): FactStoreProto.PredicateFilter = predicateFilter {
+    when (val f = this@toProtoPredicateFilter) {
+        is FactFilter.All -> throw IllegalArgumentException("'All' cannot appear inside a PredicateFilter")
+        is FactFilter.Subject -> subject = f.value
+        is FactFilter.SubjectPrefix -> subjectPrefix = f.prefix
+        is FactFilter.Type -> type = f.value
+        is FactFilter.Tag -> tag = tagPredicateFilter { key = f.key; value = f.value }
+        is FactFilter.Metadata -> metadata = metadataPredicateFilter { key = f.key; value = f.value }
+        is FactFilter.TimeRange -> timeRange = timeRangePredicateFilter {
+            f.from?.let { from = it.toProtoTimestamp() }
+            f.to?.let { to = it.toProtoTimestamp() }
+        }
+        is FactFilter.AnyOf -> anyOf = compositePredicateFilter {
+            predicates += f.filters.map { it.toProtoPredicateFilter() }
+        }
+        is FactFilter.AllOf -> allOf = compositePredicateFilter {
+            predicates += f.filters.map { it.toProtoPredicateFilter() }
+        }
+        is FactFilter.First -> first = boundedPredicateFilter {
+            n = f.n; predicate = f.filter.toProtoPredicateFilter()
+        }
+        is FactFilter.Last -> last = boundedPredicateFilter {
+            n = f.n; predicate = f.filter.toProtoPredicateFilter()
         }
     }
 }

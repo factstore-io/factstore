@@ -60,6 +60,21 @@ class StreamResource(
         else -> after?.let { StartPosition.After(it.toFactId()) } ?: StartPosition.Beginning
     }
 
+    /** Composable query stream (completes once all matching facts are delivered). */
+    @POST
+    @Path("stream")
+    @Consumes(APPLICATION_JSON)
+    @RestStreamElementType(APPLICATION_JSON)
+    @Produces(SERVER_SENT_EVENTS)
+    @Suppress("kotlin:S6309")
+    suspend fun streamFacts(
+        @PathParam("storeName") storeName: String,
+        request: StreamFactsRequestHttp?,
+    ): Flow<FactHttp> =
+        factStore.query(
+            (request ?: StreamFactsRequestHttp()).toDomainQuery(StoreName(storeName))
+        ).toResponse()
+
 }
 
 private fun SubscribeResult.toResponse(): Flow<FactHttp> = when (this) {

@@ -5,7 +5,12 @@ import io.factstore.core.*
 import kotlinx.coroutines.future.await
 import java.util.concurrent.CompletableFuture
 
-class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
+
+
+class FdbFactFinder(
+    private val fdbFactStore: FdbFactStore,
+    private val factQuerier: FdbFactQuerier,
+) : FactFinder {
 
     private val db = fdbFactStore.db
 
@@ -272,5 +277,8 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
             storeId.run { this@lookupFact.loadFactByPosition() }
         }
     }
+
+    override suspend fun query(query: FactQuery): FactQueryResult =
+        factQuerier.query(query)
 
 }

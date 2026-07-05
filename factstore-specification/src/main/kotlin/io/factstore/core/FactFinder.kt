@@ -53,4 +53,19 @@ interface FactFinder {
      * @return [FindByTagQueryResult.Found] or [FindByTagQueryResult.StoreNotFound]
      */
     suspend fun findByTagQuery(request: FindByTagQueryRequest): FindByTagQueryResult
+
+    /**
+     * Executes a composable [FactQuery] and streams matching facts.
+     *
+     * Matching facts are delivered in batches as a [FactQueryResult.FactStream].
+     * The stream preserves strict versionstamp order across all filter branches.
+     *
+     * Pre-stream errors ([FactQueryResult.StoreNotFound], [FactQueryResult.CursorNotFound])
+     * are returned as sealed variants before the stream opens; errors that occur
+     * mid-stream are surfaced as terminal failures on the [kotlinx.coroutines.flow.Flow].
+     *
+     * @return [FactQueryResult.FactStream], [FactQueryResult.StoreNotFound],
+     *         or [FactQueryResult.CursorNotFound]
+     */
+    suspend fun query(query: FactQuery): FactQueryResult
 }
