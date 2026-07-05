@@ -1686,6 +1686,61 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
+    fun `query with cursor and backward direction and no filter returns facts before cursor newest first`(): Unit = runBlocking {
+        val f1 = appendStored(input(ALICE_SUBJECT_VALUE, "A", "p".toFactPayload()))
+        val f2 = appendStored(input(BOB_SUBJECT_VALUE, "A", "p".toFactPayload()))
+        val f3 = appendStored(input(CHARLIE_SUBJECT_VALUE, "A", "p".toFactPayload()))
+
+        val facts = store.query(
+            factQuery(testStore) {
+                direction = ReadDirection.Backward
+                cursor = f3.id
+            }
+        ).collectFacts()
+
+        assertThat(facts).containsExactly(f2, f1)
+    }
+
+    @Test
+    fun `query with cursor and backward direction and a predicate returns matches before cursor newest first`(): Unit = runBlocking {
+        val f1 = appendStored(input("MACHINE:X", "T", "p".toFactPayload()))
+        val f2 = appendStored(input("MACHINE:X", "T", "p".toFactPayload()))
+        val f3 = appendStored(input("MACHINE:X", "T", "p".toFactPayload()))
+        appendStored(input("MACHINE:OTHER", "T", "p".toFactPayload()))
+
+        val facts = store.query(
+            factQuery(testStore) {
+                subject("MACHINE:X")
+                direction = ReadDirection.Backward
+                cursor = f3.id
+            }
+        ).collectFacts()
+
+        assertThat(facts).containsExactly(f2, f1)
+    }
+
+    @Test
+    fun `query ancestor AllOf constraint propagates into nested Last without the DSL`(): Unit = runBlocking {
+        // Constructs the FactFilter tree directly, the way a gRPC/HTTP request converter
+        // does, bypassing the factQuery DSL's normalization step entirely. The ancestor
+        // Subject constraint must still be injected into the nested Last before it is
+        // executed, or this would incorrectly return machine-2's activation.
+        val f1 = appendStored(input("MACHINE:1", "ACTIVATED", "p".toFactPayload()))
+        appendStored(input("MACHINE:2", "ACTIVATED", "p".toFactPayload()))
+
+        val rawFilter = FactFilter.Predicate.AllOf(listOf(
+            FactFilter.Predicate.Subject(Subject("MACHINE:1")),
+            FactFilter.Predicate.AnyOf(listOf(
+                FactFilter.Predicate.Last(1, FactFilter.Predicate.Type(FactType("ACTIVATED")))
+            ))
+        ))
+
+        val facts = store.query(FactQuery(storeName = testStore, filter = rawFilter)).collectFacts()
+
+        assertThat(facts).containsExactly(f1)
+    }
+
+    @Test
     fun `query anyOf with last - DCB state machine pattern`(): Unit = runBlocking {
         appendStored(input("MACHINE:1", "STARTED", "p".toFactPayload()))
         val f2 = appendStored(input("MACHINE:1", "ACTIVATED", "p".toFactPayload()))
@@ -1777,6 +1832,31 @@ abstract class AbstractFactStoreTest {
                 )),
                 after = f1.id,
             )
+        ))
+
+        assertThat(result).isInstanceOf(AppendResult.Appended::class.java)
+    }
+
+    @Test
+    fun `IfNoneMatch ancestor AllOf constraint propagates into nested Last`(): Unit = runBlocking {
+        // Same shape as the query() ancestor-propagation regression test, but for the
+        // append-condition path (a separate predicate-evaluation implementation).
+        // "machine-1" has never been activated, so the append must be allowed even
+        // though *some* machine's last activation exists (machine-2's).
+        appendStored(input("MACHINE:2", "ACTIVATED", "p".toFactPayload()))
+
+        val rawFilter = FactFilter.Predicate.AllOf(listOf(
+            FactFilter.Predicate.Subject(Subject("MACHINE:1")),
+            FactFilter.Predicate.AnyOf(listOf(
+                FactFilter.Predicate.Last(1, FactFilter.Predicate.Type(FactType("ACTIVATED")))
+            ))
+        ))
+
+        val result = store.append(AppendRequest(
+            storeName = testStore,
+            facts = listOf(input("MACHINE:1", "SOME_OTHER_FACT", "p".toFactPayload())),
+            idempotencyKey = IdempotencyKey(),
+            condition = AppendCondition.IfNoneMatch(filter = rawFilter),
         ))
 
         assertThat(result).isInstanceOf(AppendResult.Appended::class.java)

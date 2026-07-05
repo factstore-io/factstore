@@ -279,7 +279,8 @@ class MemoryFactStore : FactStore {
                     if (index == -1) return false
                     index + 1
                 } else 0
-                collectFacts(store.drop(startIndex), condition.filter).isEmpty()
+                val normalizedFilter = condition.filter.withNormalizedBoundedSelectors() as FactFilter.Predicate
+                collectFacts(store.drop(startIndex), normalizedFilter).isEmpty()
             }
         }
     }
@@ -294,7 +295,9 @@ class MemoryFactStore : FactStore {
             idx
         }
 
-        val selected: List<Fact> = when (val f = query.filter) {
+        // Normalize here rather than relying on the caller: gRPC/HTTP requests build
+        // FactFilter trees directly, bypassing the factQuery DSL's normalization step.
+        val selected: List<Fact> = when (val f = query.filter.withNormalizedBoundedSelectors()) {
             FactFilter.All -> allFacts
             is FactFilter.Predicate -> collectFacts(allFacts, f)
         }

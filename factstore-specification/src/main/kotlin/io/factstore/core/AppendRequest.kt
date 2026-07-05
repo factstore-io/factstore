@@ -105,7 +105,11 @@ sealed interface AppendCondition {
     data class IfNoneMatch(
         val filter: FactFilter.Predicate,
         val after: FactId? = null,
-    ) : AppendCondition
+    ) : AppendCondition {
+        init {
+            filter.validateComplexity()
+        }
+    }
 
     /**
      * Requires that no facts matching the given tag query exist after the

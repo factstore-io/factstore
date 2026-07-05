@@ -213,6 +213,8 @@ In both cases, the selected facts join the merged result stream and are delivere
 
 **Ancestor constraints propagate.** When `Last(1) { type("Activated") }` appears inside `anyOf { subject("machine-1"); ... }`, the root-level `subject` constraint applies to the bounded scan. The implementation must apply all ancestor `AllOf` constraints when executing a `First`/`Last` index scan.
 
+This is implemented by normalization (`FactFilter.withNormalizedBoundedSelectors`), which rewrites the tree so every `First`/`Last` node's inner predicate has ancestor `AllOf` leaf constraints injected directly into it — self-contained, with no need for the executor to track ancestors during traversal. Each storage-layer `query()`/`IfNoneMatch` entry point calls this once, on every incoming `FactFilter`, rather than relying on callers to have done so: gRPC and HTTP requests build `FactFilter` trees directly from the wire and never touch the `factQuery` DSL, which is the only place that previously performed this step. Normalizing only at the DSL layer left every non-DSL caller — i.e. essentially all network traffic — silently vulnerable to ancestor constraints being dropped.
+
 ### 2.6 Streaming result
 
 Query results are delivered as a stream of fact batches, consistent with the existing replay and subscribe operations:
@@ -242,6 +244,10 @@ interface FactFinder {
 The choice to return `Flow<List<Fact>>` rather than `List<Fact>` is not merely stylistic — it is structurally necessary for production safety and long-term scalability.
 
 **Memory safety is structural, not contractual.** A list-based response requires the server to buffer the entire result set before sending a single byte. With streaming, server memory consumption is bounded by batch size, not result cardinality. No configuration, no discipline, and no limit enforcement is needed — the constraint is architectural.
+
+> **Current limitation.** This guarantee fully holds for `FactFilter.All` (`fullStoreStream`) and for `First`/`Last` bounded selectors, which now push their `n` bound and scan direction into the underlying FDB range read. It does **not** yet hold for an arbitrary `FactFilter.Predicate` query: `FdbFactQuerier` collects every matching `FactPosition` for the whole filter tree into memory before merge-sorting and applying `limit`, and — except where `First`/`Last` narrows a branch — does not push the query's `limit` down into the FDB range read for a plain predicate query (e.g. `type("X"); limit(10)` still scans the entire `type("X")` index). `FactPosition`s are much smaller than full `Fact`s, so this is materially better than materializing facts, but it is not the batch-bounded, limit-pushed-down guarantee this section otherwise describes. Closing this gap for the general (potentially multi-branch `AnyOf`) case requires a true incremental k-way merge across branches and is recommended follow-on work.
+
+
 
 **Pagination is a UI concern, not a protocol concern.** Clients that need paginated display — such as the FactStore Explorer — implement keyset pagination using the `cursor` and `limit` parameters, without the API needing to carry cursor metadata in responses. The stream completing is the authoritative signal that no more results exist.
 
@@ -319,11 +325,14 @@ Accept: text/event-stream
 
 | Layer | What is validated |
 |---|---|
-| DSL / build time | `AnyOf` and `AllOf` must be non-empty; `TimeRange.from` must precede `TimeRange.to`; `Limit` must be positive; `First`/`Last` `n` must be positive; `First`/`Last` must not wrap another `First`/`Last`; `First`/`Last` must not appear as direct child of `AllOf` |
+| `FactFilter.Predicate` construction | `AnyOf` and `AllOf` must be non-empty; `First`/`Last` `n` must be positive; `First`/`Last` must not wrap another `First`/`Last`; `First`/`Last` must not appear as direct child of `AllOf` |
+| `FactQuery` / `AppendCondition.IfNoneMatch` construction | Filter tree nesting depth ≤ 5; `AnyOf`/`AllOf` branch count ≤ 50 (`FactFilter.validateComplexity`) |
+| DSL / build time | `TimeRange.from` must precede `TimeRange.to`; `Limit` must be positive |
 | `FactFinder` boundary | Store exists; cursor fact exists |
-| Server-side | Filter tree nesting depth ≤ 5; `AnyOf`/`AllOf` branch count ≤ 50 |
 
-Structurally impossible queries (e.g., `AllOf` containing two `Subject` leaves — always false since a fact has exactly one subject) are not validation errors. They produce an empty stream. The query executor performs a pre-pass to detect obvious contradictions and short-circuit before touching any index.
+The structural invariants (non-empty composites, positive `n`, no nested/direct-child bounded selectors) are enforced by the `FactFilter.Predicate` data classes themselves, not only by the `factQuery` DSL builder. This matters because gRPC and HTTP requests construct `FactFilter` trees directly from the wire, bypassing the DSL entirely — enforcing invariants only in the builder left that boundary completely unvalidated. The nesting-depth and branch-count limits are enforced the same way, at `FactQuery`/`IfNoneMatch` construction, so they apply uniformly regardless of the caller.
+
+Structurally impossible queries (e.g., `AllOf` containing two `Subject` leaves — always false since a fact has exactly one subject) are not validation errors. They produce an empty stream. In the current implementation this falls out of the normal execution path — the storage layer picks one `Subject` as the index-scan key and evaluates the other as an in-application residual filter that can never match — rather than a dedicated pre-pass that detects and short-circuits contradictions before touching any index. A true pre-pass remains a possible future optimization but is not required for correctness.
 
 ### 5.2 Cursor semantics
 
@@ -363,6 +372,8 @@ Batches emitted by the stream are always non-empty. An empty `List<Fact>` within
 ### 5.8 Upper bound on `n` in `First`/`Last`
 
 `Last(n)` with a very large `n` drives a large internal bounded scan before merging. Unlike the global `limit` (which caps the output stream), a large `n` can cause significant index work. A server-side maximum (e.g., `n ≤ 10,000`) should be enforced and documented. Callers needing more than this threshold should use an unbounded predicate with a global `limit` instead.
+
+As of this iteration, `n` (and the bound direction) is pushed down as a native FDB row limit and reverse-scan flag whenever the bounded selector's inner predicate resolves to a single index scan with no in-application residual filter — so `last(1) { type("Activated") }` is a genuine bounded reverse scan, not a full scan of the `Activated` index followed by an in-application sort and truncation. This makes a very large `n` primarily a *result-set-size* concern rather than a *full-scan* one, but the maximum-`n` cap described above is still unimplemented and still recommended.
 
 ### 5.9 Query complexity limits
 
@@ -408,7 +419,9 @@ The recursive `PredicateFilter` message is a new proto type. Adding new variants
 
 ### 6.1 Query operations
 
-The existing `findBySubject`, `findByTags`, `findByTagQuery`, and `findInTimeRange` operations are superseded by `query`. They will be retained as deprecated convenience wrappers delegating to the new implementation, allowing existing callers to migrate at their own pace. The `findById` and `existsById` point-lookup operations are unaffected.
+The existing `findBySubject`, `findByTags`, `findByTagQuery`, and `findInTimeRange` operations are superseded by `query` and are now marked `@Deprecated`, allowing existing callers to migrate at their own pace. The `findById` and `existsById` point-lookup operations are unaffected.
+
+Note: as of this iteration these are deprecated *signals*, not yet deprecated *wrappers* — each still has its own independent storage-layer implementation rather than delegating to `query()`. Consolidating them onto the `query()` execution path (and, more broadly, unifying the three separate `FactFilter` tree-walkers that currently exist across `FdbFactQuerier`, `MemoryFactStore`, and `FdbFactAppender`'s `IfNoneMatch` evaluation) is recommended follow-on work: today, a fix to predicate-evaluation semantics has to be found and applied independently in each of those three places.
 
 The existing `TagQuery` structure (used in `findByTagQuery`) is superseded for query purposes. `FactFilter.Predicate` is a strict superset: any `TagQuery` expression is representable as a `FactFilter` tree, with the addition of subject, time range, and `First`/`Last` as first-class dimensions.
 
@@ -439,10 +452,9 @@ This eliminates two separate filter languages for what is conceptually the same 
 
 | Question | Owner | Notes |
 |---|---|---|
-| Should the builder normalise the filter tree? | Architecture | e.g. flatten `AllOf(AllOf(...))`. Silent normalisation risks surprising callers; leaving it to the storage layer is safer. Decision pending. |
+| ~~Should the builder normalise the filter tree?~~ | Architecture | **Resolved:** normalization (bounded-selector ancestor-constraint injection) happens at each storage-layer entry point (`FdbFactQuerier.query`, `MemoryFactStore.query`, `IfNoneMatch` evaluation), not the DSL builder — the DSL still normalises too (cheap, idempotent), but the storage layer no longer depends on callers having done so. This was necessary rather than optional: gRPC/HTTP requests build `FactFilter` trees directly and never go through the DSL, so builder-only normalisation left ancestor constraints silently dropped for those callers. |
 | Should the HTTP API support query parameters for simple cases? | Architecture | Ergonomics benefit for browser/curl use. JSON body covers all cases; query params would be a shortcut layer only. |
-| What is the maximum supported `n` in `First`/`Last`? | Architecture | Suggested cap: 10,000. Depends on FoundationDB transaction read limits and acceptable latency. |
-| Should `AppendCondition` adopt `FactFilter.Predicate` now or in a follow-on? | Architecture + Product | Doing it now avoids a second migration; deferring keeps scope manageable. |
+| What is the maximum supported `n` in `First`/`Last`? | Architecture | Suggested cap: 10,000, still unenforced. Partially mitigated: `n` is now pushed down as a native FDB row limit for the common (no in-app residual filter) case, so a large `n` is a result-set-size cost rather than a full-scan cost — but the cap itself is not yet implemented. |
 | Should filtered subscriptions and replay be in-scope for this iteration? | Product | High value; adds implementation surface. Likely a fast follow given shared infrastructure. |
 
 ---
@@ -466,11 +478,11 @@ This eliminates two separate filter languages for what is conceptually the same 
 
 ## 9. Future Roadmap
 
-The following predicate types and features are not part of this iteration but represent natural, high-value extensions. They are recorded here to inform storage layer and API design decisions that should not inadvertently close these options off.
+The following predicate types and features were originally scoped as follow-on work. **9.1 (Metadata predicates) and 9.3 (Subject prefix matching) were pulled into this iteration and have shipped** — both are implemented as `FactFilter.Predicate.Metadata` and `FactFilter.Predicate.SubjectPrefix`, indexed the same way as tags and subjects respectively. They are left here (with their original rationale) rather than deleted, since the "why" is still useful context; the rest of this section remains genuine future work, recorded to inform storage layer and API design decisions that should not inadvertently close these options off.
 
-### 9.1 Metadata predicates
+### 9.1 Metadata predicates — shipped
 
-The `metadata` map already exists on every `Fact` but is not indexed and not queryable. Indexing metadata key-value pairs (the same way tags are indexed) would unlock a class of operational queries currently requiring full scans:
+The `metadata` map already exists on every `Fact` and is now indexed and queryable the same way tags are:
 
 ```kotlin
 metadata("correlationId", "order-flow-abc123")
@@ -478,8 +490,6 @@ metadata("causationId", "cmd-456")
 ```
 
 Tags describe the business domain of a fact; metadata describes its operational context (trace IDs, request IDs, actor IDs). The distinction is semantic — the implementation is identical.
-
-**Effort:** Low. **Value:** High. **Suggested timing:** Soon after initial release.
 
 ### 9.2 Causation and correlation as first-class predicates
 
@@ -494,17 +504,15 @@ This enables "give me the entire causal subtree of this command" — directly ap
 
 **Effort:** Medium. **Value:** High. **Suggested timing:** Medium-term.
 
-### 9.3 Subject prefix matching
+### 9.3 Subject prefix matching — shipped
 
-Hierarchically namespaced subjects (`machine/plant-A/unit-3/machine-42`) are common in event-sourced systems. Prefix matching would unlock range-scoped queries without enumerating every subject:
+Hierarchically namespaced subjects (`machine/plant-A/unit-3/machine-42`) are common in event-sourced systems. Prefix matching unlocks range-scoped queries without enumerating every subject:
 
 ```kotlin
 subjectPrefix("machine/plant-A/")
 ```
 
-Efficient with the existing subject index — a prefix scan is a standard FoundationDB range read.
-
-**Effort:** Low. **Value:** High. **Suggested timing:** Soon after initial release.
+Implemented as a raw byte-prefix range over the subject index (`SubjectIndexSubspace.prefixRange`): the prefix string is tuple-packed, its trailing null terminator is stripped, and `ByteArrayUtil.strinc` supplies the exclusive upper bound. This is **not** the same as calling `Subspace.range()`/`Tuple.range()` on a partial string — that matches tuples having the string as an exact, complete element, not a substring prefix, because tuple-encoded strings are null-terminated. A subject index scan built the naive way (`subspace.range(Tuple.from(storeId, prefix))`) silently returns nothing for any subject longer than the prefix itself.
 
 ### 9.4 Relative time predicates
 

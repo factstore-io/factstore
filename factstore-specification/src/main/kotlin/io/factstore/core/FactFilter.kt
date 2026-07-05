@@ -49,11 +49,37 @@ sealed interface FactFilter {
 
         // ── Composite predicates ──────────────────────────────────────────
 
-        /** Logical OR: a fact matches if it satisfies at least one child predicate. */
-        data class AnyOf(val predicates: List<Predicate>) : Predicate
+        /**
+         * Logical OR: a fact matches if it satisfies at least one child predicate.
+         *
+         * These invariants are enforced at construction time — regardless of whether
+         * the tree is built via the [factQuery] DSL or directly (e.g. by a gRPC/HTTP
+         * request converter) — so no caller can construct a degenerate tree.
+         *
+         * @throws IllegalArgumentException if [predicates] is empty
+         */
+        data class AnyOf(val predicates: List<Predicate>) : Predicate {
+            init {
+                require(predicates.isNotEmpty()) { "AnyOf must contain at least one predicate" }
+            }
+        }
 
-        /** Logical AND: a fact matches only if it satisfies every child predicate. */
-        data class AllOf(val predicates: List<Predicate>) : Predicate
+        /**
+         * Logical AND: a fact matches only if it satisfies every child predicate.
+         *
+         * @throws IllegalArgumentException if [predicates] is empty, or if any child
+         *         is a direct [First]/[Last] — a bounded selector cannot be meaningfully
+         *         intersected with other predicates at the same level; place it inside
+         *         [AnyOf] instead.
+         */
+        data class AllOf(val predicates: List<Predicate>) : Predicate {
+            init {
+                require(predicates.isNotEmpty()) { "AllOf must contain at least one predicate" }
+                require(predicates.none { it is First || it is Last }) {
+                    "First/Last may not be a direct child of AllOf — place it inside AnyOf instead"
+                }
+            }
+        }
 
         // ── Bounded selectors ─────────────────────────────────────────────
 
@@ -64,15 +90,32 @@ sealed interface FactFilter {
          * three-stage pipeline (selection → merge → delivery). It is orthogonal
          * to [FactQuery.limit] and [FactQuery.direction], which apply globally
          * after the merge.
+         *
+         * @throws IllegalArgumentException if [n] is not positive, or if [predicate]
+         *         is itself a [First]/[Last] — nesting bounded selectors is ambiguous.
          */
-        data class First(val n: Int, val predicate: Predicate) : Predicate
+        data class First(val n: Int, val predicate: Predicate) : Predicate {
+            init {
+                require(n >= 1) { "n must be at least 1, got $n" }
+                require(predicate !is First && predicate !is Last) {
+                    "First/Last must not directly wrap another First/Last"
+                }
+            }
+        }
 
         /**
          * The [n] most recent facts matching [predicate], selected before merging.
          *
          * @see First
          */
-        data class Last(val n: Int, val predicate: Predicate) : Predicate
+        data class Last(val n: Int, val predicate: Predicate) : Predicate {
+            init {
+                require(n >= 1) { "n must be at least 1, got $n" }
+                require(predicate !is First && predicate !is Last) {
+                    "First/Last must not directly wrap another First/Last"
+                }
+            }
+        }
     }
 }
 
@@ -97,6 +140,62 @@ sealed interface FactFilter {
 fun FactFilter.withNormalizedBoundedSelectors(): FactFilter = when (this) {
     is FactFilter.All -> this
     is FactFilter.Predicate -> normalize(emptyList())
+}
+
+/** Maximum nesting depth allowed in a [FactFilter.Predicate] tree. See [validateComplexity]. */
+const val MAX_FACT_FILTER_DEPTH = 5
+
+/** Maximum number of children allowed under a single [FactFilter.Predicate.AnyOf]/[FactFilter.Predicate.AllOf]. */
+const val MAX_FACT_FILTER_BRANCHES = 50
+
+/**
+ * Validates that this filter tree does not exceed [MAX_FACT_FILTER_DEPTH] nesting
+ * levels or [MAX_FACT_FILTER_BRANCHES] children per [FactFilter.Predicate.AnyOf]/
+ * [FactFilter.Predicate.AllOf].
+ *
+ * The per-node structural invariants (non-empty composites, positive `n`, no nested
+ * bounded selectors) are already enforced unconditionally by the [FactFilter.Predicate]
+ * constructors themselves. This function covers the two *whole-tree* properties that
+ * cannot be checked node-by-node, and exists specifically to bound trees that arrive
+ * from an untrusted source (gRPC/HTTP) rather than the [factQuery] DSL — a client
+ * could otherwise submit an arbitrarily deep or wide tree and drive pathological
+ * amounts of index-scan fan-out.
+ *
+ * @throws IllegalArgumentException if either limit is exceeded
+ */
+fun FactFilter.validateComplexity() {
+    if (this is FactFilter.Predicate) validateComplexity(depth = 1)
+}
+
+private fun FactFilter.Predicate.validateComplexity(depth: Int) {
+    require(depth <= MAX_FACT_FILTER_DEPTH) {
+        "FactFilter nesting depth exceeds the maximum of $MAX_FACT_FILTER_DEPTH"
+    }
+    when (this) {
+        is FactFilter.Predicate.Subject,
+        is FactFilter.Predicate.SubjectPrefix,
+        is FactFilter.Predicate.Type,
+        is FactFilter.Predicate.Tag,
+        is FactFilter.Predicate.Metadata,
+        is FactFilter.Predicate.TimeRange -> Unit
+
+        is FactFilter.Predicate.AnyOf -> {
+            require(predicates.size <= MAX_FACT_FILTER_BRANCHES) {
+                "AnyOf branch count (${predicates.size}) exceeds the maximum of $MAX_FACT_FILTER_BRANCHES"
+            }
+            predicates.forEach { it.validateComplexity(depth + 1) }
+        }
+
+        is FactFilter.Predicate.AllOf -> {
+            require(predicates.size <= MAX_FACT_FILTER_BRANCHES) {
+                "AllOf branch count (${predicates.size}) exceeds the maximum of $MAX_FACT_FILTER_BRANCHES"
+            }
+            predicates.forEach { it.validateComplexity(depth + 1) }
+        }
+
+        is FactFilter.Predicate.First -> predicate.validateComplexity(depth + 1)
+        is FactFilter.Predicate.Last -> predicate.validateComplexity(depth + 1)
+    }
 }
 
 /**

@@ -36,7 +36,11 @@ data class FactQuery(
     val limit: Limit = Limit.None,
     val direction: ReadDirection = ReadDirection.Forward,
     val cursor: FactId? = null,
-)
+) {
+    init {
+        filter.validateComplexity()
+    }
+}
 
 /**
  * The result of executing a [FactQuery].

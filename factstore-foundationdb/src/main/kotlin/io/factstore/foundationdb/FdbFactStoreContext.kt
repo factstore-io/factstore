@@ -268,6 +268,29 @@ value class SubjectIndexSubspace(val subspace: Subspace) {
     fun range(storeId: StoreId, subject: Subject): Range =
         subspace.range(Tuple.from(storeId.uuid, subject.value))
 
+    /**
+     * A true byte-prefix range over the subject *string value* — i.e. every key whose
+     * subject starts with [prefix], such as "USER:100" and "USER:200" both matching
+     * prefix "USER:".
+     *
+     * This is deliberately not [Subspace.range] (a.k.a. [Tuple.range]) applied to
+     * `Tuple.from(prefix)`: that method matches tuples that have [prefix] as an exact,
+     * complete element followed by more elements — it does not do a substring-prefix
+     * match on a single string element, because FDB's tuple encoding null-terminates
+     * strings. `Tuple.from("USER:").pack()` and `Tuple.from("USER:100").pack()` diverge
+     * at the terminator byte, so the former is never a byte-prefix of the latter.
+     *
+     * Instead, this packs [prefix] as a one-element tuple, strips its trailing
+     * null terminator, and uses the remaining bytes directly as a raw range prefix
+     * (with [ByteArrayUtil.strinc] for the exclusive upper bound) — the standard
+     * idiom for prefix-scanning the contents of a tuple-encoded string.
+     */
+    fun prefixRange(storeId: StoreId, prefix: String): Range {
+        val begin = subspace.pack(Tuple.from(storeId.uuid)) +
+            Tuple.from(prefix).pack().let { it.copyOf(it.size - 1) }
+        return Range(begin, com.apple.foundationdb.tuple.ByteArrayUtil.strinc(begin))
+    }
+
     context(tr: Transaction)
     fun save(storeId: StoreId, factId: FactId, subject: Subject, incompleteVersionstamp: Versionstamp) {
         val keyTuple = Tuple.from(storeId.uuid, subject.value, incompleteVersionstamp)

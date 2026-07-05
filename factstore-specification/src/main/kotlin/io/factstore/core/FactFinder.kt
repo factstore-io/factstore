@@ -31,6 +31,10 @@ interface FactFinder {
      *
      * @return [FindInTimeRangeResult.Found] or [FindInTimeRangeResult.StoreNotFound]
      */
+    @Deprecated(
+        message = "Superseded by query() — use factQuery { timeRange(...) }",
+        replaceWith = ReplaceWith("query(factQuery(request.storeName) { timeRange(request.timeRange) })"),
+    )
     suspend fun findInTimeRange(request: FindInTimeRangeRequest): FindInTimeRangeResult
 
     /**
@@ -38,6 +42,10 @@ interface FactFinder {
      *
      * @return [FindBySubjectResult.Found] or [FindBySubjectResult.StoreNotFound]
      */
+    @Deprecated(
+        message = "Superseded by query() — use factQuery { subject(...) }",
+        replaceWith = ReplaceWith("query(factQuery(request.storeName) { subject(request.subject.value) })"),
+    )
     suspend fun findBySubject(request: FindBySubjectRequest): FindBySubjectResult
 
     /**
@@ -45,6 +53,10 @@ interface FactFinder {
      *
      * @return [FindByTagsResult.Found] or [FindByTagsResult.StoreNotFound]
      */
+    @Deprecated(
+        message = "Superseded by query() — use factQuery { tag(...); tag(...) }",
+        replaceWith = ReplaceWith("query(factQuery(request.storeName) { request.tags.forEach { (k, v) -> tag(k.value, v.value) } })"),
+    )
     suspend fun findByTags(request: FindByTagsRequest): FindByTagsResult
 
     /**
@@ -52,6 +64,9 @@ interface FactFinder {
      *
      * @return [FindByTagQueryResult.Found] or [FindByTagQueryResult.StoreNotFound]
      */
+    @Deprecated(
+        message = "Superseded by query() — FactFilter.Predicate is a strict superset of TagQuery expressiveness",
+    )
     suspend fun findByTagQuery(request: FindByTagQueryRequest): FindByTagQueryResult
 
     /**

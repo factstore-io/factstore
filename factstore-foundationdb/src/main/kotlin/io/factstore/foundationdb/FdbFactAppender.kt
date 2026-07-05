@@ -132,7 +132,13 @@ class FdbFactAppender(
         (after?.let { store.context.factPositionIndexSubspace.getPosition(storeId, it) }
             ?: CompletableFuture.completedFuture(null))
             .thenCompose { afterPosition ->
-                filter.anyMatchAfter(afterPosition).thenApply { hasMatch -> !hasMatch }
+                // Normalize here for the same reason as FdbFactQuerier.query(): this filter
+                // may have arrived directly from gRPC/HTTP without ever passing through the
+                // factQuery DSL's normalization step, so any ancestor AllOf leaf constraint
+                // around a nested First/Last must be injected before anyMatchAfter/matches()
+                // evaluates it.
+                val normalizedFilter = filter.withNormalizedBoundedSelectors() as FactFilter.Predicate
+                normalizedFilter.anyMatchAfter(afterPosition).thenApply { hasMatch -> !hasMatch }
             }
 
     /**
@@ -193,7 +199,7 @@ class FdbFactAppender(
             )
 
         is FactFilter.Predicate.SubjectPrefix -> {
-            val range = store.context.subjectIndexSubspace.subspace.range(Tuple.from(storeId.uuid, prefix))
+            val range = store.context.subjectIndexSubspace.prefixRange(storeId, prefix)
             if (afterPosition == null) {
                 indexExistsAfter(range, afterKey = null)
             } else {

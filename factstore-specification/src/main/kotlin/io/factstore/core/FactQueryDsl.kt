@@ -184,40 +184,28 @@ class PredicateBuilder @PublishedApi internal constructor() {
         predicates += PredicateBuilder().apply(block).buildFirst(n)
     }
 
-    internal fun buildAnyOf(): FactFilter.Predicate {
-        require(predicates.isNotEmpty()) { "anyOf must contain at least one predicate" }
-        return if (predicates.size == 1) predicates[0]
-               else FactFilter.Predicate.AnyOf(predicates.toList())
-    }
+    // Structural invariants (non-empty composites, positive n, no First/Last nesting,
+    // no First/Last as a direct AllOf child) are enforced by the FactFilter.Predicate
+    // constructors themselves — see FactFilter.kt — so callers get the same validation
+    // regardless of whether they go through this DSL.
 
-    internal fun buildAllOf(): FactFilter.Predicate {
-        require(predicates.isNotEmpty()) { "allOf must contain at least one predicate" }
-        require(predicates.none { it is FactFilter.Predicate.Last || it is FactFilter.Predicate.First }) {
-            "Last/First may not be a direct child of allOf — place them inside anyOf instead"
-        }
-        return if (predicates.size == 1) predicates[0]
-               else FactFilter.Predicate.AllOf(predicates.toList())
-    }
+    internal fun buildAnyOf(): FactFilter.Predicate =
+        if (predicates.size == 1) predicates[0]
+        else FactFilter.Predicate.AnyOf(predicates.toList())
+
+    internal fun buildAllOf(): FactFilter.Predicate =
+        if (predicates.size == 1) predicates[0]
+        else FactFilter.Predicate.AllOf(predicates.toList())
 
     internal fun buildLast(n: Int): FactFilter.Predicate {
-        require(n >= 1) { "n must be at least 1, got $n" }
-        require(predicates.isNotEmpty()) { "last must contain at least one predicate" }
         val inner = if (predicates.size == 1) predicates[0]
                     else FactFilter.Predicate.AllOf(predicates.toList())
-        require(inner !is FactFilter.Predicate.Last && inner !is FactFilter.Predicate.First) {
-            "Last/First must not directly wrap another Last/First"
-        }
         return FactFilter.Predicate.Last(n, inner)
     }
 
     internal fun buildFirst(n: Int): FactFilter.Predicate {
-        require(n >= 1) { "n must be at least 1, got $n" }
-        require(predicates.isNotEmpty()) { "first must contain at least one predicate" }
         val inner = if (predicates.size == 1) predicates[0]
                     else FactFilter.Predicate.AllOf(predicates.toList())
-        require(inner !is FactFilter.Predicate.Last && inner !is FactFilter.Predicate.First) {
-            "Last/First must not directly wrap another Last/First"
-        }
         return FactFilter.Predicate.First(n, inner)
     }
 }

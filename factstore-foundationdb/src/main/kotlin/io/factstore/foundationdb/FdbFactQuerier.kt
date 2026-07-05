@@ -58,7 +58,13 @@ class FdbFactQuerier(
             } ?: return FactQueryResult.CursorNotFound(factId)
         }
 
-        val stream = buildStream(storeId, query.filter, afterPosition, query.direction, query.limit)
+        // Normalize here rather than relying on the caller (e.g. the factQuery DSL) to
+        // have done so: gRPC/HTTP requests construct FactFilter trees directly from the
+        // wire, bypassing the DSL entirely, so this is the only place guaranteed to see
+        // every query regardless of origin. Without this, ancestor AllOf leaf constraints
+        // are silently dropped when collectPositions recurses into a nested First/Last.
+        val normalizedFilter = query.filter.withNormalizedBoundedSelectors()
+        val stream = buildStream(storeId, normalizedFilter, afterPosition, query.direction, query.limit)
         return FactQueryResult.FactStream(stream)
     }
 
@@ -93,15 +99,18 @@ class FdbFactQuerier(
             while (remaining == null || remaining > 0) {
                 val batchSize = remaining?.coerceAtMost(DEFAULT_BATCH_SIZE) ?: DEFAULT_BATCH_SIZE
                 val batch = read { tr ->
-                    val begin = if (cursor == null) {
-                        if (isReversed) KeySelector.firstGreaterOrEqual(globalRange.end)
-                        else KeySelector.firstGreaterOrEqual(globalRange.begin)
-                    } else {
-                        if (isReversed) KeySelector.lastLessThan(cursor!!)
-                        else KeySelector.firstGreaterThan(cursor!!)
-                    }
-                    val end = if (isReversed)
+                    // getRange always takes begin <= end (inclusive, exclusive) regardless
+                    // of the reverse flag — reverse only changes iteration/truncation order
+                    // within that same interval. The cursor narrows whichever side of the
+                    // interval faces the scan direction: it's a lower bound when scanning
+                    // forward, an upper bound when scanning backward.
+                    val begin = if (!isReversed && cursor != null)
+                        KeySelector.firstGreaterThan(cursor!!)
+                    else
                         KeySelector.firstGreaterOrEqual(globalRange.begin)
+
+                    val end = if (isReversed && cursor != null)
+                        KeySelector.firstGreaterOrEqual(cursor!!)
                     else
                         KeySelector.firstGreaterOrEqual(globalRange.end)
 
@@ -167,12 +176,18 @@ class FdbFactQuerier(
         afterPosition: FactPosition?,
         direction: ReadDirection,
         outerLeaves: List<FactFilter.Predicate> = emptyList(),
+        // Only set when this call is known to represent a single, self-contained branch
+        // (i.e. we're inside a First/Last bounded scan) — see collectBoundedPositions.
+        // A union of branches (AnyOf) may still safely inherit it (the top-n of a union
+        // is always a subset of the top-n of each branch), but an intersection (AllOf
+        // with multiple non-leaf children) may not, so it is dropped there.
+        hardLimit: Int? = null,
     ): List<FactPosition> = when (predicate) {
 
         is FactFilter.Predicate.AnyOf -> {
             coroutineScope {
                 predicate.predicates
-                    .map { child -> async { collectPositions(storeId, child, afterPosition, direction, outerLeaves) } }
+                    .map { child -> async { collectPositions(storeId, child, afterPosition, direction, outerLeaves, hardLimit) } }
                     .flatMap { it.await() }
             }
         }
@@ -184,16 +199,18 @@ class FdbFactQuerier(
 
             when {
                 nonLeaves.isEmpty() ->
-                    collectLeafPositions(storeId, combined, afterPosition)
+                    collectLeafPositions(storeId, combined, afterPosition, direction, hardLimit)
 
                 nonLeaves.size == 1 ->
-                    collectPositions(storeId, nonLeaves[0], afterPosition, direction, combined)
+                    collectPositions(storeId, nonLeaves[0], afterPosition, direction, combined, hardLimit)
 
                 else -> {
-                    // Multiple non-leaf children → AND semantics → intersect position sets
+                    // Multiple non-leaf children → AND semantics → intersect position sets.
+                    // A per-branch hard limit is unsafe here: the top-n of each branch is
+                    // not guaranteed to contain the top-n of their intersection.
                     val sets = coroutineScope {
                         nonLeaves.map { child ->
-                            async { collectPositions(storeId, child, afterPosition, direction, combined).toHashSet() }
+                            async { collectPositions(storeId, child, afterPosition, direction, combined, hardLimit = null).toHashSet() }
                         }.map { it.await() }
                     }
                     sets.reduce { acc, set -> (acc intersect set).toHashSet() }.toList()
@@ -209,12 +226,18 @@ class FdbFactQuerier(
 
         else ->
             // Leaf predicate — combine with outer leaves
-            collectLeafPositions(storeId, outerLeaves + predicate, afterPosition)
+            collectLeafPositions(storeId, outerLeaves + predicate, afterPosition, direction, hardLimit)
     }
 
     /**
      * Collects positions for a bounded selector ([FactFilter.Predicate.Last]/[FactFilter.Predicate.First]).
      * Scans the inner predicate's index in [boundDirection], taking up to [n] matches.
+     *
+     * [n] is threaded down as a hard limit so that, whenever the inner predicate resolves
+     * to a single index scan with no in-app residual filter, the FDB range read itself is
+     * bounded and reversed appropriately — turning e.g. `last(1) { type("Activated") }`
+     * into a genuine O(1) reverse point-scan instead of an unbounded forward scan of the
+     * entire matching index followed by an in-application sort and truncation.
      */
     private suspend fun collectBoundedPositions(
         storeId: StoreId,
@@ -223,7 +246,7 @@ class FdbFactQuerier(
         boundDirection: ReadDirection,
         afterPosition: FactPosition?,
     ): List<FactPosition> =
-        collectPositions(storeId, predicate, afterPosition, boundDirection)
+        collectPositions(storeId, predicate, afterPosition, boundDirection, hardLimit = n)
             .toSortedSet(boundDirection.toComparator())
             .take(n)
 
@@ -231,11 +254,17 @@ class FdbFactQuerier(
      * Collects positions for a set of leaf-predicate constraints. Selects the
      * most efficient FDB index based on predicate types, then applies any
      * remaining predicates as an in-application residual filter.
+     *
+     * [direction] determines which side of [afterPosition] is scanned and, together
+     * with [hardLimit], whether the underlying FDB range read can be bounded and
+     * reversed natively rather than fetched in full and sorted in application code.
      */
     private suspend fun collectLeafPositions(
         storeId: StoreId,
         leaves: List<FactFilter.Predicate>,
         afterPosition: FactPosition?,
+        direction: ReadDirection = ReadDirection.Forward,
+        hardLimit: Int? = null,
     ): List<FactPosition> {
         if (leaves.isEmpty()) return emptyList()
 
@@ -266,7 +295,8 @@ class FdbFactQuerier(
                         Tuple.from(storeId.uuid, subject.value.value, type.value.value, it)
                     )
                 }
-                scanIndex(range, afterKey, ctx.subjectTypeIndexSubspace::unpackPosition, residualOf(subject, type), storeId)
+                val residual = residualOf(subject, type)
+                scanIndex(range, afterKey, ctx.subjectTypeIndexSubspace::unpackPosition, residual, storeId, direction, hardLimit)
             }
 
             // Subject → subject index
@@ -275,7 +305,8 @@ class FdbFactQuerier(
                 val afterKey = afterPosition?.let {
                     ctx.subjectIndexSubspace.subspace.pack(Tuple.from(storeId.uuid, subject.value.value, it))
                 }
-                scanIndex(range, afterKey, ctx.subjectIndexSubspace::unpackPosition, residualOf(subject), storeId)
+                val residual = residualOf(subject)
+                scanIndex(range, afterKey, ctx.subjectIndexSubspace::unpackPosition, residual, storeId, direction, hardLimit)
             }
 
             // Type + Tag → combined type-tag index
@@ -287,7 +318,8 @@ class FdbFactQuerier(
                         Tuple.from(storeId.uuid, type.value.value, tag.key.value, tag.value.value, it)
                     )
                 }
-                scanIndex(range, afterKey, ctx.tagsTypeIndexSubspace::unpackPosition, residualOf(type, tag), storeId)
+                val residual = residualOf(type, tag)
+                scanIndex(range, afterKey, ctx.tagsTypeIndexSubspace::unpackPosition, residual, storeId, direction, hardLimit)
             }
 
             // Tag(s) only → tag index; multiple tags use intersection
@@ -300,7 +332,13 @@ class FdbFactQuerier(
                     )
                 }
                 val residual = residualOf(primaryTag)
-                val primaryPositions = scanIndex(range, afterKey, ctx.tagsIndexSubspace::unpackPosition, residual, storeId)
+                // A hard limit is only safe on the primary branch when there is exactly one
+                // tag — with more than one, the branches are intersected below, and the
+                // top-n of each branch individually does not guarantee the top-n of the
+                // intersection.
+                val primaryHardLimit = if (tags.size == 1) hardLimit else null
+                val primaryPositions =
+                    scanIndex(range, afterKey, ctx.tagsIndexSubspace::unpackPosition, residual, storeId, direction, primaryHardLimit)
 
                 if (tags.size == 1) primaryPositions
                 else {
@@ -313,7 +351,7 @@ class FdbFactQuerier(
                                 val ak = afterPosition?.let {
                                     ctx.tagsIndexSubspace.subspace.pack(Tuple.from(storeId.uuid, tag.key.value, tag.value.value, it))
                                 }
-                                scanIndex(r, ak, ctx.tagsIndexSubspace::unpackPosition, null, storeId).toHashSet()
+                                scanIndex(r, ak, ctx.tagsIndexSubspace::unpackPosition, null, storeId, direction).toHashSet()
                             }
                         }.map { it.await() }
                     }
@@ -328,7 +366,8 @@ class FdbFactQuerier(
                 val afterKey = afterPosition?.let {
                     ctx.eventTypeIndexSubspace.subspace.pack(Tuple.from(storeId.uuid, type.value.value, it))
                 }
-                scanIndex(range, afterKey, ctx.eventTypeIndexSubspace::unpackPosition, residualOf(type), storeId)
+                val residual = residualOf(type)
+                scanIndex(range, afterKey, ctx.eventTypeIndexSubspace::unpackPosition, residual, storeId, direction, hardLimit)
             }
 
             // Metadata → metadata index
@@ -337,16 +376,23 @@ class FdbFactQuerier(
                 val afterKey = afterPosition?.let {
                     ctx.metadataIndexSubspace.subspace.pack(Tuple.from(storeId.uuid, metadata.key, metadata.value, it))
                 }
-                scanIndex(range, afterKey, ctx.metadataIndexSubspace::unpackPosition, residualOf(metadata), storeId)
+                val residual = residualOf(metadata)
+                scanIndex(range, afterKey, ctx.metadataIndexSubspace::unpackPosition, residual, storeId, direction, hardLimit)
             }
 
-            // SubjectPrefix → prefix range scan on subject index, filter afterPosition in-app
+            // SubjectPrefix → prefix range scan on subject index; the prefix spans many
+            // distinct subject values, so a single afterKey can't be constructed the way
+            // it can for an exact subject match — afterPosition is instead filtered in-app.
             subjectPrefix != null -> {
-                val range = ctx.subjectIndexSubspace.subspace.range(Tuple.from(storeId.uuid, subjectPrefix.prefix))
+                val range = ctx.subjectIndexSubspace.prefixRange(storeId, subjectPrefix.prefix)
                 val residual = residualOf(subjectPrefix)
-                scanIndex(range, afterKey = null, ctx.subjectIndexSubspace::unpackPosition, residual, storeId)
+                // A hard limit is only safe when there's no post-hoc afterPosition filter
+                // to follow — that filter can drop rows from within the capped raw scan.
+                val effectiveHardLimit = if (afterPosition == null) hardLimit else null
+                scanIndex(range, afterKey = null, ctx.subjectIndexSubspace::unpackPosition, residual, storeId, direction, effectiveHardLimit)
                     .let { positions ->
                         if (afterPosition == null) positions
+                        else if (direction == ReadDirection.Backward) positions.filter { it < afterPosition }
                         else positions.filter { it > afterPosition }
                     }
             }
@@ -359,9 +405,11 @@ class FdbFactQuerier(
                 val end = timeRange.range.end?.let { ctx.createdAtIndexSubspace.getKey(storeId, it) }
                     ?: indexRange.end
                 val residual = residualOf(timeRange)
-                scanIndex(Range(begin, end), afterKey = null, ctx.createdAtIndexSubspace::unpackPosition, residual, storeId)
+                val effectiveHardLimit = if (afterPosition == null) hardLimit else null
+                scanIndex(Range(begin, end), afterKey = null, ctx.createdAtIndexSubspace::unpackPosition, residual, storeId, direction, effectiveHardLimit)
                     .let { positions ->
                         if (afterPosition == null) positions
+                        else if (direction == ReadDirection.Backward) positions.filter { it < afterPosition }
                         else positions.filter { it > afterPosition }
                     }
             }
@@ -372,8 +420,16 @@ class FdbFactQuerier(
 
     /**
      * Scans a single index range, optionally starting after [afterKey], and returns
-     * all matching [FactPosition]s. If [residual] is present, loads each fact and
-     * applies the predicate in-application.
+     * matching [FactPosition]s. If [residual] is present, loads each fact and applies
+     * the predicate in-application.
+     *
+     * [direction] determines which side of [afterKey] is scanned: forward returns
+     * positions after [afterKey] (or from the start of [range]); backward returns
+     * positions before [afterKey] (or from the end of [range]), scanned in descending
+     * order. [rowLimit], when given, is pushed down as a native FDB row limit — the
+     * caller (see [collectLeafPositions]) only supplies one when doing so cannot
+     * silently under-return, i.e. when there is no [residual] and no separate
+     * in-application cursor filter following this call.
      */
     private suspend fun scanIndex(
         range: Range,
@@ -381,12 +437,19 @@ class FdbFactQuerier(
         unpackPosition: (ByteArray) -> FactPosition,
         residual: FactFilter.Predicate?,
         storeId: StoreId,
+        direction: ReadDirection = ReadDirection.Forward,
+        rowLimit: Int? = null,
     ): List<FactPosition> = read { tr ->
-        val begin = if (afterKey == null) KeySelector.firstGreaterOrEqual(range.begin)
-                    else KeySelector.firstGreaterThan(afterKey)
-        val end = KeySelector.firstGreaterOrEqual(range.end)
+        val reverse = direction == ReadDirection.Backward
+        val begin = if (!reverse && afterKey != null) KeySelector.firstGreaterThan(afterKey)
+                    else KeySelector.firstGreaterOrEqual(range.begin)
+        val end = if (reverse && afterKey != null) KeySelector.firstGreaterOrEqual(afterKey)
+                  else KeySelector.firstGreaterOrEqual(range.end)
 
-        tr.snapshot().getRange(begin, end, ReadTransaction.ROW_LIMIT_UNLIMITED, false).asList()
+        val effectiveLimit = if (residual == null) (rowLimit ?: ReadTransaction.ROW_LIMIT_UNLIMITED)
+                              else ReadTransaction.ROW_LIMIT_UNLIMITED
+
+        tr.snapshot().getRange(begin, end, effectiveLimit, reverse).asList()
             .thenCompose { kvs ->
                 val positions = kvs.map { unpackPosition(it.key) }
 
