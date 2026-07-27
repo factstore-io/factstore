@@ -34,6 +34,9 @@ data class TimeRange(
         }
     }
 
+    operator fun contains(instant: Instant): Boolean =
+        (start == null || !instant.isBefore(start)) && (end == null || instant.isBefore(end))
+
     override fun toString(): String = "[${start ?: "-∞"}, ${end ?: "∞"})"
 
     companion object {

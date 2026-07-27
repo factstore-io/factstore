@@ -2,6 +2,7 @@ package io.factstore.memory
 
 import io.factstore.core.*
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -168,6 +169,32 @@ class MemoryFactStore : FactStore {
         FindByTagQueryResult.Found(foundFacts)
     }
 
+    override suspend fun query(request: FactQueryRequest): FactQueryResult = lock.withLock {
+        val internalId = resolveId(request.storeName) ?: return FactQueryResult.StoreNotFound(request.storeName)
+        val store = facts[internalId] ?: return FactQueryResult.StoreNotFound(request.storeName)
+
+        // Resolve the exclusive `after` cursor to its position in the append log.
+        val cursorIndex = request.after?.let { after ->
+            val index = store.indexOfFirst { it.id == after }
+            if (index == -1) return FactQueryResult.FactIdNotFound(after)
+            index
+        }
+
+        // Scan the facts on the read-direction side of the cursor (exclusive):
+        // forward => appended after the cursor; backward => appended before it.
+        val window = when (request.direction) {
+            ReadDirection.Forward -> store.subList(if (cursorIndex != null) cursorIndex + 1 else 0, store.size)
+            ReadDirection.Backward -> store.subList(0, cursorIndex ?: store.size)
+        }
+
+        val matched = window
+            .filter { request.query.matches(it) }
+            .applyDirection(request.direction)
+            .applyLimit(request.limit)
+
+        FactQueryResult.FactStream(matched.asFlow())
+    }
+
     // ===== FactSubscriber Implementation =====
 
     override suspend fun subscribe(request: SubscribeRequest): SubscribeResult = lock.withLock {
@@ -302,4 +329,13 @@ class MemoryFactStore : FactStore {
 private fun TagQueryItem.matches(fact: Fact): Boolean = when (this) {
     is TagTypeItem -> fact.type in this.types && this.tags.all { (k, v) -> fact.tags[k] == v }
     is TagOnlyQueryItem -> this.tags.all { (k, v) -> fact.tags[k] == v }
+}
+
+/**
+ * A fact matches [FactQuery.All] unconditionally, or matches a [FactQuery.AnyOf]
+ * when at least one of its filters matches (logical OR).
+ */
+private fun FactQuery.matches(fact: Fact): Boolean = when (this) {
+    FactQuery.All -> true
+    is FactQuery.AnyOf -> filters.any { it.matches(fact) }
 }

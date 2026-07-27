@@ -1496,4 +1496,167 @@ abstract class AbstractFactStoreTest {
             .isInstanceOf(AppendResult.StoreNotFound::class.java)
     }
 
+    // ===== Unified query API (FactStore.query) =====
+
+    /** Five facts appended in a known order, with distinct subjects, types and tags. */
+    private suspend fun seedFiveFacts(): List<Fact> = appendStored(
+        listOf(
+            input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload, tags = mapOf(TagKey("role") to TagValue("admin"))),
+            input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload, tags = mapOf(TagKey("role") to TagValue("user"))),
+            input(ALICE_SUBJECT_VALUE, "USER_UPDATED", alicePayload, tags = mapOf(TagKey("role") to TagValue("admin"))),
+            input(CHARLIE_SUBJECT_VALUE, "USER_DELETED", charliePayload, tags = mapOf(TagKey("role") to TagValue("user"))),
+            input(ALICE_SUBJECT_VALUE, "USER_LOCKED", alicePayload, tags = mapOf(TagKey("role") to TagValue("admin"))),
+        )
+    )
+
+    /** Drains a successful query result stream into an ordered list of facts. */
+    private suspend fun queryFacts(request: FactQueryRequest): List<Fact> {
+        val stream = (store.query(request) as FactQueryResult.FactStream).stream
+        return withTimeout(10.seconds) { stream.toList() }
+    }
+
+    @Test
+    fun testQueryOnNonExistingStoreReturnsStoreNotFound(): Unit = runBlocking {
+        val result = store.query(FactQueryRequest(nonExistingStore, FactQuery.All))
+        assertThat(result).isEqualTo(FactQueryResult.StoreNotFound(nonExistingStore))
+    }
+
+    @Test
+    fun testQueryAllReturnsEveryFactInAppendOrder(): Unit = runBlocking {
+        val (f1, f2, f3, f4, f5) = seedFiveFacts()
+        assertThat(queryFacts(FactQueryRequest(testStore, FactQuery.All)))
+            .containsExactly(f1, f2, f3, f4, f5)
+    }
+
+    @Test
+    fun testQueryAllBackwardReturnsNewestFirst(): Unit = runBlocking {
+        val (f1, f2, f3, f4, f5) = seedFiveFacts()
+        assertThat(
+            queryFacts(FactQueryRequest(testStore, FactQuery.All, direction = ReadDirection.Backward))
+        ).containsExactly(f5, f4, f3, f2, f1)
+    }
+
+    @Test
+    fun testQueryAllOnEmptyStoreYieldsNoFacts(): Unit = runBlocking {
+        assertThat(queryFacts(FactQueryRequest(testStore, FactQuery.All))).isEmpty()
+    }
+
+    @Test
+    fun testQueryFilterBySubject(): Unit = runBlocking {
+        val (f1, _, f3, _, f5) = seedFiveFacts()
+        val query = FactQuery.AnyOf(listOf(FactFilter(subjects = setOf(Subject(ALICE_SUBJECT_VALUE)))))
+        assertThat(queryFacts(FactQueryRequest(testStore, query))).containsExactly(f1, f3, f5)
+    }
+
+    @Test
+    fun testQueryFilterByType(): Unit = runBlocking {
+        val (f1, f2, _, _, _) = seedFiveFacts()
+        val query = FactQuery.AnyOf(listOf(FactFilter(types = setOf(FactType("USER_CREATED")))))
+        assertThat(queryFacts(FactQueryRequest(testStore, query))).containsExactly(f1, f2)
+    }
+
+    @Test
+    fun testQueryFilterByTags(): Unit = runBlocking {
+        val (f1, _, f3, _, f5) = seedFiveFacts()
+        val query = FactQuery.AnyOf(listOf(FactFilter(tags = mapOf(TagKey("role") to TagValue("admin")))))
+        assertThat(queryFacts(FactQueryRequest(testStore, query))).containsExactly(f1, f3, f5)
+    }
+
+    @Test
+    fun testQueryPredicatesWithinAFilterAreAnded(): Unit = runBlocking {
+        val (_, _, f3, _, _) = seedFiveFacts()
+        // subject ALICE AND type USER_UPDATED → only f3
+        val query = FactQuery.AnyOf(
+            listOf(
+                FactFilter(
+                    subjects = setOf(Subject(ALICE_SUBJECT_VALUE)),
+                    types = setOf(FactType("USER_UPDATED")),
+                )
+            )
+        )
+        assertThat(queryFacts(FactQueryRequest(testStore, query))).containsExactly(f3)
+    }
+
+    @Test
+    fun testQueryFiltersWithinAnyOfAreOred(): Unit = runBlocking {
+        val (_, f2, _, f4, _) = seedFiveFacts()
+        // subject BOB OR type USER_DELETED → f2, f4 (in append order)
+        val query = FactQuery.AnyOf(
+            listOf(
+                FactFilter(subjects = setOf(Subject(BOB_SUBJECT_VALUE))),
+                FactFilter(types = setOf(FactType("USER_DELETED"))),
+            )
+        )
+        assertThat(queryFacts(FactQueryRequest(testStore, query))).containsExactly(f2, f4)
+    }
+
+    @Test
+    fun testQueryForwardWithLimitReturnsOldestN(): Unit = runBlocking {
+        val (f1, f2, _, _, _) = seedFiveFacts()
+        assertThat(queryFacts(FactQueryRequest(testStore, FactQuery.All, limit = Limit.of(2))))
+            .containsExactly(f1, f2)
+    }
+
+    @Test
+    fun testQueryBackwardWithLimitReturnsNewestN(): Unit = runBlocking {
+        val (_, _, _, f4, f5) = seedFiveFacts()
+        assertThat(
+            queryFacts(
+                FactQueryRequest(testStore, FactQuery.All, limit = Limit.of(2), direction = ReadDirection.Backward)
+            )
+        ).containsExactly(f5, f4)
+    }
+
+    @Test
+    fun testQueryForwardAfterCursorReturnsFactsAppendedAfterIt(): Unit = runBlocking {
+        val (_, f2, f3, f4, f5) = seedFiveFacts()
+        assertThat(queryFacts(FactQueryRequest(testStore, FactQuery.All, after = f2.id)))
+            .containsExactly(f3, f4, f5)
+    }
+
+    @Test
+    fun testQueryBackwardAfterCursorScansEarlierFactsNewestFirst(): Unit = runBlocking {
+        val (f1, f2, f3, _, _) = seedFiveFacts()
+        // after = f3, backward → facts appended before f3, newest first → f2, f1
+        assertThat(
+            queryFacts(
+                FactQueryRequest(testStore, FactQuery.All, direction = ReadDirection.Backward, after = f3.id)
+            )
+        ).containsExactly(f2, f1)
+    }
+
+    @Test
+    fun testQueryBackwardAfterCursorHonoursLimit(): Unit = runBlocking {
+        val (_, f2, f3, f4, _) = seedFiveFacts()
+        // after = f4, backward, limit 2 → facts before f4 (f1,f2,f3) newest first, capped → f3, f2
+        assertThat(
+            queryFacts(
+                FactQueryRequest(
+                    testStore,
+                    FactQuery.All,
+                    limit = Limit.of(2),
+                    direction = ReadDirection.Backward,
+                    after = f4.id,
+                )
+            )
+        ).containsExactly(f3, f2)
+    }
+
+    @Test
+    fun testQueryAfterCursorIsCombinedWithFilters(): Unit = runBlocking {
+        val (f1, _, f3, _, f5) = seedFiveFacts()
+        // role=admin facts are f1,f3,f5; starting after f1 leaves f3,f5
+        val query = FactQuery.AnyOf(listOf(FactFilter(tags = mapOf(TagKey("role") to TagValue("admin")))))
+        assertThat(queryFacts(FactQueryRequest(testStore, query, after = f1.id)))
+            .containsExactly(f3, f5)
+    }
+
+    @Test
+    fun testQueryUnknownAfterCursorReturnsFactIdNotFound(): Unit = runBlocking {
+        seedFiveFacts()
+        val unknown = FactId.generate()
+        val result = store.query(FactQueryRequest(testStore, FactQuery.All, after = unknown))
+        assertThat(result).isEqualTo(FactQueryResult.FactIdNotFound(unknown))
+    }
+
 }

@@ -202,6 +202,11 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
         }.await()
     }
 
+    private val queryEngine = FdbFactQueryEngine(fdbFactStore)
+
+    override suspend fun query(request: FactQueryRequest): FactQueryResult =
+        queryEngine.query(request)
+
     context(tr: ReadTransaction, storeId: StoreId)
     private fun TagQueryItem.resolveFactPositions(): CompletableFuture<Set<FactPosition>> = when (this) {
         is TagTypeItem -> resolveFactPositions()

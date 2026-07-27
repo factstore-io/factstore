@@ -168,6 +168,9 @@ value class FactSubspace(val subspace: Subspace) {
     fun getFactKey(storeId: StoreId, factPosition: FactPosition): ByteArray =
         subspace.pack(Tuple.from(storeId.uuid, factPosition))
 
+    fun unpackPosition(key: ByteArray): FactPosition =
+        subspace.unpack(key).getLastAsFactPosition()
+
     fun getRange(storeId: StoreId): Range =
         subspace.range(Tuple.from(storeId.uuid))
 
@@ -210,6 +213,15 @@ value class FactPositionIndexSubspace(val subspace: Subspace) {
 
 @JvmInline
 value class EventTypeIndexSubspace(val subspace: Subspace) {
+
+    fun getKey(storeId: StoreId, factType: FactType, position: FactPosition): ByteArray =
+        subspace.pack(Tuple.from(storeId.uuid, factType.value, position))
+
+    fun range(storeId: StoreId, factType: FactType): Range =
+        subspace.range(Tuple.from(storeId.uuid, factType.value))
+
+    fun unpackPosition(key: ByteArray): FactPosition =
+        subspace.unpack(key).getLastAsFactPosition()
 
     context(tr: Transaction)
     fun save(storeId: StoreId, factId: FactId, factType: FactType, incompleteVersionstamp: Versionstamp) {
@@ -259,6 +271,9 @@ value class SubjectIndexSubspace(val subspace: Subspace) {
 
     fun range(storeId: StoreId, subject: Subject): Range =
         subspace.range(Tuple.from(storeId.uuid, subject.value))
+
+    fun getKey(storeId: StoreId, subject: Subject, position: FactPosition): ByteArray =
+        subspace.pack(Tuple.from(storeId.uuid, subject.value, position))
 
     context(tr: Transaction)
     fun save(storeId: StoreId, factId: FactId, subject: Subject, incompleteVersionstamp: Versionstamp) {

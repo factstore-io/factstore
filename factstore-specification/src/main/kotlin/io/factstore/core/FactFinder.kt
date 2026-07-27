@@ -53,4 +53,12 @@ interface FactFinder {
      * @return [FindByTagQueryResult.Found] or [FindByTagQueryResult.StoreNotFound]
      */
     suspend fun findByTagQuery(request: FindByTagQueryRequest): FindByTagQueryResult
+
+    /**
+     * Performs a unified, composable query for facts, returning matches as a stream.
+     *
+     * @return [FactQueryResult.FactStream], [FactQueryResult.StoreNotFound], or
+     * [FactQueryResult.FactIdNotFound]
+     */
+    suspend fun query(request: FactQueryRequest): FactQueryResult
 }
