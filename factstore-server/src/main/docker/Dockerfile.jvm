@@ -80,10 +80,25 @@
 # You can find more information about the UBI base runtime images and their configuration here:
 # https://rh-openjdk.github.io/redhat-openjdk-containers/
 ###
+# --- Stage 1: extract the FoundationDB native client library (libfdb_c.so) ---
+# The fdb-java client bundles only the JNI shim (libfdb_java.so); the actual C
+# client (libfdb_c.so) must be provided at runtime. We install the official
+# clients RPM in a builder stage and copy just the shared library into the
+# final image, keeping the runtime image free of a package manager.
+# Keep FDB_VERSION aligned with the org.foundationdb:fdb-java version.
+FROM registry.access.redhat.com/ubi9/ubi:9.8 AS fdb-client
+ARG FDB_VERSION="7.3.67"
+ADD https://github.com/apple/foundationdb/releases/download/${FDB_VERSION}/foundationdb-clients-${FDB_VERSION}-1.el7.x86_64.rpm /tmp/foundationdb-clients.rpm
+RUN rpm -i --nodeps /tmp/foundationdb-clients.rpm \
+    && test -f /usr/lib64/libfdb_c.so
+
+# --- Stage 2: the Quarkus JVM runtime image ---
 FROM registry.access.redhat.com/ubi9/openjdk-25:1.24
 
 ENV LANGUAGE='en_US:en'
 
+# FoundationDB native client library, resolved via the default loader path (/usr/lib64).
+COPY --from=fdb-client /usr/lib64/libfdb_c.so /usr/lib64/libfdb_c.so
 
 # We make four distinct layers so if there are application changes the library layers can be re-used
 COPY --chown=185 build/quarkus-app/lib/ /deployments/lib/

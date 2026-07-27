@@ -19,6 +19,7 @@ dependencies {
     implementation("io.quarkus:quarkus-hibernate-validator")
     implementation("io.quarkus:quarkus-smallrye-openapi")
     implementation("io.quarkus:quarkus-smallrye-health")
+    implementation("io.quarkus:quarkus-container-image-docker")
     implementation(libs.quarkus.quinoa)
     implementation(libs.com.google.protobuf.protobuf.kotlin)
     implementation("io.vertx:vertx-lang-kotlin-coroutines")
