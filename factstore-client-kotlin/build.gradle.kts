@@ -25,7 +25,7 @@ protobuf {
     }
     plugins {
         create("grpc") {
-            artifact = "io.grpc:protoc-gen-grpc-java:1.82.2"
+            artifact = "io.grpc:protoc-gen-grpc-java:1.83.0"
         }
         create("grpckt") {
             artifact = "io.grpc:protoc-gen-grpc-kotlin:1.5.0:jdk8@jar"
