@@ -15,7 +15,7 @@ Build a native executable with:
 Then create an alias for easy access:
 
 ```bash
-alias factstore=$(pwd)/factstore-cli/build/factstore-cli-1.0.0-SNAPSHOT-runner
+alias factstore=$(pwd)/factstore-cli/build/factstore-cli-0.1.0-SNAPSHOT-runner
 ```
 
 > **Tip:** Add the alias to your shell profile (`~/.zshrc`, `~/.bashrc`) to make it permanent.
@@ -229,7 +229,7 @@ factstore fact subscribe
 
 ```bash
 # Against a local FactStore instance
-./factstore-cli/build/factstore-cli-1.0.0-SNAPSHOT-runner \
+./factstore-cli/build/factstore-cli-0.1.0-SNAPSHOT-runner \
   --url http://localhost:8080 \
   store list
 ```
