@@ -50,7 +50,14 @@ quarkus:
 ##############################
 factstore:
   storage:
-    type: foundationdb
+    # Defaults to the in-memory backend so that the server starts with no
+    # external dependencies -- this is what makes a bare
+    #   docker run -p 8080:8080 ghcr.io/factstore-io/factstore-server
+    # work. Switch to the persistent backend with
+    #   FACTSTORE_STORAGE_TYPE=foundationdb
+    # (or -Dfactstore.storage.type=foundationdb), which then requires a cluster
+    # file at the path configured below.
+    type: memory
   foundationdb:
     cluster-file-path: /etc/foundationdb/fdb.cluster
     api-version: 730

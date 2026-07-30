@@ -1,0 +1,162 @@
+# Builds the factstore-server container image and publishes it to the GitHub
+# Container Registry.
+#
+#   push to main   -> ghcr.io/factstore-io/factstore-server:main
+#                     ghcr.io/factstore-io/factstore-server:sha-<short>
+#   push tag v*    -> :<version>  (e.g. v0.1.0-alpha -> :0.1.0-alpha)
+#                     :<major>.<minor>  (stable releases only)
+#                     :latest
+#   pull request   -> builds both architectures, publishes nothing
+#
+# The first push creates the package as PRIVATE. Make it public once from
+# https://github.com/orgs/factstore-io/packages -> factstore-server ->
+# Package settings -> Change visibility. The org.opencontainers.image.source
+# label in Dockerfile.jvm links the package back to this repository.
+
+name: Container Image
+
+on:
+  push:
+    branches: [ "main" ]
+    tags: [ "v*" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/factstore-server
+
+# Don't let two pushes to main race for the :main tag. PR builds are pure
+# validation, so superseded runs can be cancelled.
+concurrency:
+  group: container-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    permissions:
+      contents: read
+      packages: write       # push to GHCR with the built-in GITHUB_TOKEN
+      id-token: write       # \_ build provenance attestation
+      attestations: write   # /
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # A v* tag stamps its version into the artifacts; everything else keeps
+      # the snapshot version. This reaches quarkus.application.version, which
+      # the server reports on its info endpoint, so :main images are honestly
+      # labelled as snapshots.
+      - name: Resolve version
+        id: version
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            echo "value=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=0.1.0-SNAPSHOT" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@v4
+        with:
+          java-version: '25'
+          distribution: 'temurin'
+
+      # factstore-server's own tests run on the memory backend, but the
+      # FoundationDB client is on the test classpath. Installing it here keeps
+      # this workflow's build identical to the one in gradle.yml.
+      - name: Install FoundationDB client
+        run: |
+          wget -q https://github.com/apple/foundationdb/releases/download/7.3.69/foundationdb-clients_7.3.69-1_amd64.deb
+          sudo dpkg -i foundationdb-clients_7.3.69-1_amd64.deb
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v5
+
+      # Produces build/quarkus-app/, which is the entire Docker build context.
+      # Quinoa builds factstore-explorer into the server during this step, so
+      # the web UI ships inside the image.
+      #
+      # The output is pure JVM bytecode and is therefore architecture-neutral:
+      # one Gradle build feeds both image architectures below.
+      - name: Build Quarkus application
+        run: ./gradlew :factstore-server:build -PfactstoreVersion=${{ steps.version.outputs.value }}
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Not needed on pull requests, where nothing is pushed. Skipping it also
+      # keeps fork PRs working, since those get a read-only token.
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Derive tags and labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          # Be explicit about :latest rather than inheriting the default, which
+          # would also move it for prereleases.
+          flavor: latest=false
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix=sha-,format=short
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+          labels: |
+            org.opencontainers.image.version=${{ steps.version.outputs.value }}
+
+      # No QEMU setup is required: the arm64 image contains no RUN instructions
+      # (the libfdb_c.so download stage is pinned to $BUILDPLATFORM and runs
+      # natively), so BuildKit assembles it without emulating anything.
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: factstore-server
+          file: factstore-server/src/main/docker/Dockerfile.jvm
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: mode=max
+          sbom: true
+
+      # Publishes a signed attestation that this digest was built by this
+      # workflow. Consumers can check it with:
+      #   gh attestation verify oci://ghcr.io/factstore-io/factstore-server:<tag> \
+      #     --repo factstore-io/factstore
+      - name: Attest build provenance
+        if: github.event_name != 'pull_request'
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+      - name: Summarise
+        if: github.event_name != 'pull_request'
+        run: |
+          {
+            echo "### Published image"
+            echo
+            echo '```'
+            echo "${{ steps.meta.outputs.tags }}"
+            echo '```'
+            echo
+            echo "digest: \`${{ steps.build.outputs.digest }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

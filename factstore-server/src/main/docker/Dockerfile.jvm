@@ -80,25 +80,50 @@
 # You can find more information about the UBI base runtime images and their configuration here:
 # https://rh-openjdk.github.io/redhat-openjdk-containers/
 ###
-# --- Stage 1: extract the FoundationDB native client library (libfdb_c.so) ---
+# --- Stage 1: fetch the FoundationDB native client library (libfdb_c.so) ---
 # The fdb-java client bundles only the JNI shim (libfdb_java.so); the actual C
-# client (libfdb_c.so) must be provided at runtime. We install the official
-# clients RPM in a builder stage and copy just the shared library into the
-# final image, keeping the runtime image free of a package manager.
-# Keep FDB_VERSION aligned with the org.foundationdb:fdb-java version.
-FROM registry.access.redhat.com/ubi9/ubi:9.8 AS fdb-client
+# client (libfdb_c.so) must be provided at runtime. FoundationDB publishes the
+# bare shared object as a release asset per architecture, so we fetch it
+# directly rather than unpacking the clients RPM -- that keeps the runtime image
+# free of a package manager and, more importantly, keeps this stage buildable
+# for arm64 (the clients RPM is published as el7.x86_64 / el9.aarch64, but the
+# raw .so is uniform across both).
+#
+# Pinned to $BUILDPLATFORM so the download runs natively on the builder instead
+# of under QEMU when cross-building.
+#
+# Keep FDB_VERSION aligned with the org.foundationdb:fdb-java version in
+# gradle/libs.versions.toml. When bumping it, refresh both checksums:
+#   curl -sL https://github.com/apple/foundationdb/releases/download/<ver>/libfdb_c.x86_64.so.sha256
+#   curl -sL https://github.com/apple/foundationdb/releases/download/<ver>/libfdb_c.aarch64.so.sha256
+FROM --platform=$BUILDPLATFORM registry.access.redhat.com/ubi9/ubi:9.8 AS fdb-client
+ARG TARGETARCH
 ARG FDB_VERSION="7.3.67"
-ADD https://github.com/apple/foundationdb/releases/download/${FDB_VERSION}/foundationdb-clients-${FDB_VERSION}-1.el7.x86_64.rpm /tmp/foundationdb-clients.rpm
-RUN rpm -i --nodeps /tmp/foundationdb-clients.rpm \
-    && test -f /usr/lib64/libfdb_c.so
+ARG FDB_SHA256_AMD64="b2730c561376b6d163dded92a72e1ed29d7500a0e78f2671f789488c85ddac6b"
+ARG FDB_SHA256_ARM64="7d701f5283b0032d5b6882374ed0fc1006e2e4d597d433784a01c219dc56eeae"
+RUN set -eu; \
+    case "${TARGETARCH}" in \
+      amd64) fdb_arch="x86_64";  fdb_sha="${FDB_SHA256_AMD64}" ;; \
+      arm64) fdb_arch="aarch64"; fdb_sha="${FDB_SHA256_ARM64}" ;; \
+      *) echo "unsupported TARGETARCH: '${TARGETARCH}'" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL --retry 3 -o /tmp/libfdb_c.so \
+      "https://github.com/apple/foundationdb/releases/download/${FDB_VERSION}/libfdb_c.${fdb_arch}.so"; \
+    echo "${fdb_sha}  /tmp/libfdb_c.so" | sha256sum -c -; \
+    chmod 0755 /tmp/libfdb_c.so
 
 # --- Stage 2: the Quarkus JVM runtime image ---
 FROM registry.access.redhat.com/ubi9/openjdk-25:1.24
 
+LABEL org.opencontainers.image.source="https://github.com/factstore-io/factstore" \
+      org.opencontainers.image.title="factstore-server" \
+      org.opencontainers.image.description="FactStore server -- HTTP and gRPC API over an append-only fact store" \
+      org.opencontainers.image.licenses="Apache-2.0"
+
 ENV LANGUAGE='en_US:en'
 
 # FoundationDB native client library, resolved via the default loader path (/usr/lib64).
-COPY --from=fdb-client /usr/lib64/libfdb_c.so /usr/lib64/libfdb_c.so
+COPY --from=fdb-client /tmp/libfdb_c.so /usr/lib64/libfdb_c.so
 
 # We make four distinct layers so if there are application changes the library layers can be re-used
 COPY --chown=185 build/quarkus-app/lib/ /deployments/lib/
