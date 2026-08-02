@@ -13,18 +13,48 @@ The simplest way to explore FactStore is to run `factstore-server` as a containe
 docker run --rm -p 8080:8080 ghcr.io/factstore-io/factstore-server:main
 ```
 
-Open <http://localhost:8080> for the
-web explorer, or talk to the API directly:
+Open <http://localhost:8080> for the web explorer, or append your first fact from the
+command line:
 
 ```bash
-# Create a store
+# 1. Create a store
 curl -X POST http://localhost:8080/api/v1/stores \
   -H 'Content-Type: application/json' \
-  -d '{"name":"my-store"}'
+  -d '{"name":"orders"}'
 
-# List stores
-curl http://localhost:8080/api/v1/stores
+# 2. Append a fact. FactStore treats payloads as opaque bytes, so the JSON API
+#    carries them base64-encoded.
+PAYLOAD=$(printf '{"orderId":"12345","total":42.50}' | base64)
+
+curl -X POST http://localhost:8080/api/v1/stores/orders/facts \
+  -H 'Content-Type: application/json' \
+  -d "{\"facts\": [{
+        \"type\": \"ORDER_PLACED\",
+        \"subject\": \"order/12345\",
+        \"payload\": {\"data\": \"$PAYLOAD\"},
+        \"tags\": {\"region\": \"eu\"}
+      }]}"
 ```
+
+That returns the id of the fact you just appended:
+
+```json
+{"factIds":["5dd94f99-e094-449b-b957-69a8354ee9a1"],"appendedAt":"2026-08-02T12:38:14Z"}
+```
+
+Now read it back — either by its subject, or by any tag it carries:
+
+```bash
+# By subject. Subjects usually contain slashes, so URL-encode them ("/" -> %2F)
+curl http://localhost:8080/api/v1/stores/orders/subjects/order%2F12345/facts
+
+# By tag, in key=value form ("=" -> %3D)
+curl "http://localhost:8080/api/v1/stores/orders/facts?tag=region%3Deu"
+```
+
+Reading by *subject* is classic stream-per-entity event sourcing; reading by *tag* cuts
+across subjects. Being able to do both against the same facts is the point of FactStore —
+see [Why FactStore?](#-why-factstore) below.
 
 Useful endpoints:
 
