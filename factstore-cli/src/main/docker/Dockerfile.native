@@ -1,0 +1,50 @@
+####
+# Container image for the FactStore CLI, built from the native executable.
+#
+# Native rather than JVM mode on purpose: this is a short-lived foreground
+# command, so process start-up dominates the user's experience.
+#
+# Before building, produce the native executable:
+#
+#   ./gradlew :factstore-cli:build \
+#     -Dquarkus.native.enabled=true \
+#     -Dquarkus.package.jar.enabled=false
+#
+# Then build the image from this module's directory:
+#
+#   docker build -f src/main/docker/Dockerfile.native -t factstore-cli .
+#
+# Note that a native executable is architecture-specific: the image for a given
+# platform has to be built on (or for) that platform, unlike the server's JVM
+# image whose jars are architecture-neutral.
+#
+# The CLI talks to factstore-server over gRPC, so unlike the server image this
+# one needs no FoundationDB client library.
+#
+# Arguments pass straight through, so the image behaves like the binary:
+#
+#   docker run --rm factstore-cli --help
+#
+###
+FROM registry.access.redhat.com/ubi9/ubi-minimal:9.7
+
+LABEL org.opencontainers.image.source="https://github.com/factstore-io/factstore" \
+      org.opencontainers.image.title="factstore-cli" \
+      org.opencontainers.image.description="Command-line client for FactStore" \
+      org.opencontainers.image.licenses="Apache-2.0"
+
+WORKDIR /work/
+RUN chown 1001 /work \
+    && chmod "g+rwX" /work \
+    && chown 1001:root /work
+
+COPY --chown=1001:root --chmod=0755 build/*-runner /work/factstore
+
+USER 1001
+
+# A plain ENTRYPOINT is what lets arguments after the image name reach picocli
+# unchanged, so the image behaves like the executable it wraps.
+ENTRYPOINT [ "./factstore" ]
+
+# Shown when the image is run with no arguments.
+CMD [ "--help" ]
