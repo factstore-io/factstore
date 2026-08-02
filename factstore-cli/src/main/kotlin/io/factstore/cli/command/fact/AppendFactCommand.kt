@@ -88,6 +88,7 @@ class AppendFactCommand : Callable<Int> {
         type = type,
         subject = subject,
         payload = FactPayload(data = toByteArray(Charsets.UTF_8)),
+        tags = this@AppendFactCommand.tags,
     )
 
     private fun resolvePayload(): String? {
