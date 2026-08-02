@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://factstore.io/img/factstore-banner.png" alt="FactStore" width="100%">
+</p>
+
 # FactStore
 
 A lightweight, Kotlin-first event store designed for clarity, correctness, and extensibility — built on a clean specification and powered by FoundationDB. 🚀
