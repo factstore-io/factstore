@@ -40,7 +40,21 @@ which is sufficient for exploring the solution. Just note that data won't surviv
 
 ### Persistent storage
 
-To keep your data, point the server at a [FoundationDB](https://www.foundationdb.org/) cluster:
+To keep your data, run FactStore against a [FoundationDB](https://www.foundationdb.org/)
+cluster. The included Compose file starts both, and configures the cluster for you:
+
+```bash
+docker compose -f deploy/docker-compose.yml up
+```
+
+The server is available at <http://localhost:8080> as before, this time backed by
+FoundationDB, so facts survive a restart. To stop the stack and discard the data again:
+
+```bash
+docker compose -f deploy/docker-compose.yml down -v
+```
+
+If you already run a FoundationDB cluster, point the server at it directly instead:
 
 ```bash
 docker run --rm -p 8080:8080 \

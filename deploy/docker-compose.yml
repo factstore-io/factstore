@@ -1,0 +1,84 @@
+# FactStore with a real FoundationDB backend.
+#
+# From the repository root:
+#
+#   docker compose -f deploy/docker-compose.yml up
+#
+# or from this directory, simply `docker compose up`. Then open
+# http://localhost:8080.
+#
+# Unlike the single `docker run` in the README, this path persists data across
+# restarts. Use `docker compose down -v` to discard the stored facts.
+#
+# The project name is pinned below, so the stack and its volumes are the same
+# regardless of which directory you invoke it from.
+#
+# Single-node, single-replica cluster -- fine for evaluating FactStore, not a
+# production FoundationDB deployment.
+
+name: factstore
+
+services:
+  foundationdb:
+    image: foundationdb/foundationdb:7.3.67
+    environment:
+      FDB_NETWORKING_MODE: container
+      FDB_CLUSTER_FILE: /etc/foundationdb/fdb.cluster
+    volumes:
+      # FoundationDB writes its own cluster file here on startup. Sharing that
+      # file with the other services is what lets them find the cluster
+      # without any hardcoded addresses.
+      - fdb-config:/etc/foundationdb
+      - fdb-data:/var/fdb/data
+
+  # A fresh cluster comes up unconfigured -- the image starts fdbserver but
+  # never creates a database, so a client would wait forever. This one-shot
+  # service creates it and exits; `factstore` waits for that to complete.
+  #
+  # It exits 0 only once the cluster actually reports the target
+  # configuration, so a half-configured cluster fails the startup rather than
+  # silently letting the server through.
+  foundationdb-init:
+    image: foundationdb/foundationdb:7.3.67
+    depends_on:
+      - foundationdb
+    restart: "no"
+    volumes:
+      - fdb-config:/etc/foundationdb
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        set -u
+        export FDB_CLUSTER_FILE=/etc/foundationdb/fdb.cluster
+
+        echo "Waiting for FoundationDB and applying configuration..."
+        for _ in $$(seq 1 60); do
+          if fdbcli --exec 'status' --timeout 8 2>/dev/null | grep -q 'Log engine .*ssd-redwood-1'; then
+            echo "FoundationDB ready (single / ssd-redwood-1 / ssd-redwood-1)."
+            exit 0
+          fi
+          fdbcli --exec 'configure new single ssd-redwood-1' --timeout 8 2>&1 || true
+          fdbcli --exec 'configure log_engine=ssd-redwood-1' --timeout 8 2>&1 || true
+          sleep 2
+        done
+
+        echo "FoundationDB did not reach the expected configuration in time." >&2
+        fdbcli --exec 'status' --timeout 10 || true
+        exit 1
+
+  factstore:
+    image: ghcr.io/factstore-io/factstore-server:main
+    depends_on:
+      foundationdb-init:
+        condition: service_completed_successfully
+    environment:
+      FACTSTORE_STORAGE_TYPE: foundationdb
+    ports:
+      - "8080:8080"
+    volumes:
+      - fdb-config:/etc/foundationdb
+
+volumes:
+  fdb-config:
+  fdb-data:
