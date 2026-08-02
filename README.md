@@ -93,15 +93,6 @@ docker run --rm -p 8080:8080 \
   ghcr.io/factstore-io/factstore-server:main
 ```
 
-### Using FactStore as a library
-
-You can also embed FactStore directly instead of running the server:
-
-- **Using the specification** — add the spec module as a dependency and implement the interfaces
-  if you want a custom backend.
-- **Using the FoundationDB implementation** — add the FoundationDB-backed store to integrate a
-  production-ready FactStore into your application.
-
 Please see [factstore.io](https://factstore.io) for more details.
 
 ## 📚 Modules
