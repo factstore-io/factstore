@@ -5,7 +5,62 @@ A lightweight, Kotlin-first event store designed for clarity, correctness, and e
 > [!WARNING]  
 > FactStore is still under development and should not be used in production!
 
-## 📚 Overview
+## 🚀 Getting Started
+
+The simplest way to explore FactStore is to run `factstore-server` as a container:
+
+```bash
+docker run --rm -p 8080:8080 ghcr.io/factstore-io/factstore-server:main
+```
+
+Open <http://localhost:8080> for the
+web explorer, or talk to the API directly:
+
+```bash
+# Create a store
+curl -X POST http://localhost:8080/api/v1/stores \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"my-store"}'
+
+# List stores
+curl http://localhost:8080/api/v1/stores
+```
+
+Useful endpoints:
+
+| Endpoint | Purpose |
+|---|---|
+| `/` | Web explorer UI |
+| `/api/v1` | REST API |
+| `/q/openapi` | OpenAPI document |
+| `/q/health` | Health check |
+
+Without further configuration, `factstore-server` uses a simple in-memory storage implementation,
+which is sufficient for exploring the solution. Just note that data won't survive restarts.
+
+### Persistent storage
+
+To keep your data, point the server at a [FoundationDB](https://www.foundationdb.org/) cluster:
+
+```bash
+docker run --rm -p 8080:8080 \
+  -e FACTSTORE_STORAGE_TYPE=foundationdb \
+  -v /path/to/fdb.cluster:/etc/foundationdb/fdb.cluster \
+  ghcr.io/factstore-io/factstore-server:main
+```
+
+### Using FactStore as a library
+
+You can also embed FactStore directly instead of running the server:
+
+- **Using the specification** — add the spec module as a dependency and implement the interfaces
+  if you want a custom backend.
+- **Using the FoundationDB implementation** — add the FoundationDB-backed store to integrate a
+  production-ready FactStore into your application.
+
+Please see [factstore.io](https://factstore.io) for more details.
+
+## 📚 Modules
 
 FactStore is a modular event-sourcing system with two main parts:
 
@@ -87,18 +142,6 @@ Event sourcing is a powerful architectural approach, but many existing solutions
 _FactStore_ explores a more explicit and flexible foundation: instead of baking assumptions into the storage layer, it focuses on clear semantics, explicit consistency rules, and well-defined append behavior. Consistency boundaries are expressed per operation, not fixed globally, which enables both traditional event-sourced designs and more dynamic approaches such as dynamic consistency boundaries (DCB).
 
 The goal of FactStore is not to replace existing event stores, but to provide a small, principled core that makes correctness concerns (idempotency, conditional writes, atomicity) explicit and allows different event-sourcing strategies to coexist and evolve over time.
-
-## 🚀 Getting Started
-
-*Using the Specification*
-
-Add the spec module as a dependency and implement the interfaces if you want a custom backend.
-
-*Using the FoundationDB Implementation*
-
-Add the FoundationDB-backed store to integrate a production-ready FactStore into your application.
-
-Please see [factstore.io](https://factstore.io) for more details.
 
 ## 🤝 Contributing
 
