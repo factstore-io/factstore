@@ -1,9 +1,9 @@
 package io.factstore.server.grpc
 
 import io.factstore.grpc.v1.*
+import io.grpc.Channel
 import io.quarkus.grpc.GrpcClient
 import io.quarkus.test.junit.QuarkusTest
-import io.smallrye.mutiny.coroutines.awaitSuspending
 import kotlinx.coroutines.runBlocking
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatCode
@@ -18,18 +18,20 @@ import java.util.UUID
 class GrpcStoreServiceTest {
 
     @GrpcClient
-    lateinit var storeService: StoreService
+    lateinit var channel: Channel
+
+    private val storeService by lazy { StoreServiceGrpcKt.StoreServiceCoroutineStub(channel) }
 
     @BeforeAll
     fun setUp(): Unit = runBlocking {
-        storeService.createStore(createStoreRequest { name = "grpc-store-a" }).awaitSuspending()
+        storeService.createStore(createStoreRequest { name = "grpc-store-a" })
     }
 
     @Test
     @Order(1)
     @DisplayName("CreateStore - should return StoreCreated with a valid UUID when name is available")
     fun createStore(): Unit = runBlocking {
-        val response = storeService.createStore(createStoreRequest { name = "grpc-store-new" }).awaitSuspending()
+        val response = storeService.createStore(createStoreRequest { name = "grpc-store-new" })
 
         assertThat(response.hasCreated()).isTrue()
         assertThat(response.created.id).isNotBlank()
@@ -40,7 +42,7 @@ class GrpcStoreServiceTest {
     @Order(2)
     @DisplayName("CreateStore - should return NameAlreadyExists when name is already taken")
     fun createStoreDuplicate(): Unit = runBlocking {
-        val response = storeService.createStore(createStoreRequest { name = "grpc-store-a" }).awaitSuspending()
+        val response = storeService.createStore(createStoreRequest { name = "grpc-store-a" })
 
         assertThat(response.hasNameAlreadyExists()).isTrue()
     }
@@ -49,7 +51,7 @@ class GrpcStoreServiceTest {
     @Order(3)
     @DisplayName("GetStore - should return StoreFound with store info when store exists")
     fun getStore(): Unit = runBlocking {
-        val response = storeService.getStore(getStoreRequest { name = "grpc-store-a" }).awaitSuspending()
+        val response = storeService.getStore(getStoreRequest { name = "grpc-store-a" })
 
         assertThat(response.hasFound()).isTrue()
         assertThat(response.found.store.name).isEqualTo("grpc-store-a")
@@ -61,7 +63,7 @@ class GrpcStoreServiceTest {
     @Order(4)
     @DisplayName("GetStore - should return StoreNotFound when store does not exist")
     fun getStoreNotFound(): Unit = runBlocking {
-        val response = storeService.getStore(getStoreRequest { name = "no-such-store" }).awaitSuspending()
+        val response = storeService.getStore(getStoreRequest { name = "no-such-store" })
 
         assertThat(response.hasNotFound()).isTrue()
         assertThat(response.notFound.storeName).isEqualTo("no-such-store")
@@ -71,7 +73,7 @@ class GrpcStoreServiceTest {
     @Order(5)
     @DisplayName("StoreExists - should return exists=true when store is present")
     fun storeExists(): Unit = runBlocking {
-        val response = storeService.storeExists(storeExistsRequest { name = "grpc-store-a" }).awaitSuspending()
+        val response = storeService.storeExists(storeExistsRequest { name = "grpc-store-a" })
 
         assertThat(response.hasPresent()).isTrue()
     }
@@ -80,7 +82,7 @@ class GrpcStoreServiceTest {
     @Order(6)
     @DisplayName("StoreExists - should return exists=false when store is absent")
     fun storeDoesNotExist(): Unit = runBlocking {
-        val response = storeService.storeExists(storeExistsRequest { name = "no-such-store" }).awaitSuspending()
+        val response = storeService.storeExists(storeExistsRequest { name = "no-such-store" })
 
         assertThat(response.hasAbsent()).isTrue()
     }
@@ -89,9 +91,9 @@ class GrpcStoreServiceTest {
     @Order(7)
     @DisplayName("ListStores - should include all created stores")
     fun listStores(): Unit = runBlocking {
-        storeService.createStore(createStoreRequest { name = "grpc-store-b" }).awaitSuspending()
+        storeService.createStore(createStoreRequest { name = "grpc-store-b" })
 
-        val response = storeService.listStores(listStoresRequest { }).awaitSuspending()
+        val response = storeService.listStores(listStoresRequest { })
 
         val names = response.storesList.map { it.name }
         assertThat(names).contains("grpc-store-a", "grpc-store-b")
@@ -101,7 +103,7 @@ class GrpcStoreServiceTest {
     @Order(8)
     @DisplayName("DeleteStore - should return StoreDeleted when store exists")
     fun deleteStore(): Unit = runBlocking {
-        val response = storeService.deleteStore(deleteStoreRequest { name = "grpc-store-a" }).awaitSuspending()
+        val response = storeService.deleteStore(deleteStoreRequest { name = "grpc-store-a" })
 
         assertThat(response.hasDeleted()).isTrue()
     }
@@ -110,7 +112,7 @@ class GrpcStoreServiceTest {
     @Order(9)
     @DisplayName("DeleteStore - should return StoreNotFound when store does not exist")
     fun deleteStoreNotFound(): Unit = runBlocking {
-        val response = storeService.deleteStore(deleteStoreRequest { name = "grpc-store-a" }).awaitSuspending()
+        val response = storeService.deleteStore(deleteStoreRequest { name = "grpc-store-a" })
 
         assertThat(response.hasNotFound()).isTrue()
         assertThat(response.notFound.storeName).isEqualTo("grpc-store-a")

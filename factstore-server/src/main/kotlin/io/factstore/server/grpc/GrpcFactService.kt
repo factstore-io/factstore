@@ -1,99 +1,79 @@
 package io.factstore.server.grpc
 
 import io.factstore.core.*
-import io.factstore.grpc.v1.FactService
-import io.factstore.grpc.v1.FactStoreProto
+import io.factstore.grpc.v1.FactServiceGrpcKt
 import io.factstore.grpc.v1.FactStoreProto.*
 import io.factstore.grpc.v1.factNotFound
 import io.factstore.grpc.v1.storeNotFound
 import io.factstore.grpc.v1.streamFactsResponse
 import io.quarkus.grpc.GrpcService
-import io.smallrye.mutiny.Multi
-import io.smallrye.mutiny.Uni
-import io.vertx.core.Vertx
-import io.vertx.kotlin.coroutines.dispatcher
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 
 @GrpcService
 class GrpcFactService(
     private val factStore: FactStore,
-    vertx: Vertx,
-) : FactService {
+) : FactServiceGrpcKt.FactServiceCoroutineImplBase() {
 
-    private val grpcContext = vertx.dispatcher()
-
-    override fun appendFacts(
-        request: AppendFactsRequest
-    ): Uni<AppendFactsResponse> = toUni(grpcContext) {
+    override suspend fun appendFacts(request: AppendFactsRequest): AppendFactsResponse =
         request.toDomainRequest().publishTo(factStore).toGrpcResponse()
-    }
 
-    override fun getFact(
-        request: GetFactRequest
-    ): Uni<GetFactResponse> = toUni(grpcContext) {
+    override suspend fun getFact(request: GetFactRequest): GetFactResponse =
         request.toDomainRequest().publishTo(factStore).toGrpcResponse()
-    }
 
-    override fun factExists(
-        request: FactExistsRequest
-    ): Uni<FactExistsResponse> = toUni(grpcContext) {
+    override suspend fun factExists(request: FactExistsRequest): FactExistsResponse =
         request.toDomainRequest().publishTo(factStore).toGrpcResponse()
-    }
 
-    override fun findFactsBySubject(
-        request: FindFactsBySubjectRequest
-    ): Uni<FindFactsBySubjectResponse> = toUni(grpcContext) {
+    override suspend fun findFactsBySubject(request: FindFactsBySubjectRequest): FindFactsBySubjectResponse =
         request.toDomainRequest().publishTo(factStore).toGrpcResponse()
-    }
 
-    override fun findFactsByTags(
-        request: FindFactsByTagsRequest
-    ): Uni<FindFactsByTagsResponse> = toUni(grpcContext) {
+    override suspend fun findFactsByTags(request: FindFactsByTagsRequest): FindFactsByTagsResponse =
         request.toDomainRequest().publishTo(factStore).toGrpcResponse()
-    }
 
-    override fun queryFacts(
-        request: QueryFactsRequest
-    ): Uni<QueryFactsResponse> = toUni(grpcContext) {
+    override suspend fun queryFacts(request: QueryFactsRequest): QueryFactsResponse =
         request.toDomainRequest().publishTo(factStore).toGrpcResponse()
-    }
 
-    override fun findFactsInTimeRange(
-        request: FindFactsInTimeRangeRequest
-    ): Uni<FindFactsInTimeRangeResponse> = toUni(grpcContext) {
+    override suspend fun findFactsInTimeRange(request: FindFactsInTimeRangeRequest): FindFactsInTimeRangeResponse =
         request.toDomainRequest().publishTo(factStore).toGrpcResponse()
-    }
 
-    override fun subscribeFacts(
-        request: SubscribeFactsRequest
-    ): Multi<StreamFactsResponse> = toMulti(grpcContext) {
-        when (val result = request.toDomainRequest().publishTo(factStore)) {
-            is SubscribeResult.StoreNotFound -> flowOf(streamFactsResponse {
-                storeNotFound = storeNotFound { storeName = result.storeName.value }
-            })
-            is SubscribeResult.FactIdNotFound -> flowOf(streamFactsResponse {
-                afterFactNotFound = factNotFound { }
-            })
-            is SubscribeResult.FactStream -> result.stream.map { facts ->
-                streamFactsResponse { batch = facts.toProtoFactBatch() }
+    // The store lookup must happen per subscription rather than when the Flow is built,
+    // so the body is wrapped in `flow { }` and only runs on collection.
+    override fun subscribeFacts(request: SubscribeFactsRequest): Flow<StreamFactsResponse> = flow {
+        emitAll(
+            when (val result = request.toDomainRequest().publishTo(factStore)) {
+                is SubscribeResult.StoreNotFound -> flowOf(streamFactsResponse {
+                    storeNotFound = storeNotFound { storeName = result.storeName.value }
+                })
+
+                is SubscribeResult.FactIdNotFound -> flowOf(streamFactsResponse {
+                    afterFactNotFound = factNotFound { }
+                })
+
+                is SubscribeResult.FactStream -> result.stream.map { facts ->
+                    streamFactsResponse { batch = facts.toProtoFactBatch() }
+                }
             }
-        }
+        )
     }
 
-    override fun replayFacts(
-        request: ReplayFactsRequest
-    ): Multi<StreamFactsResponse> = toMulti(grpcContext) {
-        when (val result = request.toDomainRequest().publishTo(factStore)) {
-            is ReplayResult.StoreNotFound -> flowOf(streamFactsResponse {
-                storeNotFound = storeNotFound { storeName = result.storeName.value }
-            })
-            is ReplayResult.FactIdNotFound -> flowOf(streamFactsResponse {
-                afterFactNotFound = factNotFound { }
-            })
-            is ReplayResult.FactStream -> result.stream.map { facts ->
-                streamFactsResponse { batch = facts.toProtoFactBatch() }
+    override fun replayFacts(request: ReplayFactsRequest): Flow<StreamFactsResponse> = flow {
+        emitAll(
+            when (val result = request.toDomainRequest().publishTo(factStore)) {
+                is ReplayResult.StoreNotFound -> flowOf(streamFactsResponse {
+                    storeNotFound = storeNotFound { storeName = result.storeName.value }
+                })
+
+                is ReplayResult.FactIdNotFound -> flowOf(streamFactsResponse {
+                    afterFactNotFound = factNotFound { }
+                })
+
+                is ReplayResult.FactStream -> result.stream.map { facts ->
+                    streamFactsResponse { batch = facts.toProtoFactBatch() }
+                }
             }
-        }
+        )
     }
 }

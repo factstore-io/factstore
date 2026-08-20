@@ -2,42 +2,26 @@ package io.factstore.server.grpc
 
 import io.factstore.core.*
 import io.factstore.grpc.v1.FactStoreProto
-import io.factstore.grpc.v1.StoreService
+import io.factstore.grpc.v1.StoreServiceGrpcKt
 import io.quarkus.grpc.GrpcService
-import io.smallrye.mutiny.Uni
-import io.vertx.core.Vertx
-import io.vertx.kotlin.coroutines.dispatcher
 
 @GrpcService
 class GrpcStoreService(
     private val factStore: FactStore,
-    vertx: Vertx,
-) : StoreService {
+) : StoreServiceGrpcKt.StoreServiceCoroutineImplBase() {
 
-    private val grpcContext = vertx.dispatcher()
+    override suspend fun createStore(request: FactStoreProto.CreateStoreRequest): FactStoreProto.CreateStoreResponse =
+        request.toDomainRequest().publishTo(factStore).toGrpcResponse()
 
-    override fun createStore(request: FactStoreProto.CreateStoreRequest): Uni<FactStoreProto.CreateStoreResponse> =
-        toUni(grpcContext) {
-            request.toDomainRequest().publishTo(factStore).toGrpcResponse()
-        }
+    override suspend fun getStore(request: FactStoreProto.GetStoreRequest): FactStoreProto.GetStoreResponse =
+        request.toDomainRequest().publishTo(factStore).toGrpcResponse()
 
-    override fun getStore(request: FactStoreProto.GetStoreRequest): Uni<FactStoreProto.GetStoreResponse> =
-        toUni(grpcContext) {
-            request.toDomainRequest().publishTo(factStore).toGrpcResponse()
-        }
+    override suspend fun listStores(request: FactStoreProto.ListStoresRequest): FactStoreProto.ListStoresResponse =
+        factStore.listAll().toGrpcResponse()
 
-    override fun listStores(request: FactStoreProto.ListStoresRequest): Uni<FactStoreProto.ListStoresResponse> =
-        toUni(grpcContext) {
-            factStore.listAll().toGrpcResponse()
-        }
+    override suspend fun deleteStore(request: FactStoreProto.DeleteStoreRequest): FactStoreProto.DeleteStoreResponse =
+        request.toDomainRequest().publishTo(factStore).toGrpcResponse()
 
-    override fun deleteStore(request: FactStoreProto.DeleteStoreRequest): Uni<FactStoreProto.DeleteStoreResponse> =
-        toUni(grpcContext) {
-            request.toDomainRequest().publishTo(factStore).toGrpcResponse()
-        }
-
-    override fun storeExists(request: FactStoreProto.StoreExistsRequest): Uni<FactStoreProto.StoreExistsResponse> =
-        toUni(grpcContext) {
-            request.toDomainRequest().publishTo(factStore).toGrpcResponse()
-        }
+    override suspend fun storeExists(request: FactStoreProto.StoreExistsRequest): FactStoreProto.StoreExistsResponse =
+        request.toDomainRequest().publishTo(factStore).toGrpcResponse()
 }

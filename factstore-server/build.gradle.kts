@@ -12,6 +12,7 @@ dependencies {
     implementation("io.quarkus:quarkus-rest")
     implementation("io.quarkus:quarkus-rest-jackson")
     implementation("io.quarkus:quarkus-grpc")
+    implementation("io.quarkus:quarkus-vertx-kotlin")
     implementation("io.quarkus:quarkus-kotlin")
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
     implementation("io.quarkus:quarkus-arc")
@@ -21,12 +22,11 @@ dependencies {
     implementation("io.quarkus:quarkus-smallrye-health")
     implementation("io.quarkus:quarkus-container-image-docker")
     implementation(libs.quarkus.quinoa)
-    implementation(libs.com.google.protobuf.protobuf.kotlin)
-    implementation("io.vertx:vertx-lang-kotlin-coroutines")
-    implementation(libs.coroutines.jdk)
+    implementation("com.google.protobuf:protobuf-kotlin")
 
 
     // factstore libs
+    implementation(project(":factstore-proto"))
     implementation(project(":factstore-specification"))
     implementation(project(":factstore-foundationdb"))
     implementation(project(":factstore-memory"))
@@ -36,7 +36,6 @@ dependencies {
     testImplementation("io.quarkus:quarkus-junit")
     testImplementation("io.rest-assured:rest-assured")
     testImplementation(libs.org.assertj.assertj.core)
-    testImplementation(libs.io.smallrye.mutiny.kotlin)
 }
 
 java {
@@ -69,12 +68,4 @@ tasks.withType<QuarkusDev>().configureEach {
 
 tasks.withType<QuarkusRun>().configureEach {
     jvmArgs = fdbJvmArgs
-}
-
-sourceSets {
-    main {
-        java {
-            srcDir("build/classes/java/quarkus-generated-sources/grpc")
-        }
-    }
 }

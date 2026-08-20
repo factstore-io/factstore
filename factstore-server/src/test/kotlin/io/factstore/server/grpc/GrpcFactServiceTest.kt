@@ -2,12 +2,11 @@ package io.factstore.server.grpc
 
 import com.google.protobuf.ByteString
 import io.factstore.grpc.v1.*
+import io.grpc.Channel
 import io.quarkus.grpc.GrpcClient
 import io.quarkus.test.junit.QuarkusTest
-import io.smallrye.mutiny.coroutines.awaitSuspending
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
-import kotlinx.coroutines.jdk9.asFlow
 import kotlinx.coroutines.runBlocking
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.*
@@ -21,10 +20,10 @@ import java.util.UUID
 class GrpcFactServiceTest {
 
     @GrpcClient
-    lateinit var factService: FactService
+    lateinit var channel: Channel
 
-    @GrpcClient
-    lateinit var storeService: StoreService
+    private val factService by lazy { FactServiceGrpcKt.FactServiceCoroutineStub(channel) }
+    private val storeService by lazy { StoreServiceGrpcKt.StoreServiceCoroutineStub(channel) }
 
     // Assigned by the server during the Order(1) append and reused by later ordered tests.
     lateinit var seedFactId: String
@@ -37,7 +36,7 @@ class GrpcFactServiceTest {
 
     @BeforeAll
     fun setUp(): Unit = runBlocking {
-        storeService.createStore(createStoreRequest { name = STORE }).awaitSuspending()
+        storeService.createStore(createStoreRequest { name = STORE })
     }
 
     // ─── AppendFacts ─────────────────────────────────────────────────────────
@@ -56,7 +55,7 @@ class GrpcFactServiceTest {
                 payload = factPayload { data = ByteString.copyFromUtf8("{}") }
                 tags["region"] = "eu"
             }
-        }).awaitSuspending()
+        })
 
         assertThat(response.hasAppended()).isTrue()
 
@@ -76,7 +75,7 @@ class GrpcFactServiceTest {
                 subject = SUBJECT
                 payload = factPayload { data = ByteString.copyFromUtf8("{}") }
             }
-        }).awaitSuspending()
+        })
 
         assertThat(response.hasAlreadyApplied()).isTrue()
     }
@@ -99,7 +98,7 @@ class GrpcFactServiceTest {
                     expectedLastFactId = wrongId
                 }
             }
-        }).awaitSuspending()
+        })
 
         assertThat(response.hasConditionViolated()).isTrue()
     }
@@ -115,7 +114,7 @@ class GrpcFactServiceTest {
                 subject = SUBJECT
                 payload = factPayload { data = ByteString.copyFromUtf8("{}") }
             }
-        }).awaitSuspending()
+        })
 
         assertThat(response.hasStoreNotFound()).isTrue()
         assertThat(response.storeNotFound.storeName).isEqualTo("ghost-store")
@@ -130,7 +129,7 @@ class GrpcFactServiceTest {
         val response = factService.getFact(getFactRequest {
             storeName = STORE
             factId = seedFactId
-        }).awaitSuspending()
+        })
 
         assertThat(response.hasFound()).isTrue()
         assertThat(response.found.fact.id).isEqualTo(seedFactId)
@@ -145,7 +144,7 @@ class GrpcFactServiceTest {
         val response = factService.getFact(getFactRequest {
             storeName = STORE
             factId = UUID.randomUUID().toString()
-        }).awaitSuspending()
+        })
 
         assertThat(response.hasNotFound()).isTrue()
     }
@@ -157,7 +156,7 @@ class GrpcFactServiceTest {
         val response = factService.getFact(getFactRequest {
             storeName = "ghost-store"
             factId = seedFactId
-        }).awaitSuspending()
+        })
 
         assertThat(response.hasStoreNotFound()).isTrue()
         assertThat(response.storeNotFound.storeName).isEqualTo("ghost-store")
@@ -172,7 +171,7 @@ class GrpcFactServiceTest {
         val response = factService.factExists(factExistsRequest {
             storeName = STORE
             factId = seedFactId
-        }).awaitSuspending()
+        })
 
         assertThat(response.hasPresent()).isTrue()
     }
@@ -184,7 +183,7 @@ class GrpcFactServiceTest {
         val response = factService.factExists(factExistsRequest {
             storeName = STORE
             factId = UUID.randomUUID().toString()
-        }).awaitSuspending()
+        })
 
         assertThat(response.hasAbsent()).isTrue()
     }
@@ -196,7 +195,7 @@ class GrpcFactServiceTest {
         val response = factService.factExists(factExistsRequest {
             storeName = "ghost-store"
             factId = seedFactId
-        }).awaitSuspending()
+        })
 
         assertThat(response.hasStoreNotFound()).isTrue()
         assertThat(response.storeNotFound.storeName).isEqualTo("ghost-store")
@@ -211,7 +210,7 @@ class GrpcFactServiceTest {
         val response = factService.findFactsBySubject(findFactsBySubjectRequest {
             storeName = STORE
             subject = SUBJECT
-        }).awaitSuspending()
+        })
 
         assertThat(response.hasFound()).isTrue()
         assertThat(response.found.factsList).hasSize(1)
@@ -225,7 +224,7 @@ class GrpcFactServiceTest {
         val response = factService.findFactsBySubject(findFactsBySubjectRequest {
             storeName = "ghost-store"
             subject = SUBJECT
-        }).awaitSuspending()
+        })
 
         assertThat(response.hasStoreNotFound()).isTrue()
     }
@@ -239,7 +238,7 @@ class GrpcFactServiceTest {
         val response = factService.findFactsByTags(findFactsByTagsRequest {
             storeName = STORE
             tags["region"] = "eu"
-        }).awaitSuspending()
+        })
 
         assertThat(response.hasFound()).isTrue()
         assertThat(response.found.factsList).isNotEmpty()
@@ -253,7 +252,7 @@ class GrpcFactServiceTest {
         val response = factService.findFactsByTags(findFactsByTagsRequest {
             storeName = "ghost-store"
             tags["region"] = "eu"
-        }).awaitSuspending()
+        })
 
         assertThat(response.hasStoreNotFound()).isTrue()
     }
@@ -271,7 +270,7 @@ class GrpcFactServiceTest {
                     tagOnly = tagOnlyItem { tags["region"] = "eu" }
                 }
             }
-        }).awaitSuspending()
+        })
 
         assertThat(response.hasFound()).isTrue()
         assertThat(response.found.factsList).isNotEmpty()
@@ -288,7 +287,7 @@ class GrpcFactServiceTest {
                     tagOnly = tagOnlyItem { tags["region"] = "eu" }
                 }
             }
-        }).awaitSuspending()
+        })
 
         assertThat(response.hasStoreNotFound()).isTrue()
     }
@@ -307,7 +306,7 @@ class GrpcFactServiceTest {
                     }
                 }
             }
-        }).awaitSuspending()
+        })
 
         assertThat(response.hasFound()).isTrue()
         assertThat(response.found.factsList).isNotEmpty()
@@ -328,7 +327,7 @@ class GrpcFactServiceTest {
                     }
                 }
             }
-        }).awaitSuspending()
+        })
 
         assertThat(response.hasFound()).isTrue()
         assertThat(response.found.factsList).isEmpty()
@@ -343,7 +342,7 @@ class GrpcFactServiceTest {
         val response = factService.findFactsInTimeRange(findFactsInTimeRangeRequest {
             storeName = STORE
             // no from/to — unbounded range matches all facts in the store
-        }).awaitSuspending()
+        })
 
         assertThat(response.hasFound()).isTrue()
         assertThat(response.found.factsList).isNotEmpty()
@@ -355,7 +354,7 @@ class GrpcFactServiceTest {
     fun findFactsInTimeRangeStoreNotFound(): Unit = runBlocking {
         val response = factService.findFactsInTimeRange(findFactsInTimeRangeRequest {
             storeName = "ghost-store"
-        }).awaitSuspending()
+        })
 
         assertThat(response.hasStoreNotFound()).isTrue()
     }
@@ -368,7 +367,7 @@ class GrpcFactServiceTest {
     fun subscribeFacts(): Unit = runBlocking {
         val responses = factService.subscribeFacts(subscribeFactsRequest {
             storeName = STORE
-        }).asFlow().take(1).toList()
+        }).take(1).toList()
 
         assertThat(responses).hasSize(1)
         assertThat(responses.first().hasBatch()).isTrue()
@@ -381,7 +380,7 @@ class GrpcFactServiceTest {
     fun subscribeFactsStoreNotFound(): Unit = runBlocking {
         val responses = factService.subscribeFacts(subscribeFactsRequest {
             storeName = "ghost-store"
-        }).asFlow().toList()
+        }).toList()
 
         assertThat(responses).hasSize(1)
         assertThat(responses.first().hasStoreNotFound()).isTrue()
@@ -395,7 +394,7 @@ class GrpcFactServiceTest {
         val responses = factService.subscribeFacts(subscribeFactsRequest {
             storeName = STORE
             afterFactId = UUID.randomUUID().toString()
-        }).asFlow().toList()
+        }).toList()
 
         assertThat(responses).hasSize(1)
         assertThat(responses.first().hasAfterFactNotFound()).isTrue()
@@ -410,7 +409,7 @@ class GrpcFactServiceTest {
         // A bounded replay terminates on its own, so collecting the whole flow returns.
         val responses = factService.replayFacts(replayFactsRequest {
             storeName = STORE
-        }).asFlow().toList()
+        }).toList()
 
         assertThat(responses).isNotEmpty()
         assertThat(responses.first().hasBatch()).isTrue()
@@ -423,7 +422,7 @@ class GrpcFactServiceTest {
     fun replayFactsStoreNotFound(): Unit = runBlocking {
         val responses = factService.replayFacts(replayFactsRequest {
             storeName = "ghost-store"
-        }).asFlow().toList()
+        }).toList()
 
         assertThat(responses).hasSize(1)
         assertThat(responses.first().hasStoreNotFound()).isTrue()
