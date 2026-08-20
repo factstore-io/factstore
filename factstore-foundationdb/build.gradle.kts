@@ -4,6 +4,12 @@ plugins {
 }
 
 dependencies {
+    constraints {
+        implementation(libs.com.fasterxml.jackson.core.jackson.databind) {
+            because("avro 1.12.1 constrains jackson-databind to 2.20.0, which is vulnerable")
+        }
+    }
+
     implementation(project(":factstore-specification"))
     implementation(libs.org.jetbrains.kotlinx.kotlinx.coroutines.core)
 

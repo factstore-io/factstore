@@ -10,11 +10,12 @@ avro4k = "2.12.0"
 testcontainers-junit-jupiter = "1.21.4"
 testcontainers-foundationdb = "1.1.0"
 fmodel = "3.7.0"
-quarkusVersion = "3.38.2"
+quarkusVersion = "3.38.3"
 kotlin-logging = "8.0.4"
 quarkusQuinoa = "2.9.0"
 coroutines-jdk = "1.11.0"
 mutiny-kotlin = "3.3.0"
+jackson = "2.22.1"
 grpcKotlin = "1.5.0"
 protobuf-gradle-plugin = "0.10.0"
 
@@ -45,3 +46,4 @@ quarkus-quinoa = { module = "io.quarkiverse.quinoa:quarkus-quinoa", version.ref 
 coroutines-jdk = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-jdk9", version.ref = "coroutines-jdk" }
 io-smallrye-mutiny-kotlin = { module = "io.smallrye.reactive:mutiny-kotlin", version.ref = "mutiny-kotlin" }
 io-grpc-grpc-kotlin-stub = { module = "io.grpc:grpc-kotlin-stub", version.ref = "grpcKotlin" }
+com-fasterxml-jackson-core-jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jackson" }
