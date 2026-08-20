@@ -4,12 +4,17 @@ quarkus:
   banner:
     path: factstore-banner.txt
   #############################
-  #   CODE GEN CONFIGURATION  #
+  #   PROTO STUBS             #
   #############################
-  generate-code:
-    grpc:
-      kotlin:
-        generate: true
+  # The gRPC stubs are generated once by :factstore-proto, not by Quarkus codegen.
+  # Quarkus discovers a coroutine gRPC service by walking its superclass chain up to
+  # io.grpc.kotlin.AbstractCoroutineServerImpl, which requires the jar holding the
+  # generated *CoroutineImplBase classes to be in the Jandex index. Without this the
+  # services are silently skipped and the gRPC server refuses to start.
+  index-dependency:
+    factstore-proto:
+      group-id: org.factstore
+      artifact-id: factstore-proto
   #############################
   #   GRPC API CONFIGURATION  #
   #############################

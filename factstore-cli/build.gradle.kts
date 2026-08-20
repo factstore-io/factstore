@@ -5,15 +5,6 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
-val protobufVersion = libs.versions.google.protobuf.get()
-
-configurations.all {
-    resolutionStrategy {
-        force("com.google.protobuf:protobuf-java:$protobufVersion")
-        force("com.google.protobuf:protobuf-kotlin:$protobufVersion")
-    }
-}
-
 dependencies {
     implementation(enforcedPlatform(libs.io.quarkus.platform.quarkus.bom))
     implementation("io.quarkus:quarkus-kotlin")

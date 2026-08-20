@@ -1,6 +1,7 @@
 rootProject.name="factstore"
 
 include(
+    "factstore-proto",
     "factstore-specification",
     "factstore-testing",
     "factstore-foundationdb",
