@@ -22,7 +22,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "isbot": "^5.2.1",
-    "lucide-react": "^1.31.0",
+    "lucide-react": "^1.33.0",
     "radix-ui": "^1.6.7",
     "react": "^19.2.6",
     "react-dom": "^19.2.8",
@@ -37,6 +37,6 @@
     "@types/react-dom": "^19.2.4",
     "tailwindcss": "^4.3.1",
     "typescript": "^7.0.2",
-    "vite": "^8.2.1"
+    "vite": "^8.2.2"
   }
 }
