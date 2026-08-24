@@ -15,7 +15,7 @@ kotlin-logging = "8.0.4"
 quarkusQuinoa = "2.9.0"
 coroutines-jdk = "1.11.0"
 mutiny-kotlin = "3.3.0"
-jackson = "2.22.1"
+jackson = "2.22.2"
 grpcKotlin = "1.5.0"
 protobuf-gradle-plugin = "0.10.0"
 
