@@ -83,12 +83,12 @@ value class StoreSubspace(val subspace: Subspace) {
     context(tr: ReadTransaction)
     fun getMetadata(storeId: StoreId): CompletableFuture<FdbStoreMetadata?> =
         tr[subspace.pack(Tuple.from(storeId.uuid))].thenApply { valueBytes ->
-            valueBytes?.let { Avro.decodeFromByteArray<FdbStoreMetadata>(it) }
+            valueBytes?.toFdbStoreMetadata()
         }
 
     context(tr: Transaction)
     fun saveMetadata(metadata: FdbStoreMetadata) {
-        tr[subspace.pack(Tuple.from(metadata.storeId))] = Avro.encodeToByteArray(metadata)
+        tr[subspace.pack(Tuple.from(metadata.storeId))] = metadata.encode()
     }
 
     fun range(): Range = subspace.range()

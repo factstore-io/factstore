@@ -24,15 +24,7 @@ class FdbStoreFinder(
             val storeRange = store.context.storeSubspace.range()
             tr.getRange(storeRange).asList()
                 .thenApply { kvList ->
-                    kvList.map { kv ->
-                        val fdbMetadata = Avro.decodeFromByteArray<FdbStoreMetadata>(kv.value)
-
-                        StoreMetadata(
-                            id = StoreId(fdbMetadata.storeId),
-                            name = StoreName(fdbMetadata.name),
-                            createdAt = Instant.ofEpochSecond(fdbMetadata.createdAtEpochSeconds)
-                        )
-                    }
+                    kvList.map { kv -> kv.value.toFdbStoreMetadata().toStoreMetadata() }
                 }
         }.await()
     }
@@ -58,13 +50,7 @@ class FdbStoreFinder(
                     id?.let {
                         store.context.getMetadata(id).thenApply { metadata ->
                             if (metadata != null) {
-                                FindStoreByNameResult.Found(
-                                    StoreMetadata(
-                                        id = StoreId(metadata.storeId),
-                                        name = StoreName(metadata.name),
-                                        createdAt = Instant.ofEpochSecond(metadata.createdAtEpochSeconds)
-                                    )
-                                )
+                                FindStoreByNameResult.Found(metadata.toStoreMetadata())
                             } else {
                                 error("Store name '${request.storeName.value}' resolved to ID $id " +
                                         "but no metadata record exists — index/metadata out of sync")
