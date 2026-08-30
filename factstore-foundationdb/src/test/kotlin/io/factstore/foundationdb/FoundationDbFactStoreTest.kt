@@ -6,7 +6,10 @@ import earth.adi.testcontainers.containers.FoundationDBContainer
 import io.factstore.core.FactStore
 import io.factstore.testing.AbstractFactStoreTest
 import kotlinx.coroutines.runBlocking
+import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeAll
+import org.junit.jupiter.api.Test
+import java.util.UUID
 import org.junit.jupiter.api.TestInstance
 import org.junit.jupiter.api.TestInstance.Lifecycle.PER_CLASS
 import org.testcontainers.junit.jupiter.Container
@@ -49,4 +52,15 @@ class FactStoreTest : AbstractFactStoreTest() {
 
     override fun initializeFactStore(): FactStore = store
 
+    @Test
+    fun testMetadataRoundTripsWithNanos() {
+        val metadata = FdbStoreMetadata(
+            storeId = UUID.randomUUID(),
+            name = "orders",
+            createdAtEpochSeconds = 1_700_000_000L,
+            createdAtNanos = 123_456_789,
+        )
+
+        assertThat(metadata.encode().toFdbStoreMetadata()).isEqualTo(metadata)
+    }
 }

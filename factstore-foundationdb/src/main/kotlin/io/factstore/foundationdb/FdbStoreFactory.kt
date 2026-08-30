@@ -18,10 +18,12 @@ class FdbStoreFactory(
                         return@thenApply CreateStoreResult.NameAlreadyExists(request.storeName)
                     } else {
                         val id = StoreId.generate()
+                        val createdAt = Instant.now()
                         val metadata = FdbStoreMetadata(
                             storeId = id.uuid,
                             name = request.storeName.value,
-                            createdAtEpochSeconds = Instant.now().epochSecond
+                            createdAtEpochSeconds = createdAt.epochSecond,
+                            createdAtNanos = createdAt.nano,
                         )
                         store.context.saveMetadata(metadata, tr)
                         CreateStoreResult.Created(id)
