@@ -593,6 +593,35 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
+    fun testPayloadFormatAndSchemaSurviveRoundTrip(): Unit = runBlocking {
+        val payload = FactPayload(
+            data = """{ "username": "Alice" }""".toByteArray(),
+            format = PayloadFormat("application/json"),
+            schema = PayloadSchemaRef("user-created/v2"),
+        )
+
+        val stored = appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", payload))
+
+        assertThat(stored.payload.format).isEqualTo(PayloadFormat("application/json"))
+        assertThat(stored.payload.schema).isEqualTo(PayloadSchemaRef("user-created/v2"))
+        assertThat(stored.payload.data).isEqualTo("""{ "username": "Alice" }""".toByteArray())
+    }
+
+    @Test
+    fun testPayloadSchemaStaysAbsentWhenOnlyFormatIsSet(): Unit = runBlocking {
+        val payload = FactPayload(
+            data = "{}".toByteArray(),
+            format = PayloadFormat("application/json"),
+            schema = null,
+        )
+
+        val stored = appendStored(input(BOB_SUBJECT_VALUE, "USER_CREATED", payload))
+
+        assertThat(stored.payload.format).isEqualTo(PayloadFormat("application/json"))
+        assertThat(stored.payload.schema).isNull()
+    }
+
+    @Test
     fun appendEventsWithTagsAndFindThem(): Unit = runBlocking {
         val (fact1, fact2, fact3) = appendStored(
             listOf(

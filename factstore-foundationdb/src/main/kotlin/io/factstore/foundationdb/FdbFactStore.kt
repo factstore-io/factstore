@@ -171,7 +171,7 @@ fun SerializableFdbFact.toFact() = Fact(
     payload = FactPayload(
         data = payload.data,
         format = payload.format?.toPayloadFormat(),
-        schema = payload.format?.toPayloadSchemaRef()
+        schema = payload.schema?.toPayloadSchemaRef()
     ),
     subject = Subject(subject),
     appendedAt = Instant.ofEpochSecond(timeEpochSeconds, timeNanos.toLong()),
