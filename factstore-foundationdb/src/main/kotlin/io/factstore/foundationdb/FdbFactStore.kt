@@ -156,8 +156,6 @@ fun Fact.toSerializableFdbFact() = SerializableFdbFact(
     tags = tags.entries.associate { it.key.value to it.value.value },
     payload = SerializableFactPayload(
         data = payload.data,
-        format = payload.format?.value,
-        schema = payload.schema?.value
     )
 )
 
@@ -170,8 +168,6 @@ fun SerializableFdbFact.toFact() = Fact(
     type = FactType(type),
     payload = FactPayload(
         data = payload.data,
-        format = payload.format?.toPayloadFormat(),
-        schema = payload.schema?.toPayloadSchemaRef()
     ),
     subject = Subject(subject),
     appendedAt = Instant.ofEpochSecond(timeEpochSeconds, timeNanos.toLong()),

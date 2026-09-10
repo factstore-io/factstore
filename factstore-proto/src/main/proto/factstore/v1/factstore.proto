@@ -19,11 +19,9 @@ message Fact {
   map<string, string> tags = 7;
 }
 
-// Opaque fact data. format and schema_ref are optional hints for deserialization.
+// Opaque fact data. FactStore does not interpret the bytes.
 message FactPayload {
   bytes data = 1;
-  optional string format = 2;     // e.g. "json", "avro", "protobuf"
-  optional string schema_ref = 3; // schema registry reference
 }
 
 message StoreInfo {
