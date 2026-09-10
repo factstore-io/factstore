@@ -19,19 +19,12 @@ data class Fact(
 data class FactPayload(
     @Serializable(with = ByteArrayAsBase64Serializer::class)
     val data: ByteArray,
-    val format: String? = null,
-    val schemaRef: String? = null,
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is FactPayload) return false
-        return data.contentEquals(other.data) && format == other.format && schemaRef == other.schemaRef
+        return data.contentEquals(other.data)
     }
 
-    override fun hashCode(): Int {
-        var result = data.contentHashCode()
-        result = 31 * result + (format?.hashCode() ?: 0)
-        result = 31 * result + (schemaRef?.hashCode() ?: 0)
-        return result
-    }
+    override fun hashCode(): Int = data.contentHashCode()
 }

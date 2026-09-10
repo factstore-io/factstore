@@ -20,8 +20,6 @@ data class SerializableFdbFact(
 @Serializable
 data class SerializableFactPayload(
     val data: ByteArray,
-    val format: String?,
-    val schema: String?,
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
@@ -29,17 +27,8 @@ data class SerializableFactPayload(
 
         other as SerializableFactPayload
 
-        if (!data.contentEquals(other.data)) return false
-        if (format != other.format) return false
-        if (schema != other.schema) return false
-
-        return true
+        return data.contentEquals(other.data)
     }
 
-    override fun hashCode(): Int {
-        var result = data.contentHashCode()
-        result = 31 * result + format.hashCode()
-        result = 31 * result + schema.hashCode()
-        return result
-    }
+    override fun hashCode(): Int = data.contentHashCode()
 }

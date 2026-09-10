@@ -15,8 +15,8 @@ class FactInputBuilder {
     val metadata: MutableMap<String, String> = mutableMapOf()
     val tags: MutableMap<String, String> = mutableMapOf()
 
-    fun payload(data: ByteArray, format: String? = null, schemaRef: String? = null) {
-        payload = FactPayload(data, format, schemaRef)
+    fun payload(data: ByteArray) {
+        payload = FactPayload(data)
     }
 
     fun build(): FactInput = FactInput(

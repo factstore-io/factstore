@@ -43,8 +43,6 @@ internal fun Fact.toProto(): FactStoreProto.Fact = fact {
 
 internal fun FactPayload.toProto(): FactStoreProto.FactPayload = factPayload {
     data = ByteString.copyFrom(this@toProto.data)
-    this@toProto.format?.let { format = it.value }
-    this@toProto.schema?.let { schemaRef = it.value }
 }
 
 internal fun StoreMetadata.toProto(): FactStoreProto.StoreInfo = storeInfo {
@@ -63,8 +61,6 @@ internal fun FactStoreProto.FactInput.toDomain(): FactInput = FactInput(
 
 internal fun FactStoreProto.FactPayload.toDomain(): FactPayload = FactPayload(
     data = data.toByteArray(),
-    format = if (hasFormat()) PayloadFormat(format) else null,
-    schema = if (hasSchemaRef()) PayloadSchemaRef(schemaRef) else null
 )
 
 internal fun FactStoreProto.AppendCondition.toDomain(): AppendCondition = when (kindCase) {
