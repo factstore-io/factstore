@@ -40,7 +40,7 @@ data class Fact(
     val payload: FactPayload,
     val subject: Subject,
     val appendedAt: Instant,
-    val metadata: Map<String, String> = emptyMap(),
+    val metadata: Map<MetadataKey, MetadataValue> = emptyMap(),
     val tags: Map<TagKey, TagValue> = emptyMap(),
 )
 
@@ -81,19 +81,29 @@ data class FactPayload(
  * Subjects are a modeling concept to group related facts together.
  *
  * All facts with the same subject are treated as part of the same history.
- * FactStore treats the subject as a flat, opaque string, allowing you to use
- * any naming convention that fits your domain (e.g., UUIDs, custom identifiers,
- * or hierarchical paths).
+ * FactStore treats the subject as a flat, opaque value and does not interpret
+ * its structure, so any naming convention that fits the domain may be used —
+ * UUIDs, custom identifiers, or hierarchical paths such as `order/12345`.
  *
- * @property value The string representation of the subject.
- *                 Must not be blank and must not contain leading or trailing whitespace.
+ * @property value the string representation of the subject. Must conform to
+ *         [CLEAN_TEXT_PATTERN] and must not exceed [MAX_LENGTH] characters.
+ *
+ * @throws IllegalArgumentException if [value] is empty, too long, or contains
+ *         characters outside [CLEAN_TEXT_PATTERN]
+ *
  * @author Domenic Cassisi
  */
 @JvmInline
 value class Subject(val value: String) {
+
+    companion object {
+
+        /** The maximum length of a subject. */
+        const val MAX_LENGTH = 256
+    }
+
     init {
-        require(value.isNotBlank()) { "Subject must not be blank" }
-        require(value == value.trim()) { "Subject must not contain leading or trailing whitespaces" }
+        requireCleanText(value, "Subject", MAX_LENGTH)
     }
 }
 
@@ -128,17 +138,29 @@ value class FactId(val uuid: UUID) {
  * categorization, querying, and downstream processing, but FactStore does
  * not impose any domain-specific semantics or schema constraints on them.
  *
- * The value is treated as an opaque, non-blank identifier. Naming conventions
- * and lifecycle management of fact types are intentionally left to clients.
+ * The value is treated as an opaque identifier. Naming conventions and
+ * lifecycle management of fact types are intentionally left to clients;
+ * both `ORDER_PLACED` and `com.acme.OrderPlaced` conform.
  *
- * @property value the textual representation of the fact type
+ * @property value the textual representation of the fact type. Must conform to
+ *         [CLEAN_TEXT_PATTERN] and must not exceed [MAX_LENGTH] characters.
+ *
+ * @throws IllegalArgumentException if [value] is empty, too long, or contains
+ *         characters outside [CLEAN_TEXT_PATTERN]
  *
  * @author Domenic Cassisi
  */
 @JvmInline
 value class FactType(val value: String) {
+
+    companion object {
+
+        /** The maximum length of a fact type. */
+        const val MAX_LENGTH = 256
+    }
+
     init {
-        require(value.isNotBlank()) { "Type must not be blank" }
+        requireCleanText(value, "Fact type", MAX_LENGTH)
     }
 }
 
@@ -149,17 +171,28 @@ value class FactType(val value: String) {
  * or `"archived"`. Tag keys are used in combination with [TagValue]s to
  * support flexible querying and secondary indexing.
  *
- * Tag keys are required to be non-blank. No additional constraints or
- * naming conventions are enforced by FactStore.
+ * Tag keys name a dimension rather than carry data, so they are short by
+ * nature.
  *
- * @property value the textual representation of the tag key
+ * @property value the textual representation of the tag key. Must conform to
+ *         [CLEAN_TEXT_PATTERN] and must not exceed [MAX_LENGTH] characters.
+ *
+ * @throws IllegalArgumentException if [value] is empty, too long, or contains
+ *         characters outside [CLEAN_TEXT_PATTERN]
  *
  * @author Domenic Cassisi
  */
 @JvmInline
 value class TagKey(val value: String) {
+
+    companion object {
+
+        /** The maximum length of a tag key. */
+        const val MAX_LENGTH = 128
+    }
+
     init {
-        require(value.isNotBlank()) { "TagKey must not be blank" }
+        requireCleanText(value, "Tag key", MAX_LENGTH)
     }
 }
 
@@ -172,20 +205,103 @@ value class TagKey(val value: String) {
  * `"archived"`.
  *
  * FactStore does not impose any interpretation on tag values; their meaning
- * is entirely defined by the client.
+ * is entirely defined by the client. It does, however, use them as index keys,
+ * so they are restricted to [CLEAN_TEXT_PATTERN]. Values that need a wider
+ * character set belong in the fact payload, which is stored as opaque bytes and
+ * is never validated or indexed.
  *
- * @property value the textual representation of the tag value, which may be empty
+ * @property value the textual representation of the tag value. Must either be
+ *         empty or conform to [CLEAN_TEXT_PATTERN], and must not exceed
+ *         [MAX_LENGTH] characters.
+ *
+ * @throws IllegalArgumentException if [value] is too long, or is non-empty and
+ *         contains characters outside [CLEAN_TEXT_PATTERN]
  *
  * @author Domenic Cassisi
  */
 @JvmInline
-value class TagValue(val value: String)
+value class TagValue(val value: String) {
+
+    companion object {
+
+        /** The maximum length of a tag value. */
+        const val MAX_LENGTH = 256
+    }
+
+    init {
+        requireCleanText(value, "Tag value", MAX_LENGTH, allowEmpty = true)
+    }
+}
+
+/**
+ * Identifies a metadata entry attached to a [Fact].
+ *
+ * A [MetadataKey] names a piece of auxiliary information about a fact — a
+ * correlation id, a causation id, the producing service — as opposed to the
+ * fact's own data, which belongs in the payload.
+ *
+ * Metadata is not indexed and cannot be queried. Use [TagKey] and [TagValue]
+ * for anything facts need to be selected by.
+ *
+ * @property value the textual representation of the metadata key. Must conform
+ *         to [CLEAN_TEXT_PATTERN] and must not exceed [MAX_LENGTH] characters.
+ *
+ * @throws IllegalArgumentException if [value] is empty, too long, or contains
+ *         characters outside [CLEAN_TEXT_PATTERN]
+ *
+ * @author Domenic Cassisi
+ */
+@JvmInline
+value class MetadataKey(val value: String) {
+
+    companion object {
+
+        /** The maximum length of a metadata key. */
+        const val MAX_LENGTH = 128
+    }
+
+    init {
+        requireCleanText(value, "Metadata key", MAX_LENGTH)
+    }
+}
+
+/**
+ * Represents the value associated with a [MetadataKey].
+ *
+ * As with [TagValue], an empty value is permitted and carries presence-only
+ * meaning. FactStore does not interpret metadata values.
+ *
+ * @property value the textual representation of the metadata value. Must either
+ *         be empty or conform to [CLEAN_TEXT_PATTERN], and must not exceed
+ *         [MAX_LENGTH] characters.
+ *
+ * @throws IllegalArgumentException if [value] is too long, or is non-empty and
+ *         contains characters outside [CLEAN_TEXT_PATTERN]
+ *
+ * @author Domenic Cassisi
+ */
+@JvmInline
+value class MetadataValue(val value: String) {
+
+    companion object {
+
+        /** The maximum length of a metadata value. */
+        const val MAX_LENGTH = 256
+    }
+
+    init {
+        requireCleanText(value, "Metadata value", MAX_LENGTH, allowEmpty = true)
+    }
+}
 
 /**
  * Converts a [UUID] to a [FactId].
  */
 fun UUID.toFactId() = FactId(this)
+fun String.toSubject() = Subject(this)
 fun String.toFactType() = FactType(this)
 fun String.toTagKey() = TagKey(this)
 fun String.toTagValue() = TagValue(this)
+fun String.toMetadataKey() = MetadataKey(this)
+fun String.toMetadataValue() = MetadataValue(this)
 fun String.toFactPayload() = FactPayload(this.toByteArray())

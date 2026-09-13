@@ -25,7 +25,6 @@ class FdbStoreRemover(
                             eventTypeIndexSubspace.clearRange(storeId)
                             createdAtIndexSubspace.clearRange(storeId)
                             subjectIndexSubspace.clearRange(storeId)
-                            metadataIndexSubspace.clearRange(storeId)
                             tagsIndexSubspace.clearRange(storeId)
                             tagsTypeIndexSubspace.clearRange(storeId)
                             idempotencySubspace.clearRange(storeId)

@@ -31,7 +31,6 @@ data class FdbFactStoreContext(
     val eventTypeIndexSubspace: EventTypeIndexSubspace,
     val createdAtIndexSubspace: CreatedAtIndexSubspace,
     val subjectIndexSubspace: SubjectIndexSubspace,
-    val metadataIndexSubspace: MetadataIndexSubspace,
     val tagsIndexSubspace: TagsIndexSubspace,
     val tagsTypeIndexSubspace: TagsTypeIndexSubspace,
     val idempotencySubspace: IdempotencySubspace,
@@ -50,7 +49,6 @@ data class FdbFactStoreContext(
                 eventTypeIndexSubspace = EventTypeIndexSubspace(root.subspace(Tuple.from(EVENT_TYPE_INDEX))),
                 createdAtIndexSubspace = CreatedAtIndexSubspace(root.subspace(Tuple.from(CREATED_AT_INDEX))),
                 subjectIndexSubspace = SubjectIndexSubspace(root.subspace(Tuple.from(SUBJECT_INDEX))),
-                metadataIndexSubspace = MetadataIndexSubspace(root.subspace(Tuple.from(METADATA_INDEX))),
                 tagsIndexSubspace = TagsIndexSubspace(root.subspace(Tuple.from(TAGS_INDEX))),
                 tagsTypeIndexSubspace = TagsTypeIndexSubspace(root.subspace(Tuple.from(TAGS_TYPE_INDEX))),
                 idempotencySubspace = IdempotencySubspace(root.subspace(Tuple.from(IDEMPOTENCY_KEYS)))
@@ -270,27 +268,6 @@ value class SubjectIndexSubspace(val subspace: Subspace) {
 
     fun unpackPosition(key: ByteArray): FactPosition =
         subspace.unpack(key).getLastAsFactPosition()
-
-    context(tr: Transaction)
-    fun clearRange(storeId: StoreId) {
-        tr.clear(subspace.range(Tuple.from(storeId.uuid)))
-    }
-
-}
-
-@JvmInline
-value class MetadataIndexSubspace(val subspace: Subspace) {
-
-    context(tr: Transaction)
-    fun save(storeId: StoreId, factId: FactId, metadata: Map<String, String>, incompleteVersionstamp: Versionstamp) {
-        val factIdTuple = Tuple.from(factId.uuid).pack()
-        metadata.forEach { (key, value) ->
-            val metadataEntryIndex = subspace.packWithVersionstamp(
-                Tuple.from(storeId.uuid, key, value, incompleteVersionstamp)
-            )
-            tr.mutate(SET_VERSIONSTAMPED_KEY, metadataEntryIndex, factIdTuple)
-        }
-    }
 
     context(tr: Transaction)
     fun clearRange(storeId: StoreId) {

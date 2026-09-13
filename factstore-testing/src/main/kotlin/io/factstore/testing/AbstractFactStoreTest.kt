@@ -52,7 +52,7 @@ abstract class AbstractFactStoreTest {
         subject: String,
         type: String,
         payload: FactPayload,
-        metadata: Map<String, String> = emptyMap(),
+        metadata: Map<MetadataKey, MetadataValue> = emptyMap(),
         tags: Map<TagKey, TagValue> = emptyMap(),
     ) = FactInput(
         type = FactType(type),
@@ -581,7 +581,12 @@ abstract class AbstractFactStoreTest {
 
         val (fact1, fact2) = appendStored(
             listOf(
-                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload, metadata = mapOf("test" to "123", "loc" to "world")),
+                input(
+                    ALICE_SUBJECT_VALUE,
+                    "USER_CREATED",
+                    alicePayload,
+                    metadata = mapOf("test".toMetadataKey() to "123".toMetadataValue(), "loc".toMetadataKey() to "world".toMetadataValue()),
+                ),
                 input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload),
             )
         )
@@ -1253,7 +1258,7 @@ abstract class AbstractFactStoreTest {
         store.append(
             testStore,
             input(
-                subject = "USER:user-${FactId.generate()}",
+                subject = "USER:user-${FactId.generate().uuid}",
                 type = "USER_CREATED",
                 payload = """{ "username": "user" }""".toFactPayload(),
                 tags = mapOf(

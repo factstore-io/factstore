@@ -1,5 +1,7 @@
 package io.factstore.server.http
 
+import io.factstore.server.input.*
+
 import io.factstore.core.*
 import io.factstore.server.http.StreamApiException.FactNotFoundException
 import io.factstore.server.http.StreamApiException.StoreNotFoundException
@@ -32,7 +34,7 @@ class StreamResource(
     ): Flow<FactHttp> =
         factStore.subscribe(
             SubscribeRequest(
-                storeName = StoreName(storeName),
+                storeName = storeName.asStoreName(),
                 startPosition = buildStartPosition(after, from?.lowercase(Locale.ENGLISH)),
             )
         ).toResponse()
@@ -49,7 +51,7 @@ class StreamResource(
     ): Flow<FactHttp> =
         factStore.replay(
             ReplayRequest(
-                storeName = StoreName(storeName),
+                storeName = storeName.asStoreName(),
                 start = after?.let { ReplayStart.After(it.toFactId()) } ?: ReplayStart.Beginning,
             )
         ).toResponse()
