@@ -57,11 +57,25 @@ data class Fact(
  *
  * @property data the raw serialized payload data
  *
+ * @throws IllegalArgumentException if [data] exceeds [MAX_SIZE] bytes
+ *
  * @author Domenic Cassisi
  */
 data class FactPayload(
     val data: ByteArray,
 ) {
+
+    companion object {
+
+        /** The maximum size of a payload in bytes: 64 KiB. */
+        const val MAX_SIZE = 65_536
+    }
+
+    init {
+        require(data.size <= MAX_SIZE) {
+            "Payload must not exceed $MAX_SIZE bytes, but was ${data.size}."
+        }
+    }
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
