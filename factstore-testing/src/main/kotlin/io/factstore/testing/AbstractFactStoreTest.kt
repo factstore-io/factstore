@@ -598,6 +598,30 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
+    fun testFactOfMaximumSizeRoundTrips(): Unit = runBlocking {
+        // Every byte value in sequence, so the payload also proves it is stored as
+        // opaque bytes, including the NUL bytes that string-oriented encodings mishandle.
+        val payload = FactPayload(ByteArray(FactPayload.MAX_SIZE) { (it % 256).toByte() })
+
+        val input = FactInput(
+            type = FactType("t".repeat(FactType.MAX_LENGTH)),
+            subject = Subject("s".repeat(Subject.MAX_LENGTH)),
+            payload = payload,
+            metadata = (1..FactInput.MAX_METADATA_ENTRIES).associate { i ->
+                MetadataKey("m$i".padEnd(MetadataKey.MAX_LENGTH, 'x')) to
+                        MetadataValue("v".repeat(MetadataValue.MAX_LENGTH))
+            },
+            tags = (1..FactInput.MAX_TAGS).associate { i ->
+                TagKey("t$i".padEnd(TagKey.MAX_LENGTH, 'x')) to TagValue("v".repeat(TagValue.MAX_LENGTH))
+            },
+        )
+
+        val stored = appendStored(input)
+
+        assertThat(stored).isEqualTo(input.toFact(stored.id, stored.appendedAt))
+    }
+
+    @Test
     fun appendEventsWithTagsAndFindThem(): Unit = runBlocking {
         val (fact1, fact2, fact3) = appendStored(
             listOf(
