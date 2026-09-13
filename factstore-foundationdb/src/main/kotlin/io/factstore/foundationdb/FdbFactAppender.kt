@@ -10,8 +10,6 @@ import java.util.concurrent.CompletableFuture
 
 const val REVERSED = true
 const val LIMIT_ONE = 1
-const val OR_EQUAL = true
-const val ZERO_OFFSET = 0
 
 class FdbFactAppender(
     private val store: FdbFactStore,
@@ -161,29 +159,22 @@ class FdbFactAppender(
         afterPosition: FactPosition?
     ): CompletableFuture<Set<FactId>> {
 
-        // Helper function to create begin and end selectors for the range query
+        // Helper function to create selectors covering the tag's index after the given position
         fun createSelectors(
             tag: Pair<TagKey, TagValue>,
             afterPosition: FactPosition?
         ): Pair<KeySelector, KeySelector> {
-            val key = if (afterPosition != null) {
-                // If there's a afterPosition, include it in the tuple
-                store.context.tagsIndexSubspace.getKey(storeId, tag, afterPosition)
-            } else {
-                // If there's no afterPosition, just use the tag
-                store.context.tagsIndexSubspace.getKey(storeId, tag)
-            }
-
-            // Create the beginSelector (first greater than if afterPosition is provided)
-            val beginSelector = if (afterPosition != null) {
-                KeySelector.firstGreaterThan(key)
-            } else {
-                KeySelector(key, OR_EQUAL, ZERO_OFFSET)
-            }
-
-            // Create the end selector based on the tag range
             val range = store.context.tagsIndexSubspace.range(storeId, tag)
-            val endSelector = KeySelector.lastLessOrEqual(range.end)
+
+            // Begin right after the position if one is given, otherwise at the start of the tag's index
+            val beginSelector = if (afterPosition != null) {
+                KeySelector.firstGreaterThan(store.context.tagsIndexSubspace.getKey(storeId, tag, afterPosition))
+            } else {
+                KeySelector.firstGreaterOrEqual(range.begin)
+            }
+
+            // End at the end of the tag's index
+            val endSelector = KeySelector.firstGreaterOrEqual(range.end)
 
             return Pair(beginSelector, endSelector)
         }
@@ -191,7 +182,7 @@ class FdbFactAppender(
         val futures: List<CompletableFuture<Set<FactId>>> = tags.map { (key, value) ->
             val (beginSelector, endSelector) = createSelectors(key to value, afterPosition)
 
-            tr.getRange(beginSelector, endSelector, LIMIT_ONE)
+            tr.getRange(beginSelector, endSelector)
                 .asList()
                 .thenApply { keyValues ->
                     keyValues.map {
@@ -200,12 +191,11 @@ class FdbFactAppender(
                 }
         }
 
-        // After all futures complete, perform the union of the sets
+        // After all futures complete, intersect the sets: a fact matches only if it carries every tag
         return CompletableFuture.allOf(*futures.toTypedArray()).thenApply {
-            // Union the sets from all futures
             futures
                 .map { it.getNow(emptySet()) } // Extract the result of each CompletableFuture
-                .reduce { acc, set -> acc.union(set) } // Union all sets to get all matching fact IDs
+                .reduce { acc, set -> acc.intersect(set) } // Intersect all sets to get the facts carrying every tag
                 .orEmpty() // Return empty set if no sets are present
         }
     }
@@ -214,26 +204,21 @@ class FdbFactAppender(
     private fun TagTypeItem.queryByTypeAndTags(
         afterPosition: FactPosition?
     ): CompletableFuture<Set<FactId>> {
-        // Helper function to create start and end selectors
+        // Helper function to create selectors covering the type and tag's index after the given position
         fun createSelectors(
             type: FactType,
             tag: Pair<TagKey, TagValue>,
             afterPosition: FactPosition?
         ): Pair<KeySelector, KeySelector> {
-            val key = if (afterPosition != null) {
-                store.context.tagsTypeIndexSubspace.getKey(storeId, type, tag, afterPosition)
-            } else {
-                store.context.tagsTypeIndexSubspace.getKey(storeId, type, tag)
-            }
+            val range = store.context.tagsTypeIndexSubspace.range(storeId, type, tag)
 
             val startKeySelector = if (afterPosition != null) {
-                KeySelector.firstGreaterThan(key)
+                KeySelector.firstGreaterThan(store.context.tagsTypeIndexSubspace.getKey(storeId, type, tag, afterPosition))
             } else {
-                KeySelector(key, OR_EQUAL, ZERO_OFFSET)
+                KeySelector.firstGreaterOrEqual(range.begin)
             }
 
-            val range = store.context.tagsTypeIndexSubspace.range(storeId, type, tag)
-            val endSelector = KeySelector.lastLessOrEqual(range.end)
+            val endSelector = KeySelector.firstGreaterOrEqual(range.end)
 
             return Pair(startKeySelector, endSelector)
         }
@@ -244,7 +229,7 @@ class FdbFactAppender(
                 // Create the start and end selectors
                 val (startKeySelector, endSelector) = createSelectors(type, key to value, afterPosition)
 
-                tr.getRange(startKeySelector, endSelector, LIMIT_ONE)
+                tr.getRange(startKeySelector, endSelector)
                     .asList()
                     .thenApply { keyValues ->
                         keyValues.map {

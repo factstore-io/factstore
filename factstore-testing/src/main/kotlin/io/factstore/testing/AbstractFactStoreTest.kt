@@ -1447,6 +1447,128 @@ abstract class AbstractFactStoreTest {
 
     }
 
+    // ===== Tag queries require every tag of a query item =====
+    //
+    // A query item matches a fact only if the fact carries all of the item's tags. The
+    // facts below deliberately carry the queried tags separately and interleaved, so a
+    // backend cannot pass by looking at each tag's index on its own.
+
+    private val courseTag = TagKey("course") to TagValue("c1")
+    private val studentTag = TagKey("student") to TagValue("s1")
+    private val semesterTag = TagKey("semester") to TagValue("2026")
+
+    private suspend fun appendTagged(type: String, vararg tags: Pair<TagKey, TagValue>): Fact =
+        appendStored(input(ALICE_SUBJECT_VALUE, type, alicePayload, tags = mapOf(*tags)))
+
+    private suspend fun appendWithTagQueryCondition(query: TagQuery, after: FactId? = null): AppendResult =
+        store.append(
+            AppendRequest(
+                storeName = testStore,
+                facts = listOf(input(ALICE_SUBJECT_VALUE, "UNRELATED", alicePayload)),
+                idempotencyKey = IdempotencyKey(),
+                condition = AppendCondition.TagQueryBased(failIfEventsMatch = query, after = after),
+            )
+        )
+
+    @Test
+    fun testTagQueryRequiresAllTagsForTagOnlyCondition(): Unit = runBlocking {
+        val query = TagQuery(listOf(TagOnlyQueryItem(mapOf(courseTag, studentTag))))
+
+        appendTagged("COURSE_DEFINED", courseTag)
+        appendTagged("STUDENT_REGISTERED", studentTag)
+        appendTagged("COURSE_UPDATED", courseTag)
+
+        assertThat(appendWithTagQueryCondition(query))
+            .describedAs("no fact carries both tags yet")
+            .isInstanceOf(AppendResult.Appended::class.java)
+
+        appendTagged("STUDENT_SUBSCRIBED", courseTag, studentTag)
+
+        assertThat(appendWithTagQueryCondition(query))
+            .describedAs("a fact carrying both tags now exists")
+            .isInstanceOf(AppendResult.AppendConditionViolated::class.java)
+    }
+
+    @Test
+    fun testTagQueryRequiresAllTagsForTagTypeCondition(): Unit = runBlocking {
+        val query = TagQuery(listOf(TagTypeItem(setOf(FactType("STUDENT_SUBSCRIBED")), mapOf(courseTag, studentTag))))
+
+        appendTagged("STUDENT_SUBSCRIBED", courseTag)
+        appendTagged("STUDENT_SUBSCRIBED", studentTag)
+        appendTagged("STUDENT_SUBSCRIBED", TagKey("course") to TagValue("c2"), studentTag)
+        appendTagged("STUDENT_UNSUBSCRIBED", courseTag, studentTag)
+
+        assertThat(appendWithTagQueryCondition(query))
+            .describedAs("no fact of the queried type carries both tags yet")
+            .isInstanceOf(AppendResult.Appended::class.java)
+
+        appendTagged("STUDENT_SUBSCRIBED", courseTag, studentTag)
+
+        assertThat(appendWithTagQueryCondition(query))
+            .describedAs("a fact of the queried type carrying both tags now exists")
+            .isInstanceOf(AppendResult.AppendConditionViolated::class.java)
+    }
+
+    @Test
+    fun testTagQueryRequiresAllTagsAfterPositionCondition(): Unit = runBlocking {
+        val query = TagQuery(listOf(TagOnlyQueryItem(mapOf(courseTag, studentTag, semesterTag))))
+
+        val cursor = appendTagged("STUDENT_SUBSCRIBED", courseTag, studentTag, semesterTag)
+        appendTagged("STUDENT_SUBSCRIBED", courseTag, studentTag)
+        appendTagged("STUDENT_SUBSCRIBED", studentTag, semesterTag)
+        appendTagged("STUDENT_SUBSCRIBED", courseTag, semesterTag)
+
+        assertThat(appendWithTagQueryCondition(query, after = cursor.id))
+            .describedAs("the only fact carrying all three tags is not after the cursor")
+            .isInstanceOf(AppendResult.Appended::class.java)
+
+        appendTagged("STUDENT_SUBSCRIBED", courseTag, studentTag, semesterTag)
+
+        assertThat(appendWithTagQueryCondition(query, after = cursor.id))
+            .describedAs("a fact carrying all three tags now exists after the cursor")
+            .isInstanceOf(AppendResult.AppendConditionViolated::class.java)
+    }
+
+    @Test
+    fun testTagQueryRequiresAllTagsAcrossLongInterleaving(): Unit = runBlocking {
+        val query = TagQuery(listOf(TagOnlyQueryItem(mapOf(courseTag, studentTag))))
+
+        // Hundreds of facts alternate between the two tags without ever carrying both, so a
+        // backend that intersects the tag indexes step by step has to take many steps before
+        // it can rule out a match.
+        store.append(
+            testStore,
+            (1..500).map { i ->
+                input(ALICE_SUBJECT_VALUE, "INTERLEAVED", alicePayload, tags = mapOf(if (i % 2 == 0) courseTag else studentTag))
+            }
+        )
+
+        assertThat(appendWithTagQueryCondition(query))
+            .describedAs("no fact carries both tags")
+            .isInstanceOf(AppendResult.Appended::class.java)
+
+        appendTagged("STUDENT_SUBSCRIBED", courseTag, studentTag)
+
+        assertThat(appendWithTagQueryCondition(query))
+            .describedAs("a fact carrying both tags now exists after the interleaved facts")
+            .isInstanceOf(AppendResult.AppendConditionViolated::class.java)
+    }
+
+    @Test
+    fun testTagQueryRequiresAllTagsForTagOnlyRead(): Unit = runBlocking {
+        appendTagged("COURSE_DEFINED", courseTag)
+        appendTagged("STUDENT_REGISTERED", studentTag)
+        val subscribed = appendTagged("STUDENT_SUBSCRIBED", courseTag, studentTag)
+        appendTagged("COURSE_UPDATED", courseTag)
+
+        val result = store.findByTagQuery(
+            FindByTagQueryRequest(testStore, TagQuery(listOf(TagOnlyQueryItem(mapOf(courseTag, studentTag)))))
+        )
+
+        assertThat(result).isInstanceOf(FindByTagQueryResult.Found::class.java)
+        assertThat((result as FindByTagQueryResult.Found).facts).containsExactly(subscribed)
+    }
+
     @Test
     fun testIsolationOfFactStoreInstances(): Unit = runBlocking {
 

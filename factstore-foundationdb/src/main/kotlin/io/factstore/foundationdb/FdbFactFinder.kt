@@ -218,10 +218,11 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
                 }.toSet()
             }
         }
+        // A fact matches only if it carries every tag of the item.
         return CompletableFuture.allOf(*futures.toTypedArray()).thenApply {
             futures
                 .map { it.getNow(emptySet()) }
-                .reduce { acc, set -> acc.union(set) }
+                .reduce { acc, set -> acc.intersect(set) }
                 .orEmpty()
         }
     }
