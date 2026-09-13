@@ -18,9 +18,10 @@ sealed interface TagQueryItem
  * contains all specified tag key-value pairs.
  *
  * @property types the allowed fact types to match
- * @property tags the required tag key-value pairs
+ * @property tags the required tag key-value pairs; at most [FactInput.MAX_TAGS]
  *
- * @throws IllegalArgumentException if either [types] or [tags] is empty
+ * @throws IllegalArgumentException if either [types] or [tags] is empty, or if
+ *         [tags] requires more tags than a fact can carry
  *
  * @author Domenic Cassisi
  */
@@ -32,6 +33,7 @@ data class TagTypeItem(
         require(types.isNotEmpty() && tags.isNotEmpty()) {
             "Both types and tags must be defined!"
         }
+        requireSatisfiableTagCount(tags)
     }
 }
 
@@ -41,9 +43,10 @@ data class TagTypeItem(
  * A fact matches this query item if it contains all specified tag key-value
  * pairs, regardless of its type.
  *
- * @property tags the required tag key-value pairs
+ * @property tags the required tag key-value pairs; at most [FactInput.MAX_TAGS]
  *
- * @throws IllegalArgumentException if [tags] is empty
+ * @throws IllegalArgumentException if [tags] is empty, or requires more tags
+ *         than a fact can carry
  *
  * @author Domenic Cassisi
  */
@@ -52,6 +55,7 @@ data class TagOnlyQueryItem(
 ) : TagQueryItem {
     init {
         require(tags.isNotEmpty()) { "Tags must be defined!" }
+        requireSatisfiableTagCount(tags)
     }
 }
 
@@ -74,5 +78,17 @@ data class TagQuery(
         require(queryItems.isNotEmpty()) {
             "At least one query item must be present!"
         }
+    }
+}
+
+/**
+ * Rejects a tag requirement that no fact could ever satisfy.
+ *
+ * A fact matches only if it carries every required tag, and no fact carries
+ * more than [FactInput.MAX_TAGS], so requiring more would silently match nothing.
+ */
+internal fun requireSatisfiableTagCount(tags: Map<TagKey, TagValue>) {
+    require(tags.size <= FactInput.MAX_TAGS) {
+        "At most ${FactInput.MAX_TAGS} tags can be required, since no fact carries more, but ${tags.size} were."
     }
 }

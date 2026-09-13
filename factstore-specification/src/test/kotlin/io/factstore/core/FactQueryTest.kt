@@ -48,6 +48,21 @@ class FactQueryTest {
         assertThat(ex.message).isEqualTo("Both types and tags must be defined!")
     }
 
+    @Test
+    fun `TagTypeItem accepts as many tags as a fact can carry`() {
+        val item = TagTypeItem(setOf(FactType("person")), tags(FactInput.MAX_TAGS))
+
+        assertThat(item.tags).hasSize(FactInput.MAX_TAGS)
+    }
+
+    @Test
+    fun `TagTypeItem fails when it requires more tags than a fact can carry`() {
+        val ex = assertThrows<IllegalArgumentException> {
+            TagTypeItem(setOf(FactType("person")), tags(FactInput.MAX_TAGS + 1))
+        }
+        assertThat(ex.message).contains(FactInput.MAX_TAGS.toString())
+    }
+
     // --- TagOnlyQueryItem tests ---
 
     @Test
@@ -65,6 +80,21 @@ class FactQueryTest {
             TagOnlyQueryItem(emptyMap())
         }
         assertThat(ex.message).isEqualTo("Tags must be defined!")
+    }
+
+    @Test
+    fun `TagOnlyQueryItem accepts as many tags as a fact can carry`() {
+        val item = TagOnlyQueryItem(tags(FactInput.MAX_TAGS))
+
+        assertThat(item.tags).hasSize(FactInput.MAX_TAGS)
+    }
+
+    @Test
+    fun `TagOnlyQueryItem fails when it requires more tags than a fact can carry`() {
+        val ex = assertThrows<IllegalArgumentException> {
+            TagOnlyQueryItem(tags(FactInput.MAX_TAGS + 1))
+        }
+        assertThat(ex.message).contains(FactInput.MAX_TAGS.toString())
     }
 
     // --- TagQuery tests ---
@@ -85,4 +115,6 @@ class FactQueryTest {
             TagQuery(emptyList())
         }.hasMessage("At least one query item must be present!")
     }
+
+    private fun tags(count: Int) = (1..count).associate { TagKey("key$it") to TagValue("value$it") }
 }
