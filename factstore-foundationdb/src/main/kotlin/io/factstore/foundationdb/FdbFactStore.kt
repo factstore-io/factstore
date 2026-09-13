@@ -16,7 +16,6 @@ const val HEAD_INDEX = 100
 const val CREATED_AT_INDEX = 101
 const val EVENT_TYPE_INDEX = 102
 const val SUBJECT_INDEX = 103
-const val METADATA_INDEX = 104
 const val TAGS_INDEX = 105
 const val TAGS_TYPE_INDEX = 106
 
@@ -41,7 +40,6 @@ const val FACT_POSITIONS = 2
  *  /fact-store/type-index/{type}/{versionstamp} = (factId)
  *  /fact-store/created-at-index/{epochSecond}/{nano}/{versionstamp} = (factId)
  *  /fact-store/subject-index/{subjectType}/{subjectId}/{versionstamp} = (factId)
- *  /fact-store/metadata-index/{key}/{value}/{versionstamp} = (factId)
  *  /fact-store/tags-index/{key}/{value}/{versionstamp} = (factId)
  *  /fact-store/tags-type-index/{type}/{key}/{value}/{versionstamp} = (factId)
  *  ```
@@ -85,7 +83,6 @@ data class FdbFactStore(
         context.eventTypeIndexSubspace.save(storeId, id, type, incompleteVersionstamp)
         context.createdAtIndexSubspace.save(storeId, id, appendedAt, incompleteVersionstamp)
         context.subjectIndexSubspace.save(storeId, id, subject, incompleteVersionstamp)
-        context.metadataIndexSubspace.save(storeId, id, metadata, incompleteVersionstamp)
         context.tagsIndexSubspace.save(storeId, id, tags, incompleteVersionstamp)
         context.tagsTypeIndexSubspace.save(storeId, id, type, tags, incompleteVersionstamp)
     }
@@ -152,7 +149,7 @@ fun Fact.toSerializableFdbFact() = SerializableFdbFact(
     subject = subject.value,
     timeEpochSeconds = appendedAt.epochSecond,
     timeNanos = appendedAt.nano,
-    metadata = metadata,
+    metadata = metadata.entries.associate { it.key.value to it.value.value },
     tags = tags.entries.associate { it.key.value to it.value.value },
     payload = SerializableFactPayload(
         data = payload.data,
@@ -171,6 +168,6 @@ fun SerializableFdbFact.toFact() = Fact(
     ),
     subject = Subject(subject),
     appendedAt = Instant.ofEpochSecond(timeEpochSeconds, timeNanos.toLong()),
-    metadata = metadata,
+    metadata = metadata.entries.associate { it.key.toMetadataKey() to it.value.toMetadataValue() },
     tags = tags.entries.associate { it.key.toTagKey() to it.value.toTagValue() }
 )

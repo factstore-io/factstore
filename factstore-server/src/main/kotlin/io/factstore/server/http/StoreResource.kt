@@ -1,5 +1,7 @@
 package io.factstore.server.http
 
+import io.factstore.server.input.*
+
 import io.factstore.core.CreateStoreRequest
 import io.factstore.core.CreateStoreResult
 import io.factstore.core.ExistsStoreByNameRequest
@@ -28,7 +30,7 @@ class StoreResource(
     suspend fun createStore(
         @Valid request: CreateStoreHttpRequest
     ): Response = store
-        .create(CreateStoreRequest(StoreName(request.name)))
+        .create(CreateStoreRequest(request.name.asStoreName()))
         .toResponse()
 
     private fun CreateStoreResult.toResponse(): Response = when (this) {
@@ -45,7 +47,7 @@ class StoreResource(
     @Produces(APPLICATION_JSON)
     suspend fun findStore(
         @PathParam("name") @ValidStoreName name: String
-    ): Response = StoreName(name).let { storeName ->
+    ): Response = name.asStoreName().let { storeName ->
         store.findByName(FindStoreByNameRequest(storeName)).toResponse()
     }
 
@@ -59,7 +61,7 @@ class StoreResource(
     suspend fun existsByName(
         @PathParam("name") @ValidStoreName name: String
     ): Response {
-        store.existsByName(ExistsStoreByNameRequest(StoreName(name))).let { result ->
+        store.existsByName(ExistsStoreByNameRequest(name.asStoreName())).let { result ->
             return when (result) {
                 ExistsStoreByNameResult.StoreExists -> Response.ok().build()
                 ExistsStoreByNameResult.StoreAbsent -> Response.status(Response.Status.NOT_FOUND).build()
@@ -85,7 +87,7 @@ class StoreResource(
         @PathParam("name") @ValidStoreName name: String
     ): Response =
         store
-            .remove(RemoveStoreRequest(StoreName(name)))
+            .remove(RemoveStoreRequest(name.asStoreName()))
             .toResponse()
 
     private fun RemoveStoreResult.toResponse(): Response = when (this) {

@@ -1,5 +1,7 @@
 package io.factstore.server.http
 
+import io.factstore.server.input.*
+
 import jakarta.ws.rs.core.Response
 import io.factstore.core.AppendCondition
 import io.factstore.core.AppendRequest
@@ -42,7 +44,7 @@ fun AppendConditionHttp.toAppendCondition(): AppendCondition =
 
         is AppendConditionHttp.ExpectedLastFact ->
             AppendCondition.ExpectedLastFact(
-                subject = Subject(subject),
+                subject = subject.asSubject(),
                 expectedLastFactId = expectedLastFactId?.toFactId()
             )
 
@@ -67,17 +69,13 @@ fun TagQueryItemHttp.toTagQueryItem(): TagQueryItem =
     when (this) {
         is TagQueryItemHttp.TagOnly ->
             TagOnlyQueryItem(
-                tags = tags.entries.associate { (k, v) ->
-                    k.toTagKey() to v.toTagValue()
-                }
+                tags = tags.asTags()
             )
 
         is TagQueryItemHttp.TagType ->
             TagTypeItem(
-                types = types.map { it.toFactType() }.toSet(),
-                tags = tags.entries.associate { (k, v) ->
-                    k.toTagKey() to v.toTagValue()
-                }
+                types = types.map { it.asFactType() }.toSet(),
+                tags = tags.asTags()
             )
     }
 
@@ -85,11 +83,11 @@ fun TagQueryItemHttp.toTagQueryItem(): TagQueryItem =
 fun List<FactInputHttp>.toFactInputs() = map { it.toFactInput() }
 
 fun FactInputHttp.toFactInput() = FactInput(
-    type = type.toFactType(),
+    type = type.asFactType(),
     payload = payload.toPayload(),
-    subject = Subject(subject),
-    metadata = metadata ?: emptyMap(),
-    tags = tags?.entries?.associate { Pair(it.key.toTagKey(), it.value.toTagValue()) } ?: emptyMap()
+    subject = subject.asSubject(),
+    metadata = metadata?.asMetadata() ?: emptyMap(),
+    tags = tags?.asTags() ?: emptyMap()
 )
 
 private fun FactPayloadHttp.toPayload(): FactPayload = FactPayload(
@@ -102,7 +100,7 @@ fun Fact.toFactHttp() = FactHttp(
     subject = subject.value,
     appendedAt = appendedAt,
     payload = payload.toFactPayloadHttp(),
-    metadata = metadata,
+    metadata = metadata.entries.associate { Pair(it.key.value, it.value.value) },
     tags = tags.entries.associate { Pair(it.key.value, it.value.value) }
 )
 

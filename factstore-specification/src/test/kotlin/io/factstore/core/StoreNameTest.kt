@@ -47,7 +47,7 @@ class StoreNameTest {
             "a",
             "A",
             "abc123_-def",
-            "a".repeat(255)
+            "a".repeat(256)
         )
 
         validNames.forEach { validName ->
@@ -57,8 +57,8 @@ class StoreNameTest {
     }
 
     @Test
-    fun `create should reject names exceeding 255 characters`(): Unit = runBlocking {
-        val longName = "a".repeat(256)
+    fun `create should reject names exceeding 256 characters`(): Unit = runBlocking {
+        val longName = "a".repeat(257)
 
         val exception = catchThrowable {
             runBlocking { StoreName(longName) }
@@ -66,6 +66,6 @@ class StoreNameTest {
 
         assertThat(exception)
             .isInstanceOf(IllegalArgumentException::class.java)
-            .hasMessageContaining("255")
+            .hasMessageContaining("256")
     }
 }

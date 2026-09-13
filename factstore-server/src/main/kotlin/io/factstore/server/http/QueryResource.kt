@@ -1,5 +1,7 @@
 package io.factstore.server.http
 
+import io.factstore.server.input.*
+
 import io.factstore.core.*
 import io.factstore.server.http.Reason.Conflict
 import io.factstore.server.http.validation.ValidStoreName
@@ -24,7 +26,7 @@ class QueryResource(
         @PathParam("factId") factId: UUID,
     ): Response =
         store
-            .findById(FindByIdRequest(StoreName(storeName), factId.toFactId()))
+            .findById(FindByIdRequest(storeName.asStoreName(), factId.toFactId()))
             .toResponse()
 
     @POST
@@ -36,7 +38,7 @@ class QueryResource(
         @Valid factQueryHttp: FactQueryHttp
     ): Response =
         store
-            .findByTagQuery(FindByTagQueryRequest(StoreName(storeName), factQueryHttp.toTagQuery()))
+            .findByTagQuery(FindByTagQueryRequest(storeName.asStoreName(), factQueryHttp.toTagQuery()))
             .toResponse()
 
     @GET
@@ -51,8 +53,8 @@ class QueryResource(
         store
             .findBySubject(
                 FindBySubjectRequest(
-                    storeName = StoreName(storeName),
-                    subject = Subject(subject),
+                    storeName = storeName.asStoreName(),
+                    subject = subject.asSubject(),
                     limit = limit.toLimit(),
                     direction = direction,
                 )
@@ -79,7 +81,7 @@ class QueryResource(
             tags.isNotEmpty() -> store
                 .findByTags(
                     FindByTagsRequest(
-                        storeName = StoreName(storeName),
+                        storeName = storeName.asStoreName(),
                         tags = tags.associate { it.toTagPair() },
                         limit = limit.toLimit(),
                         direction = direction,
@@ -89,7 +91,7 @@ class QueryResource(
             else -> store
                 .findInTimeRange(
                     FindInTimeRangeRequest(
-                        storeName = StoreName(storeName),
+                        storeName = storeName.asStoreName(),
                         timeRange = TimeRange(start = from, end = to),
                         limit = limit.toLimit(),
                         direction = direction,

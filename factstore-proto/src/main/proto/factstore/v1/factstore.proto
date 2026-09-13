@@ -124,7 +124,7 @@ service StoreService {
 // -- CreateStore --
 
 message CreateStoreRequest {
-  // Must match: ^[a-zA-Z]([a-zA-Z0-9_-]{0,253}[a-zA-Z0-9])?$|^[a-zA-Z]$
+  // Must match: ^[a-zA-Z]([a-zA-Z0-9_-]{0,254}[a-zA-Z0-9])?$
   string name = 1;
 }
 

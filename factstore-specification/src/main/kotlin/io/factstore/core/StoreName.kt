@@ -4,8 +4,8 @@ package io.factstore.core
 value class StoreName(val value: String) {
 
     companion object {
-        const val MAX_LENGTH = 255
-        const val REGEX_PATTERN = "^[a-zA-Z]([a-zA-Z0-9_-]{0,253}[a-zA-Z0-9])?$|^[a-zA-Z]$"
+        const val MAX_LENGTH = 256
+        const val REGEX_PATTERN = "^[a-zA-Z]([a-zA-Z0-9_-]{0,254}[a-zA-Z0-9])?$"
         private val regex = Regex(REGEX_PATTERN)
     }
 
@@ -20,3 +20,5 @@ value class StoreName(val value: String) {
         return value
     }
 }
+
+fun String.toStoreName() = StoreName(this)

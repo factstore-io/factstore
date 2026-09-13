@@ -1,5 +1,7 @@
 package io.factstore.server.grpc
 
+import io.factstore.server.input.*
+
 import com.google.protobuf.ByteString
 import com.google.protobuf.Timestamp
 import io.factstore.core.*
@@ -37,7 +39,7 @@ internal fun Fact.toProto(): FactStoreProto.Fact = fact {
     subject = this@toProto.subject.value
     appendedAt = this@toProto.appendedAt.toTimestamp()
     payload = this@toProto.payload.toProto()
-    metadata.putAll(this@toProto.metadata)
+    metadata.putAll(this@toProto.metadata.entries.associate { (k, v) -> k.value to v.value })
     tags.putAll(this@toProto.tags.entries.associate { (k, v) -> k.value to v.value })
 }
 
@@ -52,11 +54,11 @@ internal fun StoreMetadata.toProto(): FactStoreProto.StoreInfo = storeInfo {
 }
 
 internal fun FactStoreProto.FactInput.toDomain(): FactInput = FactInput(
-    type = type.toFactType(),
-    subject = Subject(subject),
+    type = type.asFactType(),
+    subject = subject.asSubject(),
     payload = payload.toDomain(),
-    metadata = metadataMap,
-    tags = tagsMap.entries.associate { (k, v) -> k.toTagKey() to v.toTagValue() }
+    metadata = metadataMap.asMetadata(),
+    tags = tagsMap.asTags()
 )
 
 internal fun FactStoreProto.FactPayload.toDomain(): FactPayload = FactPayload(
@@ -65,7 +67,7 @@ internal fun FactStoreProto.FactPayload.toDomain(): FactPayload = FactPayload(
 
 internal fun FactStoreProto.AppendCondition.toDomain(): AppendCondition = when (kindCase) {
     FactStoreProto.AppendCondition.KindCase.EXPECTED_LAST_FACT -> AppendCondition.ExpectedLastFact(
-        subject = Subject(expectedLastFact.subject),
+        subject = expectedLastFact.subject.asSubject(),
         expectedLastFactId = if (expectedLastFact.hasExpectedLastFactId())
             expectedLastFact.expectedLastFactId.toFactId()
         else null
@@ -90,12 +92,12 @@ internal fun FactStoreProto.TagQuery.toDomain(): TagQuery = TagQuery(
 
 internal fun FactStoreProto.TagQueryItem.toDomain(): TagQueryItem = when (kindCase) {
     FactStoreProto.TagQueryItem.KindCase.TAG_ONLY -> TagOnlyQueryItem(
-        tags = tagOnly.tagsMap.entries.associate { (k, v) -> k.toTagKey() to v.toTagValue() }
+        tags = tagOnly.tagsMap.asTags()
     )
 
     FactStoreProto.TagQueryItem.KindCase.TAG_TYPE -> TagTypeItem(
-        types = tagType.typesList.map { it.toFactType() }.toSet(),
-        tags = tagType.tagsMap.entries.associate { (k, v) -> k.toTagKey() to v.toTagValue() }
+        types = tagType.typesList.map { it.asFactType() }.toSet(),
+        tags = tagType.tagsMap.asTags()
     )
 
     else -> throw IllegalArgumentException("TagQueryItem has no kind set")
@@ -105,7 +107,7 @@ typealias GrpcAppendRequest = FactStoreProto.AppendFactsRequest
 typealias GrpcAppendFactsResponse = FactStoreProto.AppendFactsResponse
 
 internal fun GrpcAppendRequest.toDomainRequest(): AppendRequest {
-    val storeName = StoreName(storeName)
+    val storeName = storeName.asStoreName()
     val facts = factsList.map { it.toDomain() }
     val idempotencyKey = if (hasIdempotencyKey())
         IdempotencyKey(idempotencyKey.parseUuid())
@@ -217,7 +219,7 @@ typealias GrpcCreateStoreRequest = FactStoreProto.CreateStoreRequest
 typealias GrpcCreateStoreResponse = FactStoreProto.CreateStoreResponse
 
 internal fun GrpcCreateStoreRequest.toDomainRequest(): CreateStoreRequest =
-    CreateStoreRequest(StoreName(name))
+    CreateStoreRequest(name.asStoreName())
 
 internal suspend fun CreateStoreRequest.publishTo(factStore: FactStore): CreateStoreResult =
     factStore.create(this)
@@ -241,7 +243,7 @@ typealias GrpcDeleteStoreRequest = FactStoreProto.DeleteStoreRequest
 typealias GrpcDeleteStoreResponse = FactStoreProto.DeleteStoreResponse
 
 internal fun GrpcDeleteStoreRequest.toDomainRequest(): RemoveStoreRequest =
-    RemoveStoreRequest(StoreName(name))
+    RemoveStoreRequest(name.asStoreName())
 
 internal suspend fun RemoveStoreRequest.publishTo(factStore: FactStore): RemoveStoreResult =
     factStore.remove(this)
@@ -258,7 +260,7 @@ typealias GrpcFindStoreByNameRequest = FactStoreProto.GetStoreRequest
 typealias GrpcFindStoreByNameResult = FactStoreProto.GetStoreResponse
 
 internal fun GrpcFindStoreByNameRequest.toDomainRequest(): FindStoreByNameRequest =
-    FindStoreByNameRequest(StoreName(name))
+    FindStoreByNameRequest(name.asStoreName())
 
 internal suspend fun FindStoreByNameRequest.publishTo(factStore: FactStore): FindStoreByNameResult =
     factStore.findByName(this)
@@ -274,7 +276,7 @@ typealias GrpcGetFactRequest = FactStoreProto.GetFactRequest
 
 internal fun GrpcGetFactRequest.toDomainRequest(): FindByIdRequest =
     FindByIdRequest(
-        storeName = StoreName(storeName),
+        storeName = storeName.asStoreName(),
         factId = factId.toFactId()
     )
 
@@ -285,7 +287,7 @@ typealias GrpcFactExistsRequest = FactStoreProto.FactExistsRequest
 
 internal fun GrpcFactExistsRequest.toDomainRequest(): ExistsByIdRequest =
     ExistsByIdRequest(
-        storeName = StoreName(storeName),
+        storeName = storeName.asStoreName(),
         factId = factId.toFactId()
     )
 
@@ -296,8 +298,8 @@ typealias GrpcFindBySubjectRequest = FactStoreProto.FindFactsBySubjectRequest
 
 internal fun GrpcFindBySubjectRequest.toDomainRequest(): FindBySubjectRequest =
     FindBySubjectRequest(
-        storeName = StoreName(storeName),
-        subject = Subject(subject),
+        storeName = storeName.asStoreName(),
+        subject = subject.asSubject(),
         limit = if (hasLimit()) Limit.of(limit) else Limit.None,
         direction = direction.toCore()
     )
@@ -309,8 +311,8 @@ typealias GrpcFindByTagsRequest = FactStoreProto.FindFactsByTagsRequest
 
 internal fun GrpcFindByTagsRequest.toDomainRequest(): FindByTagsRequest =
     FindByTagsRequest(
-        storeName = StoreName(storeName),
-        tags = tagsMap.entries.associate { (k, v) -> k.toTagKey() to v.toTagValue() },
+        storeName = storeName.asStoreName(),
+        tags = tagsMap.asTags(),
         limit = if (hasLimit()) Limit.of(limit) else Limit.None,
         direction = direction.toCore()
     )
@@ -322,7 +324,7 @@ typealias GrpcQueryFactsRequest = FactStoreProto.QueryFactsRequest
 
 internal fun GrpcQueryFactsRequest.toDomainRequest(): FindByTagQueryRequest =
     FindByTagQueryRequest(
-        storeName = StoreName(storeName),
+        storeName = storeName.asStoreName(),
         query = query.toDomain()
     )
 
@@ -333,7 +335,7 @@ typealias GrpcFindInTimeRangeRequest = FactStoreProto.FindFactsInTimeRangeReques
 
 internal fun GrpcFindInTimeRangeRequest.toDomainRequest(): FindInTimeRangeRequest =
     FindInTimeRangeRequest(
-        storeName = StoreName(storeName),
+        storeName = storeName.asStoreName(),
         timeRange = TimeRange(
             start = if (hasFrom()) from.toInstant() else null,
             end = if (hasTo()) to.toInstant() else null
@@ -354,7 +356,7 @@ internal fun GrpcSubscribeFactsRequest.toDomainRequest(): SubscribeRequest {
         else -> StartPosition.Beginning
     }
     return SubscribeRequest(
-        storeName = StoreName(storeName),
+        storeName = storeName.asStoreName(),
         startPosition = startPosition,
     )
 }
@@ -370,7 +372,7 @@ internal fun GrpcReplayFactsRequest.toDomainRequest(): ReplayRequest {
         else -> ReplayStart.Beginning
     }
     return ReplayRequest(
-        storeName = StoreName(storeName),
+        storeName = storeName.asStoreName(),
         start = start,
     )
 }
@@ -381,7 +383,7 @@ internal suspend fun ReplayRequest.publishTo(factStore: FactStore): ReplayResult
 typealias GrpcExistsStoreRequest = FactStoreProto.StoreExistsRequest
 
 internal fun GrpcExistsStoreRequest.toDomainRequest(): ExistsStoreByNameRequest =
-    ExistsStoreByNameRequest(StoreName(name))
+    ExistsStoreByNameRequest(name.asStoreName())
 
 internal suspend fun ExistsStoreByNameRequest.publishTo(factStore: FactStore): ExistsStoreByNameResult =
     factStore.existsByName(this)

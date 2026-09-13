@@ -26,7 +26,7 @@ data class FactInput(
     val type: FactType,
     val subject: Subject,
     val payload: FactPayload,
-    val metadata: Map<String, String> = emptyMap(),
+    val metadata: Map<MetadataKey, MetadataValue> = emptyMap(),
     val tags: Map<TagKey, TagValue> = emptyMap(),
 )
 
