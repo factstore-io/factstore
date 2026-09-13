@@ -302,9 +302,6 @@ value class MetadataIndexSubspace(val subspace: Subspace) {
 @JvmInline
 value class TagsIndexSubspace(val subspace: Subspace) {
 
-    fun getKey(storeId: StoreId, tag: Pair<TagKey, TagValue>): ByteArray =
-        subspace.pack(Tuple.from(storeId.uuid, tag.first.value, tag.second.value))
-
     fun getKey(storeId: StoreId, tag: Pair<TagKey, TagValue>, position: FactPosition): ByteArray =
         subspace.pack(Tuple.from(storeId.uuid, tag.first.value, tag.second.value, position))
 
@@ -337,9 +334,6 @@ value class TagsIndexSubspace(val subspace: Subspace) {
 
 @JvmInline
 value class TagsTypeIndexSubspace(val subspace: Subspace) {
-
-    fun getKey(storeId: StoreId, factType: FactType, tag: Pair<TagKey, TagValue>): ByteArray =
-        subspace.pack(Tuple.from(storeId.uuid, factType.value, tag.first.value, tag.second.value))
 
     fun getKey(storeId: StoreId, factType: FactType, tag: Pair<TagKey, TagValue>, position: FactPosition): ByteArray =
         subspace.pack(Tuple.from(storeId.uuid, factType.value, tag.first.value, tag.second.value, position))
