@@ -151,9 +151,7 @@ fun Fact.toSerializableFdbFact() = SerializableFdbFact(
     timeNanos = appendedAt.nano,
     metadata = metadata.entries.associate { it.key.value to it.value.value },
     tags = tags.entries.associate { it.key.value to it.value.value },
-    payload = SerializableFactPayload(
-        data = payload.data,
-    )
+    payload = payload.data,
 )
 
 fun SerializableFdbFact.encodeToByteArray() = Avro.encodeToByteArray(this)
@@ -163,9 +161,7 @@ fun ByteArray.toSerializableFdbFact() = Avro.decodeFromByteArray<SerializableFdb
 fun SerializableFdbFact.toFact() = Fact(
     id = FactId(id),
     type = FactType(type),
-    payload = FactPayload(
-        data = payload.data,
-    ),
+    payload = FactPayload(data = payload),
     subject = Subject(subject),
     appendedAt = Instant.ofEpochSecond(timeEpochSeconds, timeNanos.toLong()),
     metadata = metadata.entries.associate { it.key.toMetadataKey() to it.value.toMetadataValue() },
