@@ -27,10 +27,14 @@ value class IdempotencyKey(val value: UUID = UUID.randomUUID())
  * assigned by the store on append, not by the client.
  *
  * @property storeName the store to which to append the facts to
- * @property facts the facts to append
+ * @property facts the facts to append; at least one and at most [MAX_FACTS],
+ *         together no larger than [MAX_SIZE] bytes
  * @property idempotencyKey the key used to ensure idempotent processing
  * @property condition an optional condition that must be satisfied for the
  *         append operation to be applied
+ *
+ * @throws IllegalArgumentException if [facts] is empty, contains more than
+ *         [MAX_FACTS] facts, or exceeds [MAX_SIZE] bytes in total
  *
  * @author Domenic Cassisi
  */
@@ -39,7 +43,32 @@ data class AppendRequest(
     val facts: List<FactInput>,
     val idempotencyKey: IdempotencyKey,
     val condition: AppendCondition = AppendCondition.None
-)
+) {
+
+    companion object {
+
+        /**
+         * The maximum number of facts in a single append.
+         */
+        const val MAX_FACTS = 512
+
+        /**
+         * The maximum total size of the facts in a single append, in bytes: 1 MiB.
+         */
+        const val MAX_SIZE = 1_048_576
+    }
+
+    init {
+        require(facts.isNotEmpty()) { "An append must contain at least one fact." }
+        require(facts.size <= MAX_FACTS) {
+            "An append must not contain more than $MAX_FACTS facts, but contained ${facts.size}."
+        }
+        val size = facts.sumOf { it.byteSize.toLong() }
+        require(size <= MAX_SIZE) {
+            "An append must not exceed $MAX_SIZE bytes, but its facts total $size bytes."
+        }
+    }
+}
 
 /**
  * Defines conditions that must be satisfied for an append request to be applied.

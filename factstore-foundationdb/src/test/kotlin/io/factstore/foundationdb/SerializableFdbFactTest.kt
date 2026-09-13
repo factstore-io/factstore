@@ -23,6 +23,19 @@ class SerializableFdbFactTest {
         assertThat(encoded.toSerializableFdbFact().toFact()).isEqualTo(fact)
     }
 
+    @Test
+    fun `a fact with an empty payload round trips`() {
+        val fact = Fact(
+            id = FactId.generate(),
+            type = FactType("USER_LOGGED_OUT"),
+            payload = FactPayload(ByteArray(0)),
+            subject = Subject("user/alice"),
+            appendedAt = Instant.now(),
+        )
+
+        assertThat(fact.toSerializableFdbFact().encodeToByteArray().toSerializableFdbFact().toFact()).isEqualTo(fact)
+    }
+
     private fun maximalFact(): Fact {
         return Fact(
             id = FactId.generate(),

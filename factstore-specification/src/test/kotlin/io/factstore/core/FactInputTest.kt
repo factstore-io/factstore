@@ -37,6 +37,24 @@ class FactInputTest {
             .hasMessageContaining(FactInput.MAX_METADATA_ENTRIES.toString())
     }
 
+    @Test
+    fun `byte size counts the payload and every text value`() {
+        val input = FactInput(
+            type = FactType("ORDER_PLACED"),
+            subject = Subject("order/1"),
+            payload = FactPayload(ByteArray(100)),
+            metadata = mapOf(MetadataKey("source") to MetadataValue("shop")),
+            tags = mapOf(TagKey("order") to TagValue("1"), TagKey("archived") to TagValue("")),
+        )
+
+        val payload = 100
+        val typeAndSubject = "ORDER_PLACED".length + "order/1".length
+        val metadata = "source".length + "shop".length
+        val tags = "order".length + "1".length + "archived".length
+
+        assertThat(input.byteSize).isEqualTo(payload + typeAndSubject + metadata + tags)
+    }
+
     private fun input(tagCount: Int = 0, metadataCount: Int = 0) = FactInput(
         type = FactType("ORDER_PLACED"),
         subject = Subject("order/1"),

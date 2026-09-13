@@ -42,3 +42,9 @@ internal fun requireCleanText(
                 "letters, digits, '.', '_', ':', '/' and '-', but was '$value'."
     }
 }
+
+/**
+ * The size of this string in bytes when encoded as UTF-8.
+ */
+internal val String.utf8Size: Int
+    get() = encodeToByteArray().size

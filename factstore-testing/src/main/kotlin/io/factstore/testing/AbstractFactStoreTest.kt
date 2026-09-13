@@ -598,6 +598,15 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
+    fun testEmptyPayloadRoundTrips(): Unit = runBlocking {
+        val input = input(ALICE_SUBJECT_VALUE, "USER_LOGGED_OUT", FactPayload(ByteArray(0)))
+
+        val stored = appendStored(input)
+
+        assertThat(stored).isEqualTo(input.toFact(stored.id, stored.appendedAt))
+    }
+
+    @Test
     fun testFactOfMaximumSizeRoundTrips(): Unit = runBlocking {
         // Every byte value in sequence, so the payload also proves it is stored as
         // opaque bytes, including the NUL bytes that string-oriented encodings mishandle.
@@ -619,6 +628,49 @@ abstract class AbstractFactStoreTest {
         val stored = appendStored(input)
 
         assertThat(stored).isEqualTo(input.toFact(stored.id, stored.appendedAt))
+    }
+
+    @Test
+    fun testAppendOfMaximumFactCountRoundTrips(): Unit = runBlocking {
+        val inputs = (1..AppendRequest.MAX_FACTS).map { i ->
+            input(ALICE_SUBJECT_VALUE, "USER_UPDATED", """{ "revision": $i }""".toFactPayload())
+        }
+
+        val stored = appendStored(inputs)
+
+        assertThat(stored).hasSize(AppendRequest.MAX_FACTS)
+        assertThat(stored.map { it.payload }).containsExactlyElementsOf(inputs.map { it.payload })
+    }
+
+    @Test
+    fun testAppendOfMaximumSizeRoundTrips(): Unit = runBlocking {
+        // Full-length subjects, types and tags are the costliest facts for a backend, because those
+        // values are written into its indexes as well. As many of them as fit, with a payload making
+        // up the remainder, bring the append to exactly its maximum size.
+        val envelopeSize = Subject.MAX_LENGTH + FactType.MAX_LENGTH +
+                FactInput.MAX_TAGS * (TagKey.MAX_LENGTH + TagValue.MAX_LENGTH)
+        val factCount = AppendRequest.MAX_SIZE / envelopeSize
+        val remainder = AppendRequest.MAX_SIZE - factCount * envelopeSize
+
+        val inputs = (0 until factCount).map { i ->
+            FactInput(
+                type = FactType("t".repeat(FactType.MAX_LENGTH)),
+                subject = Subject("s$i".padEnd(Subject.MAX_LENGTH, 'x')),
+                payload = FactPayload(ByteArray(if (i == 0) remainder else 0)),
+                tags = (1..FactInput.MAX_TAGS).associate { t ->
+                    TagKey("t$t".padEnd(TagKey.MAX_LENGTH, 'x')) to TagValue("v".repeat(TagValue.MAX_LENGTH))
+                },
+            )
+        }
+        assertThat(inputs.sumOf { it.byteSize }).isEqualTo(AppendRequest.MAX_SIZE)
+
+        val result = store.append(AppendRequest(testStore, inputs, IdempotencyKey()))
+
+        assertThat(result).isInstanceOf(AppendResult.Appended::class.java)
+        val ids = (result as AppendResult.Appended).factIds
+        assertThat(ids).hasSize(factCount)
+        val last = (store.findById(FindByIdRequest(testStore, ids.last())) as FindByIdResult.Found).fact
+        assertThat(last).isEqualTo(inputs.last().toFact(last.id, last.appendedAt))
     }
 
     @Test

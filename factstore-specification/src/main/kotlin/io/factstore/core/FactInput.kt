@@ -56,6 +56,16 @@ data class FactInput(
             "A fact must not carry more than $MAX_METADATA_ENTRIES metadata entries, but carried ${metadata.size}."
         }
     }
+
+    /**
+     * The size of this fact in bytes: the payload plus the UTF-8 size of every text value.
+     */
+    val byteSize: Int
+        get() = payload.data.size +
+                type.value.utf8Size +
+                subject.value.utf8Size +
+                tags.entries.sumOf { (key, value) -> key.value.utf8Size + value.value.utf8Size } +
+                metadata.entries.sumOf { (key, value) -> key.value.utf8Size + value.value.utf8Size }
 }
 
 /**
