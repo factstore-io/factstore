@@ -1,8 +1,11 @@
 package io.factstore.server.input
 
+import io.factstore.core.FactId
 import io.factstore.core.FactType
+import io.factstore.core.Limit
 import io.factstore.core.MetadataKey
 import io.factstore.core.MetadataValue
+import io.factstore.core.ReadDirection
 import io.factstore.core.StoreName
 import io.factstore.core.Subject
 import io.factstore.core.TagKey
@@ -14,6 +17,8 @@ import io.factstore.core.toStoreName
 import io.factstore.core.toSubject
 import io.factstore.core.toTagKey
 import io.factstore.core.toTagValue
+import java.time.Instant
+import java.util.UUID
 
 /*
  * Conversions from untrusted client input to the specification's value types.
@@ -38,3 +43,35 @@ internal fun Map<String, String>.asTags(): Map<TagKey, TagValue> =
 
 internal fun Map<String, String>.asMetadata(): Map<MetadataKey, MetadataValue> =
     entries.associate { (key, value) -> key.asMetadataKey() to value.asMetadataValue() }
+
+internal fun String.asUuid(): UUID =
+    try {
+        UUID.fromString(trim())
+    } catch (e: IllegalArgumentException) {
+        throw IllegalArgumentException("'$this' is not a valid UUID.", e)
+    }
+
+internal fun String.asFactId(): FactId = FactId(asUuid())
+
+internal fun String?.asInstant(): Instant? = this?.let { Instant.parse(it.trim()) }
+
+/** Absent means no limit; anything but a positive integer is rejected. */
+internal fun String?.asLimit(): Limit {
+    if (this == null) return Limit.None
+    val value = trim().toIntOrNull()
+    requireNotNull(value) { "Limit must be a positive integer, but was '$this'." }
+    return Limit.of(value)
+}
+
+internal fun String?.asReadDirection(): ReadDirection = when (this?.trim()?.lowercase()) {
+    null, "forward" -> ReadDirection.Forward
+    "backward" -> ReadDirection.Backward
+    else -> throw IllegalArgumentException("Direction must be 'forward' or 'backward', but was '$this'.")
+}
+
+/** Tags given as `key=value` strings, such as query parameters. */
+internal fun List<String>.asTagFilter(): Map<TagKey, TagValue> = associate { tag ->
+    val parts = tag.split("=", limit = 2)
+    require(parts.size == 2) { "A tag must have the form key=value, but was '$tag'." }
+    parts[0].asTagKey() to parts[1].asTagValue()
+}

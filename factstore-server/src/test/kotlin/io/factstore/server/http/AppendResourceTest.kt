@@ -125,4 +125,31 @@ class AppendResourceTest {
         assertThat(error.reason).isEqualTo(Reason.NotFound)
         assertThat(error.details).containsEntry("name", unknownStore)
     }
+
+    @Test
+    @Order(5)
+    @DisplayName("POST /v1/stores/{name}/facts - An invalid request does not consume its idempotency key")
+    fun invalidRequestKeepsIdempotencyKey() {
+        val idempotencyKey = UUID.randomUUID()
+        val fact = mapOf("type" to "order.created", "subject" to "order-7", "payload" to mapOf("data" to "e30="))
+
+        given()
+            .pathParam("storeName", storeName)
+            .contentType(ContentType.JSON)
+            .body(mapOf("idempotencyKey" to idempotencyKey, "facts" to listOf(fact + ("subject" to "order 7"))))
+            .post("/api/v1/stores/{storeName}/facts")
+            .then()
+            .statusCode(400)
+
+        val appended = given()
+            .pathParam("storeName", storeName)
+            .contentType(ContentType.JSON)
+            .body(mapOf("idempotencyKey" to idempotencyKey, "facts" to listOf(fact)))
+            .post("/api/v1/stores/{storeName}/facts")
+            .then()
+            .statusCode(200)
+            .extract().`as`(AppendedHttp::class.java)
+
+        assertThat(appended.factIds).hasSize(1)
+    }
 }

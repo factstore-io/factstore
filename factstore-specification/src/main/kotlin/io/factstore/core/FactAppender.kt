@@ -7,9 +7,7 @@ package io.factstore.core
  * enforcing all store invariants such as uniqueness, idempotency, and
  * conditional append semantics.
  *
- * Append operations may either complete successfully, return an explicit
- * append outcome, or fail by throwing a [FactStoreException] if the request
- * is invalid.
+ * An append completes with an [AppendResult] describing its outcome.
  *
  * @author Domenic Cassisi
  */
@@ -23,8 +21,7 @@ interface FactAppender {
      * explicit [AppendRequest] when idempotency or conditional appends are needed.
      *
      * @param fact the fact to append
-     * @throws FactStoreException if the fact violates store invariants or
-     *         the request is invalid
+     * @throws IllegalArgumentException if the fact does not form a valid [AppendRequest]
      */
     suspend fun append(storeName: StoreName, fact: FactInput): AppendResult
 
@@ -36,8 +33,7 @@ interface FactAppender {
      * is not idempotent across retries.
      *
      * @param facts the facts to append
-     * @throws FactStoreException if any fact violates store invariants or
-     *         the request is invalid
+     * @throws IllegalArgumentException if the facts do not form a valid [AppendRequest]
      */
     suspend fun append(storeName: StoreName, facts: List<FactInput>): AppendResult
 
@@ -50,8 +46,6 @@ interface FactAppender {
      *
      * @param request the append request
      * @return the outcome of the append operation
-     * @throws FactStoreException if the request is invalid or violates
-     *         store invariants
      */
     suspend fun append(request: AppendRequest): AppendResult
 

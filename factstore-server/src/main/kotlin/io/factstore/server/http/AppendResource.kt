@@ -1,10 +1,7 @@
 package io.factstore.server.http
 
-import io.factstore.server.input.*
-
 import io.factstore.core.FactStore
-import io.factstore.server.http.validation.ValidStoreName
-import jakarta.validation.Valid
+import io.factstore.server.publishTo
 import jakarta.ws.rs.*
 import jakarta.ws.rs.core.MediaType.APPLICATION_JSON
 import jakarta.ws.rs.core.Response
@@ -18,11 +15,9 @@ class AppendResource(
     @Consumes(APPLICATION_JSON)
     @Produces(APPLICATION_JSON)
     suspend fun appendFacts(
-        @PathParam("storeName") @ValidStoreName storeName: String,
-        @Valid httpRequest: AppendHttpRequest
-    ): Response {
-        val appendRequest = httpRequest.toAppendRequest(storeName.asStoreName())
-        return factStore.append(appendRequest).toResponse()
-    }
+        @PathParam("storeName") storeName: String,
+        httpRequest: AppendHttpRequest,
+    ): Response =
+        httpRequest.toDomainRequest(storeName).publishTo(factStore).toResponse()
 
 }

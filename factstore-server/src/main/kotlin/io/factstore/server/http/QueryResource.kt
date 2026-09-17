@@ -1,17 +1,13 @@
 package io.factstore.server.http
 
-import io.factstore.server.input.*
-
 import io.factstore.core.*
-import io.factstore.server.http.Reason.Conflict
-import io.factstore.server.http.validation.ValidStoreName
-import jakarta.validation.Valid
+import io.factstore.server.publishTo
 import jakarta.ws.rs.*
 import jakarta.ws.rs.core.MediaType.APPLICATION_JSON
 import jakarta.ws.rs.core.Response
-import jakarta.ws.rs.core.Response.Status.BAD_REQUEST
-import java.time.Instant
-import java.util.*
+import org.eclipse.microprofile.openapi.annotations.enums.SchemaType
+import org.eclipse.microprofile.openapi.annotations.media.Schema
+import org.eclipse.microprofile.openapi.annotations.parameters.Parameter
 
 @Path("/v1/stores/{storeName}")
 class QueryResource(
@@ -22,123 +18,47 @@ class QueryResource(
     @Produces(APPLICATION_JSON)
     @Path("/facts/{factId}")
     suspend fun findById(
-        @PathParam("storeName") @ValidStoreName storeName: String,
-        @PathParam("factId") factId: UUID,
+        @PathParam("storeName") storeName: String,
+        @PathParam("factId") @Parameter(schema = Schema(type = SchemaType.STRING, format = "uuid")) factId: String,
     ): Response =
-        store
-            .findById(FindByIdRequest(storeName.asStoreName(), factId.toFactId()))
-            .toResponse()
+        findByIdRequest(storeName, factId).publishTo(store).toResponse()
 
     @POST
     @Consumes(APPLICATION_JSON)
     @Produces(APPLICATION_JSON)
     @Path("/facts/query")
     suspend fun findByQuery(
-        @PathParam("storeName") @ValidStoreName storeName: String,
-        @Valid factQueryHttp: FactQueryHttp
+        @PathParam("storeName") storeName: String,
+        factQueryHttp: FactQueryHttp,
     ): Response =
-        store
-            .findByTagQuery(FindByTagQueryRequest(storeName.asStoreName(), factQueryHttp.toTagQuery()))
-            .toResponse()
+        factQueryHttp.toDomainRequest(storeName).publishTo(store).toResponse()
 
     @GET
     @Produces(APPLICATION_JSON)
     @Path("/subjects/{subject}/facts")
     suspend fun findBySubject(
-        @PathParam("storeName") @ValidStoreName storeName: String,
+        @PathParam("storeName") storeName: String,
         @PathParam("subject") subject: String,
-        @QueryParam("limit") limit: Int? = null,
-        @DefaultValue("forward") @QueryParam("direction") direction: ReadDirection,
+        @QueryParam("limit") @Parameter(schema = Schema(type = SchemaType.INTEGER, minimum = "1")) limit: String?,
+        @QueryParam("direction") @Parameter(schema = Schema(enumeration = ["forward", "backward"], defaultValue = "forward")) direction: String?,
     ): Response =
-        store
-            .findBySubject(
-                FindBySubjectRequest(
-                    storeName = storeName.asStoreName(),
-                    subject = subject.asSubject(),
-                    limit = limit.toLimit(),
-                    direction = direction,
-                )
-            )
-            .toResponse()
+        findBySubjectRequest(storeName, subject, limit, direction).publishTo(store).toResponse()
 
     @GET
     @Produces(APPLICATION_JSON)
     @Path("/facts")
     suspend fun findFacts(
-        @PathParam("storeName") @ValidStoreName storeName: String,
-        @QueryParam("from") from: Instant? = null,
-        @QueryParam("to") to: Instant? = null,
-        @QueryParam("tag") tags: List<String> = emptyList(),
-        @DefaultValue("0") @QueryParam("limit") limit: Int? = null,
-        @DefaultValue("forward") @QueryParam("direction") direction: ReadDirection,
-    ): Response {
-        return when {
-            tags.isNotEmpty() && (from != null || to != null) -> apiErrorResponse(
-                status = BAD_REQUEST,
-                reason = Conflict,
-                message = "Combining tag filters with time range is not yet supported.",
-            )
-            tags.isNotEmpty() -> store
-                .findByTags(
-                    FindByTagsRequest(
-                        storeName = storeName.asStoreName(),
-                        tags = tags.associate { it.toTagPair() },
-                        limit = limit.toLimit(),
-                        direction = direction,
-                    )
-                )
-                .toResponse()
-            else -> store
-                .findInTimeRange(
-                    FindInTimeRangeRequest(
-                        storeName = storeName.asStoreName(),
-                        timeRange = TimeRange(start = from, end = to),
-                        limit = limit.toLimit(),
-                        direction = direction,
-                    )
-                )
-                .toResponse()
+        @PathParam("storeName") storeName: String,
+        @QueryParam("from") @Parameter(schema = Schema(type = SchemaType.STRING, format = "date-time")) from: String?,
+        @QueryParam("to") @Parameter(schema = Schema(type = SchemaType.STRING, format = "date-time")) to: String?,
+        @QueryParam("tag") @Parameter(description = "A tag the facts must carry, as key=value. Repeatable.") tags: List<String> = emptyList(),
+        @QueryParam("limit") @Parameter(schema = Schema(type = SchemaType.INTEGER, minimum = "1")) limit: String?,
+        @QueryParam("direction") @Parameter(schema = Schema(enumeration = ["forward", "backward"], defaultValue = "forward")) direction: String?,
+    ): Response =
+        if (tags.isEmpty()) {
+            findInTimeRangeRequest(storeName, from, to, limit, direction).publishTo(store).toResponse()
+        } else {
+            findByTagsRequest(storeName, tags, from, to, limit, direction).publishTo(store).toResponse()
         }
-    }
 
-    private fun String.toTagPair(): Pair<TagKey, TagValue> {
-        val parts = split("=", limit = 2)
-        require(parts.size == 2) { "Tag must be in key=value format, got: '$this'" }
-        return TagKey(parts[0]) to TagValue(parts[1])
-    }
-
-    private fun Int?.toLimit(): Limit = if (this != null && this > 0) Limit.of(this) else Limit.None
-
-}
-
-private fun FindByIdResult.toResponse(): Response = when (this) {
-    is FindByIdResult.Found -> Response.ok(fact.toFactHttp()).build()
-    is FindByIdResult.NotFound -> factNotFoundError(id)
-    is FindByIdResult.StoreNotFound -> storeNotFoundError(storeName)
-}
-
-private fun FindInTimeRangeResult.toResponse(): Response {
-    return when (this) {
-        is FindInTimeRangeResult.Found -> Response.ok(facts.map { it.toFactHttp() }).build()
-        is FindInTimeRangeResult.StoreNotFound -> storeNotFoundError(storeName)
-    }
-}
-
-private fun FindBySubjectResult.toResponse(): Response {
-    return when (this) {
-        is FindBySubjectResult.Found -> Response.ok(facts.map { it.toFactHttp() }).build()
-        is FindBySubjectResult.StoreNotFound -> storeNotFoundError(storeName)
-    }
-}
-
-private fun FindByTagQueryResult.toResponse(): Response {
-    return when (this) {
-        is FindByTagQueryResult.Found -> Response.ok(facts.map { it.toFactHttp() }).build()
-        is FindByTagQueryResult.StoreNotFound -> storeNotFoundError(storeName)
-    }
-}
-
-private fun FindByTagsResult.toResponse(): Response = when (this) {
-    is FindByTagsResult.Found -> Response.ok(facts.map { it.toFactHttp() }).build()
-    is FindByTagsResult.StoreNotFound -> storeNotFoundError(storeName)
 }

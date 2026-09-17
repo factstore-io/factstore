@@ -68,7 +68,7 @@ class QueryResourceTest {
             .statusCode(400)
             .extract().`as`(ApiError::class.java)
 
-        assertThat(error.reason).isEqualTo(Reason.Conflict)
+        assertThat(error.reason).isEqualTo(Reason.InvalidInput)
         assertThat(error.message).contains("Combining tag filters with time range is not yet supported")
     }
 
