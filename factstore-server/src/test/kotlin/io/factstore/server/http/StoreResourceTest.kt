@@ -61,7 +61,7 @@ class StoreResourceTest {
 
     @Test
     @Order(4)
-    @DisplayName("HEAD /v1/stores/{name} - Should return 404 when name format is invalid")
+    @DisplayName("HEAD /v1/stores/{name} - Should return 400 when name format is invalid")
     fun validationBorder() {
         given()
             .`when`()

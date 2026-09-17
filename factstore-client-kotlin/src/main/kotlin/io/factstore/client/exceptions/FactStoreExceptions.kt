@@ -16,6 +16,12 @@ class FactNotFoundException(val factId: String) :
 class AppendConditionViolatedException :
     FactStoreException("Append condition was violated")
 
+// ─── Request errors ──────────────────────────────────────────────────────────
+
+/** The server rejected the request as invalid (gRPC INVALID_ARGUMENT); retrying it unchanged fails again. */
+class FactStoreInvalidRequestException(val reason: String, cause: Throwable?) :
+    FactStoreException("Invalid request: $reason", cause)
+
 // ─── Transport / connectivity errors ────────────────────────────────────────
 
 sealed class FactStoreConnectivityException(message: String, cause: Throwable?) :

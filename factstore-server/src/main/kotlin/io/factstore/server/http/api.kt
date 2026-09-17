@@ -2,28 +2,33 @@ package io.factstore.server.http
 
 import com.fasterxml.jackson.annotation.JsonSubTypes
 import com.fasterxml.jackson.annotation.JsonTypeInfo
-import io.factstore.server.http.validation.ValidStoreName
-import jakarta.validation.Valid
-import jakarta.validation.constraints.NotBlank
-import jakarta.validation.constraints.NotEmpty
+import io.factstore.core.AppendRequest
+import io.factstore.core.CLEAN_TEXT_PATTERN
+import io.factstore.core.FactInput
+import io.factstore.core.FactPayload
+import io.factstore.core.FactType
+import io.factstore.core.StoreName
+import io.factstore.core.Subject
+import org.eclipse.microprofile.openapi.annotations.media.Schema
 import java.time.Instant
 import java.util.*
 
 data class AppendHttpRequest(
-    @field:NotEmpty
-    val facts: List<@Valid FactInputHttp>,
+    @field:Schema(minItems = 1, maxItems = AppendRequest.MAX_FACTS)
+    val facts: List<FactInputHttp>,
     val idempotencyKey: UUID? = null,
     val condition: AppendConditionHttp? = null
 )
 
 data class FactInputHttp(
-    @field:NotBlank
+    @field:Schema(maxLength = FactType.MAX_LENGTH, pattern = CLEAN_TEXT_PATTERN)
     val type: String,
-    @field:NotBlank
+    @field:Schema(maxLength = Subject.MAX_LENGTH, pattern = CLEAN_TEXT_PATTERN)
     val subject: String,
-    @field:Valid
     val payload: FactPayloadHttp,
+    @field:Schema(maxProperties = FactInput.MAX_METADATA_ENTRIES)
     val metadata: Map<String, String>? = null,
+    @field:Schema(maxProperties = FactInput.MAX_TAGS)
     val tags: Map<String, String>? = null,
 )
 
@@ -75,6 +80,7 @@ sealed interface AppendConditionHttp {
 }
 
 data class FactQueryHttp(
+    @field:Schema(minItems = 1)
     val queryItems: List<TagQueryItemHttp>
 )
 
@@ -96,35 +102,35 @@ data class FactQueryHttp(
 sealed interface TagQueryItemHttp {
 
     data class TagType(
+        @field:Schema(minItems = 1)
         val types: List<String>,
+        @field:Schema(minProperties = 1, maxProperties = FactInput.MAX_TAGS)
         val tags: Map<String, String>
     ) : TagQueryItemHttp
 
     data class TagOnly(
+        @field:Schema(minProperties = 1, maxProperties = FactInput.MAX_TAGS)
         val tags: Map<String, String>
     ) : TagQueryItemHttp
 }
 
 data class FactHttp(
     val id: UUID?,
-    @field:NotBlank
     val type: String,
-    @field:NotBlank
     val subject: String,
     val appendedAt: Instant?,
-    @field:Valid
     val payload: FactPayloadHttp,
     val metadata: Map<String, String>?,
     val tags: Map<String, String>?
 )
 
 data class FactPayloadHttp(
-    @field:NotEmpty
+    @field:Schema(description = "Base64-encoded payload of at most ${FactPayload.MAX_SIZE} bytes.")
     val data: ByteArray,
 )
 
 data class CreateStoreHttpRequest(
-    @field:ValidStoreName
+    @field:Schema(maxLength = StoreName.MAX_LENGTH, pattern = StoreName.REGEX_PATTERN)
     val name: String
 )
 

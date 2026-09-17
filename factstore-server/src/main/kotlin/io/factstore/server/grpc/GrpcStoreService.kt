@@ -1,6 +1,7 @@
 package io.factstore.server.grpc
 
 import io.factstore.core.*
+import io.factstore.server.publishTo
 import io.factstore.grpc.v1.FactStoreProto
 import io.factstore.grpc.v1.StoreServiceGrpcKt
 import io.quarkus.grpc.GrpcService

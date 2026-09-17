@@ -1,5 +1,6 @@
 package io.factstore.client.internal
 
+import io.factstore.client.exceptions.FactStoreInvalidRequestException
 import io.factstore.client.exceptions.FactStoreRpcException
 import io.factstore.client.exceptions.FactStoreTimeoutException
 import io.factstore.client.exceptions.FactStoreUnavailableException
@@ -18,6 +19,7 @@ internal fun Throwable.toFactStoreException(): Throwable {
         else -> return this
     }
     return when (status.code) {
+        Status.Code.INVALID_ARGUMENT -> FactStoreInvalidRequestException(status.description ?: "no details given", this)
         Status.Code.UNAVAILABLE -> FactStoreUnavailableException(this)
         Status.Code.DEADLINE_EXCEEDED -> FactStoreTimeoutException(this)
         else -> FactStoreRpcException(status.code.name, status.description, this)
@@ -28,7 +30,7 @@ internal fun Throwable.toFactStoreException(): Throwable {
  * Runs a unary gRPC call, mapping any gRPC status failure to a [io.factstore.client.exceptions.FactStoreException].
  * Domain exceptions thrown while interpreting a successful response pass through untouched.
  */
-internal suspend inline fun <T> grpcCall(block: () -> T): T =
+internal inline fun <T> grpcCall(block: () -> T): T =
     try {
         block()
     } catch (e: StatusException) {

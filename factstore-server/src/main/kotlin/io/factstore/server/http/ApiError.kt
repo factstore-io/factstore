@@ -20,7 +20,6 @@ enum class Reason {
     InvalidInput,
     NotFound,
     AlreadyExists,
-    Conflict,
     ConditionViolated,
     InternalError,
 }
@@ -34,7 +33,7 @@ fun ApiError.toResponse(): Response =
 
 
 fun apiErrorResponse(
-    status: Response.Status,
+    status: Response.StatusType,
     reason: Reason,
     message: String,
     details: Map<String, Any?>? = null,
