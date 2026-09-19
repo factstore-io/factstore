@@ -94,10 +94,65 @@ export async function queryFacts(storeName: string, opts: QueryOptions): Promise
   if (opts.direction) params.set("direction", opts.direction)
 
   if (opts.mode === "subject" && opts.subject) {
-    return fetchJson(`${BASE_URL}/v1/stores/${encodeURIComponent(storeName)}/subjects/${encodeURIComponent(opts.subject)}/facts?${params}`)
+    return fetchFactStream(`${BASE_URL}/v1/stores/${encodeURIComponent(storeName)}/subjects/${encodeURIComponent(opts.subject)}/facts?${params}`)
   }
 
-  return fetchJson(`${BASE_URL}/v1/stores/${encodeURIComponent(storeName)}/facts?${params}`)
+  return fetchFactStream(`${BASE_URL}/v1/stores/${encodeURIComponent(storeName)}/facts?${params}`)
+}
+
+/**
+ * One line of an NDJSON fact stream: a line per fact, then an `end` line once all facts
+ * were sent, or an `error` line if the stream failed part way.
+ */
+type FactStreamLine =
+  | { fact: Fact }
+  | { end: { count: number } }
+  | { error: ApiError }
+
+/**
+ * Reads an NDJSON fact stream line by line. Resolves only once the `end` line confirms
+ * that every fact arrived; a stream that stops without it is reported as incomplete.
+ */
+async function fetchFactStream(url: string): Promise<Fact[]> {
+  const res = await fetch(url, { headers: { Accept: "application/x-ndjson" } })
+  if (!res.ok) throw await toApiError(res)
+  if (!res.body) throw new Error("The fact stream has no body.")
+
+  const facts: Fact[] = []
+  const reader = res.body.pipeThrough(new TextDecoderStream()).getReader()
+  let pending = ""
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (value) pending += value
+    const lines = pending.split("\n")
+    // Until the body is done, the last piece may be a line that has not fully arrived yet.
+    pending = done ? "" : (lines.pop() ?? "")
+    for (const line of lines) {
+      if (!line.trim()) continue
+      const parsed = parseFactStreamLine(line)
+      if ("fact" in parsed) {
+        facts.push(parsed.fact)
+      } else if ("end" in parsed) {
+        if (parsed.end.count !== facts.length) {
+          throw new Error(`The fact stream announced ${parsed.end.count} facts but delivered ${facts.length}.`)
+        }
+        return facts
+      } else if ("error" in parsed) {
+        throw new Error(parsed.error.message)
+      }
+    }
+    if (done) break
+  }
+  throw new Error("The fact stream ended before it was complete.")
+}
+
+function parseFactStreamLine(line: string): FactStreamLine {
+  try {
+    return JSON.parse(line) as FactStreamLine
+  } catch {
+    // The server writes whole lines only, so a line that does not parse was cut off.
+    throw new Error("The fact stream ended in the middle of a line.")
+  }
 }
 
 // ─── Streaming ───────────────────────────────────────────────────────────────
@@ -138,12 +193,6 @@ export function createFactStream(
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-async function fetchJson<T>(url: string): Promise<T> {
-  const res = await fetch(url)
-  if (!res.ok) throw await toApiError(res)
-  return res.json() as Promise<T>
-}
 
 async function toApiError(res: Response): Promise<Error> {
   try {

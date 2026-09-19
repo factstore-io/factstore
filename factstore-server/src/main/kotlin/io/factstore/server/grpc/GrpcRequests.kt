@@ -13,9 +13,13 @@ import io.factstore.core.ReadDirection as CoreReadDirection
 
 internal fun Timestamp.toInstant(): Instant = Instant.ofEpochSecond(seconds, nanos.toLong())
 
+/** Every read states its direction: an unset or unknown direction is invalid input. */
 internal fun FactStoreProto.ReadDirection.toCore(): CoreReadDirection = when (this) {
-    FactStoreProto.ReadDirection.BACKWARD -> CoreReadDirection.Backward
-    else -> CoreReadDirection.Forward
+    FactStoreProto.ReadDirection.READ_DIRECTION_FORWARD -> CoreReadDirection.Forward
+    FactStoreProto.ReadDirection.READ_DIRECTION_BACKWARD -> CoreReadDirection.Backward
+    else -> throw IllegalArgumentException(
+        "A direction is required: READ_DIRECTION_FORWARD or READ_DIRECTION_BACKWARD, but was $this."
+    )
 }
 
 internal fun FactStoreProto.FactInput.toDomain(): FactInput = FactInput(
@@ -115,14 +119,24 @@ internal fun GrpcFactExistsRequest.toDomainRequest(): ExistsByIdRequest = parseR
     )
 }
 
-typealias GrpcFindBySubjectRequest = FactStoreProto.FindFactsBySubjectRequest
+typealias GrpcStreamFactsRequest = FactStoreProto.StreamFactsRequest
 
-internal fun GrpcFindBySubjectRequest.toDomainRequest(): FindBySubjectRequest = parseRequest {
-    FindBySubjectRequest(
+internal fun GrpcStreamFactsRequest.toDomainRequest(): StreamFactsRequest = parseRequest {
+    StreamFactsRequest(
+        storeName = storeName.asStoreName(),
+        direction = direction.toCore(),
+        limit = if (hasLimit()) Limit.of(limit) else Limit.None,
+    )
+}
+
+typealias GrpcStreamFactsBySubjectRequest = FactStoreProto.StreamFactsBySubjectRequest
+
+internal fun GrpcStreamFactsBySubjectRequest.toDomainRequest(): StreamFactsBySubjectRequest = parseRequest {
+    StreamFactsBySubjectRequest(
         storeName = storeName.asStoreName(),
         subject = subject.asSubject(),
-        limit = if (hasLimit()) Limit.of(limit) else Limit.None,
         direction = direction.toCore(),
+        limit = if (hasLimit()) Limit.of(limit) else Limit.None,
     )
 }
 

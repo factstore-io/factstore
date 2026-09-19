@@ -5,6 +5,7 @@ import io.factstore.cli.command.print
 import io.factstore.client.FactStoreClient
 import io.factstore.client.model.ReadDirection
 import jakarta.inject.Inject
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import picocli.CommandLine
 import picocli.CommandLine.Command
@@ -59,12 +60,13 @@ class FindBySubjectCommand : Callable<Int> {
     var outputFormat: OutputFormat = OutputFormat.Table
 
     override fun call(): Int = runBlocking {
-        val facts = client.facts.findBySubject(
+        // Collected in full: the table needs every row to size its columns, and --limit bounds it.
+        val facts = client.facts.streamFactsBySubject(
             storeName = storeName,
             subject = subject,
+            direction = direction,
             limit = limit,
-            direction = direction
-        )
+        ).toList()
 
         facts.print(outputFormat)
 

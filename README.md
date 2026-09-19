@@ -50,10 +50,19 @@ Now read it back — either by its subject, or by any tag it carries:
 
 ```bash
 # By subject. Subjects usually contain slashes, so URL-encode them ("/" -> %2F)
-curl http://localhost:8080/api/v1/stores/orders/subjects/order%2F12345/facts
+curl "http://localhost:8080/api/v1/stores/orders/subjects/order%2F12345/facts?direction=forward"
 
 # By tag, in key=value form ("=" -> %3D)
-curl "http://localhost:8080/api/v1/stores/orders/facts?tag=region%3Deu"
+curl "http://localhost:8080/api/v1/stores/orders/facts?tag=region%3Deu&direction=forward"
+```
+
+Facts are streamed as [NDJSON](https://github.com/ndjson/ndjson-spec), one JSON object per line,
+so even a long history can be processed while it arrives. The last line confirms that the stream
+is complete:
+
+```json
+{"fact":{"id":"5dd94f99-e094-449b-b957-69a8354ee9a1","type":"ORDER_PLACED","subject":"order/12345",…}}
+{"end":{"count":1}}
 ```
 
 Reading by *subject* is classic stream-per-entity event sourcing; reading by *tag* cuts

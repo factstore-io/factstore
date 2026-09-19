@@ -3,6 +3,12 @@ package io.factstore.server.http
 import io.factstore.core.*
 import jakarta.ws.rs.core.Response
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.asFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.transform
 
 /*
@@ -22,24 +28,9 @@ internal fun FindByIdResult.toResponse(): Response = when (this) {
     is FindByIdResult.StoreNotFound -> storeNotFoundError(storeName)
 }
 
-internal fun FindBySubjectResult.toResponse(): Response = when (this) {
-    is FindBySubjectResult.Found -> Response.ok(facts.map { it.toFactHttp() }).build()
-    is FindBySubjectResult.StoreNotFound -> storeNotFoundError(storeName)
-}
-
-internal fun FindByTagsResult.toResponse(): Response = when (this) {
-    is FindByTagsResult.Found -> Response.ok(facts.map { it.toFactHttp() }).build()
-    is FindByTagsResult.StoreNotFound -> storeNotFoundError(storeName)
-}
-
 internal fun FindByTagQueryResult.toResponse(): Response = when (this) {
     is FindByTagQueryResult.Found -> Response.ok(facts.map { it.toFactHttp() }).build()
     is FindByTagQueryResult.StoreNotFound -> storeNotFoundError(storeName)
-}
-
-internal fun FindInTimeRangeResult.toResponse(): Response = when (this) {
-    is FindInTimeRangeResult.Found -> Response.ok(facts.map { it.toFactHttp() }).build()
-    is FindInTimeRangeResult.StoreNotFound -> storeNotFoundError(storeName)
 }
 
 internal fun CreateStoreResult.toResponse(): Response = when (this) {
@@ -68,7 +59,51 @@ internal fun RemoveStoreResult.toResponse(): Response = when (this) {
 
 internal fun List<StoreMetadata>.toResponse(): Response = Response.ok(map { it.toHttp() }).build()
 
-// ─── Streams ──────────────────────────────────────────────────────────────────
+// ─── NDJSON fact streams ──────────────────────────────────────────────────────
+
+internal fun StreamFactsResult.toResponse(): Flow<FactStreamLineHttp> = when (this) {
+    is StreamFactsResult.StoreNotFound -> throw StreamApiException.StoreNotFoundException(storeName)
+    is StreamFactsResult.FactStream -> facts.toFactStreamLines()
+}
+
+internal fun StreamFactsBySubjectResult.toResponse(): Flow<FactStreamLineHttp> = when (this) {
+    is StreamFactsBySubjectResult.StoreNotFound -> throw StreamApiException.StoreNotFoundException(storeName)
+    is StreamFactsBySubjectResult.FactStream -> facts.toFactStreamLines()
+}
+
+internal fun FindByTagsResult.toResponse(): Flow<FactStreamLineHttp> = when (this) {
+    is FindByTagsResult.StoreNotFound -> throw StreamApiException.StoreNotFoundException(storeName)
+    is FindByTagsResult.Found -> facts.asFlow().toFactStreamLines()
+}
+
+internal fun FindInTimeRangeResult.toResponse(): Flow<FactStreamLineHttp> = when (this) {
+    is FindInTimeRangeResult.StoreNotFound -> throw StreamApiException.StoreNotFoundException(storeName)
+    is FindInTimeRangeResult.Found -> facts.asFlow().toFactStreamLines()
+}
+
+/**
+ * Renders facts as the lines of an NDJSON fact stream: a `fact` line per fact, then an `end`
+ * line, or an `error` line in place of the `end` line if reading the facts fails.
+ *
+ * The response ends normally after the `error` line: by then the status 200 has been sent, so
+ * the terminal line is the only place the client can learn about the failure.
+ */
+internal fun Flow<Fact>.toFactStreamLines(): Flow<FactStreamLineHttp> = flow {
+    var count = 0L
+    emitAll(
+        this@toFactStreamLines
+            .map<Fact, FactStreamLineHttp> { fact ->
+                count++
+                FactStreamLineHttp.FactLine(fact.toFactHttp())
+            }
+            .onCompletion { cause ->
+                if (cause == null) emit(FactStreamLineHttp.EndLine(FactStreamEndHttp(count)))
+            }
+            .catch { e -> emit(FactStreamLineHttp.ErrorLine(unexpectedError(e))) }
+    )
+}
+
+// ─── Server-sent event streams ────────────────────────────────────────────────
 
 internal fun SubscribeResult.toResponse(): Flow<FactHttp> = when (this) {
     is SubscribeResult.StoreNotFound -> throw StreamApiException.StoreNotFoundException(storeName)

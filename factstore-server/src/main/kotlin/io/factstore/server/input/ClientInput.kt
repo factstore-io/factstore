@@ -63,9 +63,11 @@ internal fun String?.asLimit(): Limit {
     return Limit.of(value)
 }
 
+/** Every read states its direction: an absent direction is invalid, not a default. */
 internal fun String?.asReadDirection(): ReadDirection = when (this?.trim()?.lowercase()) {
-    null, "forward" -> ReadDirection.Forward
+    "forward" -> ReadDirection.Forward
     "backward" -> ReadDirection.Backward
+    null -> throw IllegalArgumentException("A direction is required: 'forward' or 'backward'.")
     else -> throw IllegalArgumentException("Direction must be 'forward' or 'backward', but was '$this'.")
 }
 

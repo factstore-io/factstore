@@ -124,6 +124,25 @@ data class FactHttp(
     val tags: Map<String, String>?
 )
 
+/**
+ * One line of an NDJSON fact stream.
+ *
+ * Each line is a JSON object with exactly one property: `fact` for every fact, followed by
+ * either `end` once all facts were sent, or `error` if the stream failed part way. A stream
+ * that stops without an `end` or `error` line is incomplete, however the connection ended.
+ */
+sealed interface FactStreamLineHttp {
+
+    data class FactLine(val fact: FactHttp) : FactStreamLineHttp
+
+    data class EndLine(val end: FactStreamEndHttp) : FactStreamLineHttp
+
+    data class ErrorLine(val error: ApiError) : FactStreamLineHttp
+}
+
+/** Closes a complete fact stream; [count] is the number of `fact` lines before it. */
+data class FactStreamEndHttp(val count: Long)
+
 data class FactPayloadHttp(
     @field:Schema(description = "Base64-encoded payload of at most ${FactPayload.MAX_SIZE} bytes.")
     val data: ByteArray,

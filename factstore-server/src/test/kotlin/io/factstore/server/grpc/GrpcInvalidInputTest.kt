@@ -73,15 +73,37 @@ class GrpcInvalidInputTest {
         case("check a fact by an id that is not a UUID") {
             facts.factExists(factExistsRequest { storeName = STORE; factId = "nope" })
         },
-        case("find the facts of an invalid subject") {
-            facts.findFactsBySubject(findFactsBySubjectRequest { storeName = STORE; subject = "order 1" })
+        case("stream the facts of an invalid subject") {
+            facts.streamFactsBySubject(streamFactsBySubjectRequest {
+                storeName = STORE; subject = "order 1"; direction = FORWARD
+            }).first()
         },
-        case("find facts without tags") { facts.findFactsByTags(findFactsByTagsRequest { storeName = STORE }) },
+        case("stream the facts of a subject without a direction") {
+            facts.streamFactsBySubject(streamFactsBySubjectRequest { storeName = STORE; subject = "s" }).first()
+        },
+        case("stream facts without a direction") {
+            facts.streamFacts(streamFactsRequest { storeName = STORE }).first()
+        },
+        case("stream facts in an unknown direction") {
+            facts.streamFacts(streamFactsRequest { storeName = STORE; directionValue = 42 }).first()
+        },
+        case("stream facts with limit 0") {
+            facts.streamFacts(streamFactsRequest { storeName = STORE; direction = FORWARD; limit = 0 }).first()
+        },
+        case("find facts without tags") {
+            facts.findFactsByTags(findFactsByTagsRequest { storeName = STORE; direction = FORWARD })
+        },
+        case("find facts by tags without a direction") {
+            facts.findFactsByTags(findFactsByTagsRequest { storeName = STORE; tags["a"] = "1" })
+        },
         case("query facts without query items") {
             facts.queryFacts(queryFactsRequest { storeName = STORE; query = tagQuery { } })
         },
         case("find facts with limit 0") {
-            facts.findFactsInTimeRange(findFactsInTimeRangeRequest { storeName = STORE; limit = 0 })
+            facts.findFactsInTimeRange(findFactsInTimeRangeRequest { storeName = STORE; direction = FORWARD; limit = 0 })
+        },
+        case("find facts in a time range without a direction") {
+            facts.findFactsInTimeRange(findFactsInTimeRangeRequest { storeName = STORE })
         },
 
         case("subscribe to a store with an invalid name") {
@@ -103,5 +125,6 @@ class GrpcInvalidInputTest {
 
     companion object {
         const val STORE = "unknown-store"
+        val FORWARD = FactStoreProto.ReadDirection.READ_DIRECTION_FORWARD
     }
 }

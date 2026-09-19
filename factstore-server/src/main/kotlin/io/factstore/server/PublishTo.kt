@@ -15,8 +15,11 @@ internal suspend fun FindByIdRequest.publishTo(factStore: FactStore): FindByIdRe
 internal suspend fun ExistsByIdRequest.publishTo(factStore: FactStore): ExistsByIdResult =
     factStore.existsById(this)
 
-internal suspend fun FindBySubjectRequest.publishTo(factStore: FactStore): FindBySubjectResult =
-    factStore.findBySubject(this)
+internal suspend fun StreamFactsRequest.publishTo(factStore: FactStore): StreamFactsResult =
+    factStore.streamFacts(this)
+
+internal suspend fun StreamFactsBySubjectRequest.publishTo(factStore: FactStore): StreamFactsBySubjectResult =
+    factStore.streamFactsBySubject(this)
 
 internal suspend fun FindByTagsRequest.publishTo(factStore: FactStore): FindByTagsResult =
     factStore.findByTags(this)

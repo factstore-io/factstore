@@ -2,6 +2,7 @@ package io.factstore.server.grpc
 
 import com.google.protobuf.ByteString
 import io.factstore.grpc.v1.*
+import io.factstore.grpc.v1.FactStoreProto.ReadDirection
 import io.grpc.Channel
 import io.quarkus.grpc.GrpcClient
 import io.quarkus.test.junit.QuarkusTest
@@ -201,32 +202,80 @@ class GrpcFactServiceTest {
         assertThat(response.storeNotFound.storeName).isEqualTo("ghost-store")
     }
 
-    // ─── FindFactsBySubject ───────────────────────────────────────────────────
+    // ─── StreamFactsBySubject ─────────────────────────────────────────────────
 
     @Test
     @Order(12)
-    @DisplayName("FindFactsBySubject - should return FactsFound with matching facts")
-    fun findFactsBySubject(): Unit = runBlocking {
-        val response = factService.findFactsBySubject(findFactsBySubjectRequest {
+    @DisplayName("StreamFactsBySubject - should stream the subject's facts in batches and complete")
+    fun streamFactsBySubject(): Unit = runBlocking {
+        // A bounded stream terminates on its own, so collecting the whole flow returns.
+        val responses = factService.streamFactsBySubject(streamFactsBySubjectRequest {
             storeName = STORE
             subject = SUBJECT
-        })
+            direction = ReadDirection.READ_DIRECTION_FORWARD
+        }).toList()
 
-        assertThat(response.hasFound()).isTrue()
-        assertThat(response.found.factsList).hasSize(1)
-        assertThat(response.found.factsList.first().subject).isEqualTo(SUBJECT)
+        assertThat(responses).allMatch { it.hasBatch() }
+        val facts = responses.flatMap { it.batch.factsList }
+        assertThat(facts).hasSize(1)
+        assertThat(facts.single().id).isEqualTo(seedFactId)
     }
 
     @Test
     @Order(13)
-    @DisplayName("FindFactsBySubject - should return StoreNotFound when store does not exist")
-    fun findFactsBySubjectStoreNotFound(): Unit = runBlocking {
-        val response = factService.findFactsBySubject(findFactsBySubjectRequest {
+    @DisplayName("StreamFactsBySubject - should emit a store_not_found message when the store does not exist")
+    fun streamFactsBySubjectStoreNotFound(): Unit = runBlocking {
+        val responses = factService.streamFactsBySubject(streamFactsBySubjectRequest {
             storeName = "ghost-store"
             subject = SUBJECT
-        })
+            direction = ReadDirection.READ_DIRECTION_FORWARD
+        }).toList()
 
-        assertThat(response.hasStoreNotFound()).isTrue()
+        assertThat(responses).hasSize(1)
+        assertThat(responses.single().hasStoreNotFound()).isTrue()
+        assertThat(responses.single().storeNotFound.storeName).isEqualTo("ghost-store")
+    }
+
+    @Test
+    @Order(13)
+    @DisplayName("StreamFactsBySubject - should complete without messages for a subject without facts")
+    fun streamFactsBySubjectWithoutFacts(): Unit = runBlocking {
+        val responses = factService.streamFactsBySubject(streamFactsBySubjectRequest {
+            storeName = STORE
+            subject = "order-without-facts"
+            direction = ReadDirection.READ_DIRECTION_FORWARD
+        }).toList()
+
+        assertThat(responses).isEmpty()
+    }
+
+    // ─── StreamFacts ──────────────────────────────────────────────────────────
+
+    @Test
+    @Order(13)
+    @DisplayName("StreamFacts - should stream the store's facts in batches and complete")
+    fun streamFacts(): Unit = runBlocking {
+        val responses = factService.streamFacts(streamFactsRequest {
+            storeName = STORE
+            direction = ReadDirection.READ_DIRECTION_FORWARD
+            limit = 1
+        }).toList()
+
+        assertThat(responses).allMatch { it.hasBatch() }
+        assertThat(responses.flatMap { it.batch.factsList }.map { it.id }).containsExactly(seedFactId)
+    }
+
+    @Test
+    @Order(13)
+    @DisplayName("StreamFacts - should emit a store_not_found message when the store does not exist")
+    fun streamFactsStoreNotFound(): Unit = runBlocking {
+        val responses = factService.streamFacts(streamFactsRequest {
+            storeName = "ghost-store"
+            direction = ReadDirection.READ_DIRECTION_BACKWARD
+        }).toList()
+
+        assertThat(responses).hasSize(1)
+        assertThat(responses.single().hasStoreNotFound()).isTrue()
     }
 
     // ─── FindFactsByTags ──────────────────────────────────────────────────────
@@ -238,6 +287,7 @@ class GrpcFactServiceTest {
         val response = factService.findFactsByTags(findFactsByTagsRequest {
             storeName = STORE
             tags["region"] = "eu"
+            direction = ReadDirection.READ_DIRECTION_FORWARD
         })
 
         assertThat(response.hasFound()).isTrue()
@@ -252,6 +302,7 @@ class GrpcFactServiceTest {
         val response = factService.findFactsByTags(findFactsByTagsRequest {
             storeName = "ghost-store"
             tags["region"] = "eu"
+            direction = ReadDirection.READ_DIRECTION_FORWARD
         })
 
         assertThat(response.hasStoreNotFound()).isTrue()
@@ -341,6 +392,7 @@ class GrpcFactServiceTest {
     fun findFactsInTimeRange(): Unit = runBlocking {
         val response = factService.findFactsInTimeRange(findFactsInTimeRangeRequest {
             storeName = STORE
+            direction = ReadDirection.READ_DIRECTION_FORWARD
             // no from/to — unbounded range matches all facts in the store
         })
 
@@ -354,6 +406,7 @@ class GrpcFactServiceTest {
     fun findFactsInTimeRangeStoreNotFound(): Unit = runBlocking {
         val response = factService.findFactsInTimeRange(findFactsInTimeRangeRequest {
             storeName = "ghost-store"
+            direction = ReadDirection.READ_DIRECTION_FORWARD
         })
 
         assertThat(response.hasStoreNotFound()).isTrue()

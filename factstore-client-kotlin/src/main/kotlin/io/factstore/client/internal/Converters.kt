@@ -105,6 +105,6 @@ internal fun TagQueryItem.toProto(): FactStoreProto.TagQueryItem = tagQueryItem 
 }
 
 internal fun ReadDirection.toProto(): FactStoreProto.ReadDirection = when (this) {
-    ReadDirection.FORWARD -> FactStoreProto.ReadDirection.FORWARD
-    ReadDirection.BACKWARD -> FactStoreProto.ReadDirection.BACKWARD
+    ReadDirection.FORWARD -> FactStoreProto.ReadDirection.READ_DIRECTION_FORWARD
+    ReadDirection.BACKWARD -> FactStoreProto.ReadDirection.READ_DIRECTION_BACKWARD
 }

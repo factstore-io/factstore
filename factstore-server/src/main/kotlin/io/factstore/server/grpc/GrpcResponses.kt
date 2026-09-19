@@ -1,9 +1,12 @@
 package io.factstore.server.grpc
 
 import com.google.protobuf.ByteString
+import com.google.protobuf.CodedOutputStream
 import com.google.protobuf.Timestamp
 import io.factstore.core.*
 import io.factstore.grpc.v1.*
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import java.time.Instant
 
 /*
@@ -18,6 +21,40 @@ internal fun Instant.toTimestamp(): Timestamp = Timestamp.newBuilder()
 internal fun List<Fact>.toProtoFactBatch(): FactStoreProto.FactBatch = factBatch {
     facts += this@toProtoFactBatch.map { it.toProto() }
 }
+
+/**
+ * The maximum encoded size of a [FactStoreProto.FactBatch]: 1 MiB.
+ *
+ * Far below gRPC's default message limit of 4 MiB, and large enough for any single fact,
+ * which the specification's limits keep below 80 kB.
+ */
+internal const val MAX_FACT_BATCH_BYTES = 1_048_576
+
+/**
+ * Groups the facts into batches whose encoded size stays within [maxBytes].
+ *
+ * A batch is sent once the next fact would not fit, and the last one when the facts are
+ * exhausted, so this suits bounded streams only: a live stream would hold back facts
+ * until a batch is full.
+ */
+internal fun Flow<Fact>.toProtoFactBatches(maxBytes: Int = MAX_FACT_BATCH_BYTES): Flow<FactStoreProto.FactBatch> =
+    flow {
+        val batch = mutableListOf<FactStoreProto.Fact>()
+        var batchBytes = 0
+        collect { fact ->
+            val proto = fact.toProto()
+            // The size the fact takes up as an element of FactBatch.facts, tag and length included.
+            val size = CodedOutputStream.computeMessageSize(FactStoreProto.FactBatch.FACTS_FIELD_NUMBER, proto)
+            if (batch.isNotEmpty() && batchBytes + size > maxBytes) {
+                emit(factBatch { facts += batch })
+                batch.clear()
+                batchBytes = 0
+            }
+            batch += proto
+            batchBytes += size
+        }
+        if (batch.isNotEmpty()) emit(factBatch { facts += batch })
+    }
 
 internal fun Fact.toProto(): FactStoreProto.Fact = fact {
     id = this@toProto.id.uuid.toString()
@@ -73,19 +110,6 @@ internal fun ExistsByIdResult.toGrpcResponse(): GrpcFactExistsResponse =
             ExistsByIdResult.Exists -> present = factPresent { }
             ExistsByIdResult.DoesNotExist -> absent = factAbsent { }
             is ExistsByIdResult.StoreNotFound -> storeNotFound = storeNotFound { storeName = this@toGrpcResponse.storeName.value }
-        }
-    }
-
-typealias GrpcFindBySubjectResponse = FactStoreProto.FindFactsBySubjectResponse
-
-internal fun FindBySubjectResult.toGrpcResponse(): GrpcFindBySubjectResponse =
-    findFactsBySubjectResponse {
-        when (this@toGrpcResponse) {
-            is FindBySubjectResult.Found ->
-                found = factsFound { facts += this@toGrpcResponse.facts.map { it.toProto() } }
-
-            is FindBySubjectResult.StoreNotFound ->
-                storeNotFound = storeNotFound { storeName = this@toGrpcResponse.storeName.value }
         }
     }
 

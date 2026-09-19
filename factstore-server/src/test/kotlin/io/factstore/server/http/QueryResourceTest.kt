@@ -1,10 +1,11 @@
 package io.factstore.server.http
 
+import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.databind.ObjectMapper
 import io.quarkus.test.junit.QuarkusTest
 import io.restassured.RestAssured.given
 import io.restassured.http.ContentType.JSON
 import org.assertj.core.api.Assertions.assertThat
-import org.hamcrest.Matchers.hasSize
 import org.junit.jupiter.api.*
 import org.junit.jupiter.api.MethodOrderer.OrderAnnotation
 import java.util.*
@@ -14,7 +15,12 @@ import java.util.Base64
 @TestMethodOrder(OrderAnnotation::class)
 class QueryResourceTest {
 
+    companion object {
+        const val NDJSON = "application/x-ndjson"
+    }
+
     private val storeName = "query-test-store"
+    private val objectMapper = ObjectMapper()
     private val subject = "user-42"
 
     @Test
@@ -40,9 +46,9 @@ class QueryResourceTest {
 
     @Test
     @Order(2)
-    @DisplayName("GET /v1/stores/{name}/subjects/{subject}/facts - Should return list of facts for subject")
-    fun findBySubject() {
-        given()
+    @DisplayName("GET /v1/stores/{name}/subjects/{subject}/facts - Should stream the subject's facts as NDJSON")
+    fun streamFactsBySubject() {
+        val body = given()
             .pathParam("storeName", storeName)
             .pathParam("subject", subject)
             .queryParam("limit", 10)
@@ -51,7 +57,30 @@ class QueryResourceTest {
             .get("/api/v1/stores/{storeName}/subjects/{subject}/facts")
             .then()
             .statusCode(200)
-            .body("$", hasSize<Any>(1))
+            .contentType(NDJSON)
+            .extract().asString()
+
+        val lines = ndjsonLines(body)
+        assertThat(lines).hasSize(2)
+        assertThat(lines[0]["fact"]["subject"].asText()).isEqualTo(subject)
+        assertThat(lines[1]["end"]["count"].asLong()).isEqualTo(1)
+    }
+
+    @Test
+    @Order(2)
+    @DisplayName("GET /v1/stores/{name}/subjects/{subject}/facts - Should return 404 ApiError when the store does not exist")
+    fun streamFactsBySubjectOfMissingStore() {
+        val error = given()
+            .pathParam("subject", subject)
+            .queryParam("direction", "forward")
+            .`when`()
+            .get("/api/v1/stores/missing-store/subjects/{subject}/facts")
+            .then()
+            .statusCode(404)
+            .contentType(JSON)
+            .extract().`as`(ApiError::class.java)
+
+        assertThat(error.reason).isEqualTo(Reason.NotFound)
     }
 
     @Test
@@ -62,6 +91,7 @@ class QueryResourceTest {
             .pathParam("storeName", storeName)
             .queryParam("tag", "category=books")
             .queryParam("from", "2024-01-01T00:00:00Z")
+            .queryParam("direction", "forward")
             .`when`()
             .get("/api/v1/stores/{storeName}/facts")
             .then()
@@ -74,26 +104,52 @@ class QueryResourceTest {
 
     @Test
     @Order(4)
-    @DisplayName("GET /v1/stores/{name}/facts - Should return facts filtered by tags")
-    fun findByTags() {
+    @DisplayName("GET /v1/stores/{name}/facts - Should stream facts filtered by tags as NDJSON")
+    fun streamFactsByTags() {
         // Seeding a specific tagged fact
         seedFact("tagged-sub", mapOf("region" to "europe"))
 
-        val results = given()
+        val body = given()
             .pathParam("storeName", storeName)
             .queryParam("tag", "region=europe")
+            .queryParam("direction", "forward")
             .`when`()
             .get("/api/v1/stores/{storeName}/facts")
             .then()
             .statusCode(200)
-            .extract().jsonPath().getList(".", FactHttp::class.java)
+            .contentType(NDJSON)
+            .extract().asString()
 
-        assertThat(results).isNotEmpty
-        assertThat(results.first().tags).containsEntry("region", "europe")
+        val lines = ndjsonLines(body)
+        assertThat(lines).hasSize(2)
+        assertThat(lines[0]["fact"]["tags"]["region"].asText()).isEqualTo("europe")
+        assertThat(lines[1]["end"]["count"].asLong()).isEqualTo(1)
     }
 
     @Test
     @Order(5)
+    @DisplayName("GET /v1/stores/{name}/facts - Should stream all facts of the store as NDJSON")
+    fun streamFacts() {
+        val body = given()
+            .pathParam("storeName", storeName)
+            .queryParam("direction", "backward")
+            .queryParam("limit", 1)
+            .`when`()
+            .get("/api/v1/stores/{storeName}/facts")
+            .then()
+            .statusCode(200)
+            .contentType(NDJSON)
+            .extract().asString()
+
+        // Backward with limit 1: only the newest fact, the tagged one seeded above.
+        val lines = ndjsonLines(body)
+        assertThat(lines).hasSize(2)
+        assertThat(lines[0]["fact"]["subject"].asText()).isEqualTo("tagged-sub")
+        assertThat(lines[1]["end"]["count"].asLong()).isEqualTo(1)
+    }
+
+    @Test
+    @Order(6)
     @DisplayName("GET /v1/stores/{name}/facts/{factId} - Should return 404 ApiError when fact missing")
     fun findByIdNotFound() {
         val randomId = UUID.randomUUID()
@@ -109,6 +165,9 @@ class QueryResourceTest {
         assertThat(error.reason).isEqualTo(Reason.NotFound)
         assertThat(error.details).containsEntry("id", randomId.toString())
     }
+
+    private fun ndjsonLines(body: String): List<JsonNode> =
+        body.lines().filter { it.isNotBlank() }.map { objectMapper.readTree(it) }
 
     // Helper to seed data via the already tested Store and Append APIs.
     // Returns the server-assigned fact id.

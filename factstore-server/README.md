@@ -78,7 +78,7 @@ baseUrl       = http://localhost:8080
 Append one or more facts to a store 
 
 ```bash
-curl -X POST http://localhost:8080/v1/stores/default/facts \
+curl -X POST http://localhost:8080/api/v1/stores/default/facts \
   -H "Content-Type: application/json" \
   -d '{
     "facts": [
@@ -99,7 +99,7 @@ curl -X POST http://localhost:8080/v1/stores/default/facts \
 Retrieve a single fact by its ID.
 
 ```bash
-curl http://localhost:8080/v1/stores/default/facts/2f4d6f2c-6a3e-4a77-8c6b-0c3f6c2e5e11
+curl http://localhost:8080/api/v1/stores/default/facts/2f4d6f2c-6a3e-4a77-8c6b-0c3f6c2e5e11
 ```
 
 Response (example):
@@ -117,35 +117,46 @@ Response (example):
 }
 ```
 
-### 3. Retrieve Facts by Subject
+### 3. Stream Facts by Subject
 
-Retrieve all facts for a specific subject.
+Stream all facts of a specific subject.
 
 ```bash
-curl http://localhost:8080/v1/stores/default/subjects/user:123/facts
+curl "http://localhost:8080/api/v1/stores/default/subjects/user:123/facts?direction=forward"
 ```
 
-Response:
+Reads of several facts respond with NDJSON (`application/x-ndjson`): one JSON object per line,
+each with exactly one property.
 
 ```json
-[
-  {
-    "factId": "2f4d6f2c-6a3e-4a77-8c6b-0c3f6c2e5e11",
-    "type": "UserRegistered",
-    ...
-  }
-]
+{"fact":{"id":"2f4d6f2c-6a3e-4a77-8c6b-0c3f6c2e5e11","type":"UserRegistered",…}}
+{"fact":{"id":"8a1c0e52-3f4b-4d6e-9a7c-2b5d8e1f3a90","type":"UserLocked",…}}
+{"end":{"count":2}}
 ```
 
-### 4. Retrieve Facts in Time Range
+- A `fact` line carries a fact.
+- The stream closes with an `end` line, holding the number of facts sent, or with an `error`
+  line (an `ApiError`) if it failed part way.
+- **A stream that stops without an `end` or `error` line is incomplete**, however the connection ended.
+- A missing store or invalid input is answered before the stream starts, with an `ApiError`.
 
-Retrieve all facts between two timestamps.
+`direction` (`forward` or `backward`) is required; `limit` is optional.
+
+The facts are those stored when the request is made: facts appended while the stream is
+being read are not included.
+
+### 4. Stream Facts of a Store
+
+Stream all facts of a store, or those carrying the given tags, or those appended in a time range.
 
 ```bash
-curl "http://localhost:8080/v1/stores/default/facts?from=2026-01-01T00:00:00Z&to=2026-02-01T00:00:00Z"
+curl "http://localhost:8080/api/v1/stores/default/facts?direction=backward&limit=10"
+curl "http://localhost:8080/api/v1/stores/default/facts?tag=role%3Duser&direction=forward"
+curl "http://localhost:8080/api/v1/stores/default/facts?from=2026-01-01T00:00:00Z&to=2026-02-01T00:00:00Z&direction=forward"
 ```
 
-If `to` is omitted, there is no upper bound — all facts from `from` onwards are returned.
+The response is an NDJSON fact stream, as for a subject. In a time range, `from` is inclusive and
+`to` exclusive; either may be omitted. Tags and a time range cannot be combined yet.
 
 ### 5. Subscribe to Facts (Server-Sent Events)
 
@@ -155,7 +166,7 @@ as they are appended (a "catch-up subscription"). It never completes on its own 
 the client disconnects when it is done.
 
 ```bash
-curl http://localhost:8080/v1/stores/default/facts/subscribe
+curl http://localhost:8080/api/v1/stores/default/facts/subscribe
 ```
 
 Start position (optional):
@@ -169,7 +180,7 @@ Start position (optional):
 
 ```bash
 # Resume after a specific fact, then keep following the live tail
-curl "http://localhost:8080/v1/stores/default/facts/subscribe?after=2f4d6f2c-6a3e-4a77-8c6b-0c3f6c2e5e11"
+curl "http://localhost:8080/api/v1/stores/default/facts/subscribe?after=2f4d6f2c-6a3e-4a77-8c6b-0c3f6c2e5e11"
 ```
 
 Example SSE Output (the connection stays open and keeps emitting):
@@ -190,7 +201,7 @@ a terminating read rather than a live tail.
 
 ```bash
 # Replay everything currently in the store, then the stream ends
-curl http://localhost:8080/v1/stores/default/facts/replay
+curl http://localhost:8080/api/v1/stores/default/facts/replay
 ```
 
 Start position (optional):
@@ -205,7 +216,7 @@ always be empty.
 
 ```bash
 # Incremental replay: everything since the last processed fact, then exit
-curl "http://localhost:8080/v1/stores/default/facts/replay?after=2f4d6f2c-6a3e-4a77-8c6b-0c3f6c2e5e11"
+curl "http://localhost:8080/api/v1/stores/default/facts/replay?after=2f4d6f2c-6a3e-4a77-8c6b-0c3f6c2e5e11"
 ```
 
 **Resumable batch pattern:** persist the id of the last fact you processed, then on
@@ -375,23 +386,33 @@ grpcurl -plaintext \
 
 Outcomes: `present` · `absent` · `store_not_found`
 
-#### FindFactsBySubject
+#### StreamFacts and StreamFactsBySubject
+
+Stream the facts of a store, or of one subject, as they are stored when the call is made, then
+complete.
 
 ```bash
 grpcurl -plaintext \
-  -d '{"store_name": "orders", "subject": "order-42", "limit": 50, "direction": "FORWARD"}' \
-  localhost:8080 io.factstore.server.grpc.FactService/FindFactsBySubject
+  -d '{"store_name": "orders", "direction": "READ_DIRECTION_BACKWARD", "limit": 50}' \
+  localhost:8080 io.factstore.server.grpc.FactService/StreamFacts
+
+grpcurl -plaintext \
+  -d '{"store_name": "orders", "subject": "order-42", "direction": "READ_DIRECTION_FORWARD"}' \
+  localhost:8080 io.factstore.server.grpc.FactService/StreamFactsBySubject
 ```
 
-Outcomes: `found` (with facts list, possibly empty) · `store_not_found`
+Each message carries a `batch` of facts, at most 1 MiB in size. A missing store is reported as a
+single `store_not_found` message instead. The stream completes with status `OK` once every fact
+was sent, and with an error status if it fails part way.
 
-`direction` is `FORWARD` (oldest first, default) or `BACKWARD` (newest first). `limit` of `0` means no limit.
+`direction` is required on every read: `READ_DIRECTION_FORWARD` (oldest first) or
+`READ_DIRECTION_BACKWARD` (newest first). `limit` is optional and must be positive.
 
 #### FindFactsByTags
 
 ```bash
 grpcurl -plaintext \
-  -d '{"store_name": "orders", "tags": {"region": "eu"}}' \
+  -d '{"store_name": "orders", "tags": {"region": "eu"}, "direction": "READ_DIRECTION_FORWARD"}' \
   localhost:8080 io.factstore.server.grpc.FactService/FindFactsByTags
 ```
 
@@ -424,7 +445,8 @@ grpcurl -plaintext \
   -d '{
     "store_name": "orders",
     "from": "2026-01-01T00:00:00Z",
-    "to":   "2026-02-01T00:00:00Z"
+    "to":   "2026-02-01T00:00:00Z",
+    "direction": "READ_DIRECTION_FORWARD"
   }' \
   localhost:8080 io.factstore.server.grpc.FactService/FindFactsInTimeRange
 ```

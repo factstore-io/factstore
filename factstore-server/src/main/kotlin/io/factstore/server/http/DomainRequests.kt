@@ -44,17 +44,29 @@ internal fun findByIdRequest(storeName: String, factId: String): FindByIdRequest
     FindByIdRequest(storeName.asStoreName(), factId.asFactId())
 }
 
-internal fun findBySubjectRequest(
+internal fun streamFactsRequest(
+    storeName: String,
+    direction: String?,
+    limit: String?,
+): StreamFactsRequest = parseInput {
+    StreamFactsRequest(
+        storeName = storeName.asStoreName(),
+        direction = direction.asReadDirection(),
+        limit = limit.asLimit(),
+    )
+}
+
+internal fun streamFactsBySubjectRequest(
     storeName: String,
     subject: String,
-    limit: String?,
     direction: String?,
-): FindBySubjectRequest = parseInput {
-    FindBySubjectRequest(
+    limit: String?,
+): StreamFactsBySubjectRequest = parseInput {
+    StreamFactsBySubjectRequest(
         storeName = storeName.asStoreName(),
         subject = subject.asSubject(),
-        limit = limit.asLimit(),
         direction = direction.asReadDirection(),
+        limit = limit.asLimit(),
     )
 }
 

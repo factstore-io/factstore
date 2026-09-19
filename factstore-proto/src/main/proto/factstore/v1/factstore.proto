@@ -30,9 +30,12 @@ message StoreInfo {
   google.protobuf.Timestamp created_at = 3;
 }
 
+// Every read states its direction explicitly: an unset direction is rejected
+// with INVALID_ARGUMENT rather than read as a default.
 enum ReadDirection {
-  FORWARD = 0;  // oldest to newest (default)
-  BACKWARD = 1; // newest to oldest
+  READ_DIRECTION_UNSPECIFIED = 0;
+  READ_DIRECTION_FORWARD = 1;  // oldest to newest
+  READ_DIRECTION_BACKWARD = 2; // newest to oldest
 }
 
 // ─── Tag Query ────────────────────────────────────────────────────────────────
@@ -209,8 +212,15 @@ service FactService {
   // Check whether a fact with the given ID exists.
   rpc FactExists(FactExistsRequest) returns (FactExistsResponse);
 
-  // Find all facts for a subject, with optional limit and direction.
-  rpc FindFactsBySubject(FindFactsBySubjectRequest) returns (FindFactsBySubjectResponse);
+  // Stream all facts of a store, up to the head pinned at call time, then complete.
+  // A missing store is delivered as the first and only message; facts are delivered
+  // in batches of bounded size. The stream completes with status OK once every fact
+  // was sent, and with an error status if it fails part way.
+  rpc StreamFacts(StreamFactsRequest) returns (stream StreamFactsResponse);
+
+  // Stream the facts of a subject, up to the head pinned at call time, then complete.
+  // Delivery and completion semantics mirror StreamFacts.
+  rpc StreamFactsBySubject(StreamFactsBySubjectRequest) returns (stream StreamFactsBySubjectResponse);
 
   // Find facts whose tags match ALL the specified key-value pairs.
   rpc FindFactsByTags(FindFactsByTagsRequest) returns (FindFactsByTagsResponse);
@@ -225,14 +235,14 @@ service FactService {
   // continue emitting new facts as they are appended. The stream never completes on
   // its own. Facts are delivered in batches for higher throughput. Pre-stream errors
   // (store not found, after_fact_id not found) are delivered as the first and only
-  // StreamFactsResponse message, after which the stream completes normally; terminal
+  // SubscribeFactsResponse message, after which the stream completes normally; terminal
   // failures that occur once facts are already flowing are surfaced as gRPC status errors.
-  rpc SubscribeFacts(SubscribeFactsRequest) returns (stream StreamFactsResponse);
+  rpc SubscribeFacts(SubscribeFactsRequest) returns (stream SubscribeFactsResponse);
 
   // Open a bounded replay: emit existing facts from the start position up to the head
   // pinned at call time, then complete. Facts appended during the replay are excluded.
   // Error and batching semantics mirror SubscribeFacts.
-  rpc ReplayFacts(ReplayFactsRequest) returns (stream StreamFactsResponse);
+  rpc ReplayFacts(ReplayFactsRequest) returns (stream ReplayFactsResponse);
 }
 
 // -- AppendFacts --
@@ -308,22 +318,6 @@ message FactExistsResponse {
 
 message FactPresent {}
 
-// -- FindFactsBySubject --
-
-message FindFactsBySubjectRequest {
-  string store_name = 1;
-  string subject = 2;
-  optional int32 limit = 3;
-  ReadDirection direction = 4;
-}
-
-message FindFactsBySubjectResponse {
-  oneof outcome {
-    FactsFound found = 1;
-    StoreNotFound store_not_found = 2;
-  }
-}
-
 // -- FindFactsByTags --
 
 message FindFactsByTagsRequest {
@@ -371,17 +365,58 @@ message FindFactsInTimeRangeResponse {
   }
 }
 
-// -- StreamFacts --
+// -- Streams --
 
 // A batch of facts delivered in a single stream message for higher throughput.
 message FactBatch {
   repeated Fact facts = 1;
 }
 
-// Envelope for each StreamFacts stream message: either a batch of facts or a
-// pre-stream error. Mirrors the oneof-outcome pattern used by the unary RPCs so
-// that business errors are typed data rather than out-of-band status codes.
+// -- StreamFacts --
+
+message StreamFactsRequest {
+  string store_name = 1;
+  ReadDirection direction = 2;
+  optional int32 limit = 3; // absent = no limit
+}
+
+// Each message is either a batch of facts or the pre-stream outcome that no stream
+// could be opened. Mirrors the oneof-outcome pattern used by the unary RPCs so that
+// business errors are typed data rather than out-of-band status codes.
 message StreamFactsResponse {
+  oneof message {
+    FactBatch batch = 1;
+    StoreNotFound store_not_found = 2;
+  }
+}
+
+// -- StreamFactsBySubject --
+
+message StreamFactsBySubjectRequest {
+  string store_name = 1;
+  string subject = 2;
+  ReadDirection direction = 3;
+  optional int32 limit = 4; // absent = no limit
+}
+
+message StreamFactsBySubjectResponse {
+  oneof message {
+    FactBatch batch = 1;
+    StoreNotFound store_not_found = 2;
+  }
+}
+
+// -- SubscribeFacts and ReplayFacts --
+
+message SubscribeFactsResponse {
+  oneof message {
+    FactBatch batch = 1;
+    StoreNotFound store_not_found = 2;
+    FactNotFound after_fact_not_found = 3; // the after_fact_id cursor does not exist
+  }
+}
+
+message ReplayFactsResponse {
   oneof message {
     FactBatch batch = 1;
     StoreNotFound store_not_found = 2;

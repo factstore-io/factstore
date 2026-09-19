@@ -19,10 +19,8 @@ import io.factstore.client.model.ReplayStartPosition
 import io.factstore.client.model.SubscribeStartPosition
 import io.factstore.client.model.TagQuery
 import io.factstore.grpc.v1.FactServiceGrpcKt.FactServiceCoroutineStub
-import io.factstore.grpc.v1.FactStoreProto
 import io.factstore.grpc.v1.appendFactsRequest
 import io.factstore.grpc.v1.factExistsRequest
-import io.factstore.grpc.v1.findFactsBySubjectRequest
 import io.factstore.grpc.v1.findFactsByTagsRequest
 import io.factstore.grpc.v1.findFactsInTimeRangeRequest
 import io.factstore.grpc.v1.fromBeginning
@@ -30,8 +28,11 @@ import io.factstore.grpc.v1.fromEnd
 import io.factstore.grpc.v1.getFactRequest
 import io.factstore.grpc.v1.queryFactsRequest
 import io.factstore.grpc.v1.replayFactsRequest
+import io.factstore.grpc.v1.streamFactsBySubjectRequest
+import io.factstore.grpc.v1.streamFactsRequest
 import io.factstore.grpc.v1.subscribeFactsRequest
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.transform
 import java.time.Duration
@@ -101,22 +102,51 @@ class FactOperations internal constructor(
         }
     }
 
-    suspend fun findBySubject(
+    /**
+     * Streams all facts of a store, up to the newest fact at the time of the call, then completes.
+     *
+     * Throws [StoreNotFoundException] when collected if the store does not exist.
+     *
+     * @param limit the maximum number of facts to emit, or `null` for all of them
+     */
+    fun streamFacts(
+        storeName: String,
+        direction: ReadDirection,
+        limit: Int? = null,
+    ): Flow<Fact> = stub.streamFacts(streamFactsRequest {
+        this.storeName = storeName
+        this.direction = direction.toProto()
+        limit?.let { this.limit = it }
+    }).toFactFlow { response ->
+        when {
+            response.hasBatch() -> response.batch.factsList.forEach { emit(it.toDomain()) }
+            response.hasStoreNotFound() -> throw StoreNotFoundException(storeName)
+            else -> error("Unexpected stream message: $response")
+        }
+    }
+
+    /**
+     * Streams the facts of a subject, up to the newest fact at the time of the call, then completes.
+     *
+     * Throws [StoreNotFoundException] when collected if the store does not exist.
+     *
+     * @param limit the maximum number of facts to emit, or `null` for all of them
+     */
+    fun streamFactsBySubject(
         storeName: String,
         subject: String,
+        direction: ReadDirection,
         limit: Int? = null,
-        direction: ReadDirection = ReadDirection.FORWARD,
-    ): List<Fact> = grpcCall {
-        val response = timedStub().findFactsBySubject(findFactsBySubjectRequest {
-            this.storeName = storeName
-            this.subject = subject
-            limit?.let { this.limit = it }
-            this.direction = direction.toProto()
-        })
+    ): Flow<Fact> = stub.streamFactsBySubject(streamFactsBySubjectRequest {
+        this.storeName = storeName
+        this.subject = subject
+        this.direction = direction.toProto()
+        limit?.let { this.limit = it }
+    }).toFactFlow { response ->
         when {
-            response.hasFound() -> response.found.factsList.map { it.toDomain() }
+            response.hasBatch() -> response.batch.factsList.forEach { emit(it.toDomain()) }
             response.hasStoreNotFound() -> throw StoreNotFoundException(storeName)
-            else -> error("Unexpected response: $response")
+            else -> error("Unexpected stream message: $response")
         }
     }
 
@@ -183,7 +213,15 @@ class FactOperations internal constructor(
             SubscribeStartPosition.End -> fromEnd = fromEnd {}
             is SubscribeStartPosition.AfterFact -> afterFactId = startPosition.factId
         }
-    }).toFactFlow(storeName, (startPosition as? SubscribeStartPosition.AfterFact)?.factId)
+    }).toFactFlow { response ->
+        when {
+            response.hasBatch() -> response.batch.factsList.forEach { emit(it.toDomain()) }
+            response.hasStoreNotFound() -> throw StoreNotFoundException(storeName)
+            response.hasAfterFactNotFound() ->
+                throw FactNotFoundException((startPosition as? SubscribeStartPosition.AfterFact)?.factId ?: "")
+            else -> error("Unexpected stream message: $response")
+        }
+    }
 
     /** Bounded replay: drains history up to the pinned head, then completes. */
     fun replay(
@@ -195,17 +233,23 @@ class FactOperations internal constructor(
             ReplayStartPosition.Beginning -> fromBeginning = fromBeginning {}
             is ReplayStartPosition.AfterFact -> afterFactId = start.factId
         }
-    }).toFactFlow(storeName, (start as? ReplayStartPosition.AfterFact)?.factId)
-
-    private fun Flow<FactStoreProto.StreamFactsResponse>.toFactFlow(
-        storeName: String,
-        cursorFactId: String?,
-    ): Flow<Fact> = transform { response ->
+    }).toFactFlow { response ->
         when {
             response.hasBatch() -> response.batch.factsList.forEach { emit(it.toDomain()) }
             response.hasStoreNotFound() -> throw StoreNotFoundException(storeName)
-            response.hasAfterFactNotFound() -> throw FactNotFoundException(cursorFactId ?: "")
+            response.hasAfterFactNotFound() ->
+                throw FactNotFoundException((start as? ReplayStartPosition.AfterFact)?.factId ?: "")
             else -> error("Unexpected stream message: $response")
         }
-    }.catch { throw it.toFactStoreException() }
+    }
+
+    /**
+     * Turns the messages of a streaming RPC into facts, mapping gRPC status failures to
+     * [io.factstore.client.exceptions.FactStoreException]s.
+     *
+     * Streams are called on the plain stub rather than [timedStub]: a deadline would cut off
+     * reading a long history.
+     */
+    private fun <R> Flow<R>.toFactFlow(decode: suspend FlowCollector<Fact>.(R) -> Unit): Flow<Fact> =
+        transform { decode(it) }.catch { throw it.toFactStoreException() }
 }
