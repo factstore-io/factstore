@@ -30,7 +30,17 @@ const val RAW_CHANNEL_CAPACITY = 4
 class FdbFactStreamer(
     private val store: FdbFactStore,
     private val deserializationDispatcher: CoroutineDispatcher = Dispatchers.Default,
-) : FactSubscriber, FactReplayer {
+) : FactStreamer, FactSubscriber, FactReplayer {
+
+    // -------------------------------------------------------------------------
+    // Stream (bounded, pinned at call time)
+    // -------------------------------------------------------------------------
+
+    override suspend fun streamFacts(request: StreamFactsRequest): StreamFactsResult =
+        TODO("Not yet implemented")
+
+    override suspend fun streamFactsBySubject(request: StreamFactsBySubjectRequest): StreamFactsBySubjectResult =
+        TODO("Not yet implemented")
 
     // -------------------------------------------------------------------------
     // Subscribe (live tail)

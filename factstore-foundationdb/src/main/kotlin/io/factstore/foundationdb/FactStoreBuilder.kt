@@ -19,6 +19,7 @@ suspend fun buildFdbFactStore(
     return FactStore(
         factAppender = FdbFactAppender(fdbFactStore),
         factFinder = FdbFactFinder(fdbFactStore),
+        factStreamer = streamer,
         factSubscriber = streamer,
         factReplayer = streamer,
         storeFactory = FdbStoreFactory(fdbFactStore),

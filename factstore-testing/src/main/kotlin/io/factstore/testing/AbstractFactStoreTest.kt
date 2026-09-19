@@ -1046,6 +1046,330 @@ abstract class AbstractFactStoreTest {
         }
     }
 
+    // ===== FactStreamer: streamFacts =====
+
+    @Test
+    fun testStreamFactsForward(): Unit = runBlocking {
+        val facts = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
+                input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload),
+                input(ALICE_SUBJECT_VALUE, "USER_LOCKED", alicePayload),
+            )
+        )
+
+        val streamed = streamToList(StreamFactsRequest(testStore, ReadDirection.Forward, Limit.None))
+
+        assertThat(streamed).containsExactlyElementsOf(facts)
+    }
+
+    @Test
+    fun testStreamFactsBackward(): Unit = runBlocking {
+        val facts = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
+                input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload),
+                input(ALICE_SUBJECT_VALUE, "USER_LOCKED", alicePayload),
+            )
+        )
+
+        val streamed = streamToList(StreamFactsRequest(testStore, ReadDirection.Backward, Limit.None))
+
+        assertThat(streamed).containsExactlyElementsOf(facts.reversed())
+    }
+
+    @Test
+    fun testStreamFactsWithLimit(): Unit = runBlocking {
+        val (fact1, fact2, fact3) = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
+                input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload),
+                input(ALICE_SUBJECT_VALUE, "USER_LOCKED", alicePayload),
+            )
+        )
+
+        // Forward + limit 2 → the two oldest facts
+        assertThat(streamToList(StreamFactsRequest(testStore, ReadDirection.Forward, Limit.of(2))))
+            .containsExactly(fact1, fact2)
+
+        // Backward + limit 2 → the two newest facts, newest first
+        assertThat(streamToList(StreamFactsRequest(testStore, ReadDirection.Backward, Limit.of(2))))
+            .containsExactly(fact3, fact2)
+    }
+
+    @Test
+    fun testStreamFactsWithLimitLargerThanStore(): Unit = runBlocking {
+        val facts = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
+                input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload),
+            )
+        )
+
+        val streamed = streamToList(StreamFactsRequest(testStore, ReadDirection.Forward, Limit.of(10)))
+
+        assertThat(streamed).containsExactlyElementsOf(facts)
+    }
+
+    @Test
+    fun testStreamFactsOfEmptyStore(): Unit = runBlocking {
+        val streamed = streamToList(StreamFactsRequest(testStore, ReadDirection.Forward, Limit.None))
+
+        assertThat(streamed).isEmpty()
+    }
+
+    @Test
+    fun testStreamFactsOfNonExistingStore(): Unit = runBlocking {
+        val result = store.streamFacts(StreamFactsRequest(nonExistingStore, ReadDirection.Forward, Limit.None))
+
+        assertThat(result).isEqualTo(StreamFactsResult.StoreNotFound(nonExistingStore))
+    }
+
+    @Test
+    fun testStreamFactsOnlyContainsFactsOfTheRequestedStore(): Unit = runBlocking {
+        val otherStore = StoreName("other-store")
+        store.create(CreateStoreRequest(otherStore))
+
+        val fact = appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload))
+        appendStored(input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload), otherStore)
+
+        val streamed = streamToList(StreamFactsRequest(testStore, ReadDirection.Forward, Limit.None))
+
+        assertThat(streamed).containsExactly(fact)
+    }
+
+    @Test
+    fun testStreamFactsExcludesFactsAppendedAfterCall(): Unit = runBlocking {
+        val fact1 = appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload))
+        val fact2 = appendStored(input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload))
+
+        // The head is pinned when the stream is requested, not when it is collected.
+        val stream = (store.streamFacts(StreamFactsRequest(testStore, ReadDirection.Forward, Limit.None))
+                as StreamFactsResult.FactStream).facts
+
+        appendStored(input(CHARLIE_SUBJECT_VALUE, "USER_CREATED", charliePayload))
+
+        assertThat(withTimeout(10.seconds) { stream.toList() }).containsExactly(fact1, fact2)
+    }
+
+    @Test
+    fun testStreamFactsBackwardExcludesFactsAppendedAfterCall(): Unit = runBlocking {
+        val fact1 = appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload))
+        val fact2 = appendStored(input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload))
+
+        // Reading backward starts at the pinned head, not at the newest fact at collection time.
+        val stream = (store.streamFacts(StreamFactsRequest(testStore, ReadDirection.Backward, Limit.None))
+                as StreamFactsResult.FactStream).facts
+
+        appendStored(input(CHARLIE_SUBJECT_VALUE, "USER_CREATED", charliePayload))
+
+        assertThat(withTimeout(10.seconds) { stream.toList() }).containsExactly(fact2, fact1)
+    }
+
+    @Test
+    fun testStreamFactsIsRepeatable(): Unit = runBlocking {
+        val facts = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
+                input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload),
+            )
+        )
+
+        val stream = (store.streamFacts(StreamFactsRequest(testStore, ReadDirection.Forward, Limit.None))
+                as StreamFactsResult.FactStream).facts
+
+        val first = withTimeout(10.seconds) { stream.toList() }
+        appendStored(input(CHARLIE_SUBJECT_VALUE, "USER_CREATED", charliePayload))
+        val second = withTimeout(10.seconds) { stream.toList() }
+
+        assertThat(first).containsExactlyElementsOf(facts)
+        assertThat(second).isEqualTo(first)
+    }
+
+    @Test
+    fun testStreamFactsOfLargeStore(): Unit = runBlocking {
+        val facts = appendLargeHistory()
+
+        assertThat(streamToList(StreamFactsRequest(testStore, ReadDirection.Forward, Limit.None)))
+            .containsExactlyElementsOf(facts)
+        assertThat(streamToList(StreamFactsRequest(testStore, ReadDirection.Backward, Limit.None)))
+            .containsExactlyElementsOf(facts.reversed())
+        assertThat(streamToList(StreamFactsRequest(testStore, ReadDirection.Forward, Limit.of(777))))
+            .containsExactlyElementsOf(facts.take(777))
+        assertThat(streamToList(StreamFactsRequest(testStore, ReadDirection.Backward, Limit.of(777))))
+            .containsExactlyElementsOf(facts.reversed().take(777))
+    }
+
+    // ===== FactStreamer: streamFactsBySubject =====
+
+    @Test
+    fun testStreamFactsBySubjectForward(): Unit = runBlocking {
+        val (fact1, fact2, fact3) = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
+                input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload),
+                input(ALICE_SUBJECT_VALUE, "USER_LOCKED", alicePayload),
+            )
+        )
+
+        assertThat(streamToList(subjectRequest(ALICE_SUBJECT_VALUE, ReadDirection.Forward, Limit.None)))
+            .containsExactly(fact1, fact3)
+        assertThat(streamToList(subjectRequest(BOB_SUBJECT_VALUE, ReadDirection.Forward, Limit.None)))
+            .containsExactly(fact2)
+    }
+
+    @Test
+    fun testStreamFactsBySubjectBackward(): Unit = runBlocking {
+        val (fact1, _, fact3) = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
+                input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload),
+                input(ALICE_SUBJECT_VALUE, "USER_LOCKED", alicePayload),
+            )
+        )
+
+        assertThat(streamToList(subjectRequest(ALICE_SUBJECT_VALUE, ReadDirection.Backward, Limit.None)))
+            .containsExactly(fact3, fact1)
+    }
+
+    @Test
+    fun testStreamFactsBySubjectWithLimit(): Unit = runBlocking {
+        val (fact1, fact2, fact3) = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
+                input(ALICE_SUBJECT_VALUE, "USER_UPDATED", alicePayload),
+                input(ALICE_SUBJECT_VALUE, "USER_LOCKED", alicePayload),
+            )
+        )
+
+        // Forward + limit 2 → the subject's two oldest facts
+        assertThat(streamToList(subjectRequest(ALICE_SUBJECT_VALUE, ReadDirection.Forward, Limit.of(2))))
+            .containsExactly(fact1, fact2)
+
+        // Backward + limit 2 → the subject's two newest facts, newest first
+        assertThat(streamToList(subjectRequest(ALICE_SUBJECT_VALUE, ReadDirection.Backward, Limit.of(2))))
+            .containsExactly(fact3, fact2)
+    }
+
+    @Test
+    fun testStreamFactsBySubjectLimitCountsOnlyTheSubjectsFacts(): Unit = runBlocking {
+        val (fact1, _, _, fact4) = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
+                input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload),
+                input(BOB_SUBJECT_VALUE, "USER_UPDATED", bobPayload),
+                input(ALICE_SUBJECT_VALUE, "USER_LOCKED", alicePayload),
+            )
+        )
+
+        // Bob's facts in between must neither be emitted nor count towards the limit.
+        assertThat(streamToList(subjectRequest(ALICE_SUBJECT_VALUE, ReadDirection.Forward, Limit.of(2))))
+            .containsExactly(fact1, fact4)
+    }
+
+    @Test
+    fun testStreamFactsBySubjectWithoutFacts(): Unit = runBlocking {
+        appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload))
+
+        assertThat(streamToList(subjectRequest("USER:PETER", ReadDirection.Forward, Limit.None))).isEmpty()
+    }
+
+    @Test
+    fun testStreamFactsBySubjectOfNonExistingStore(): Unit = runBlocking {
+        val result = store.streamFactsBySubject(
+            StreamFactsBySubjectRequest(nonExistingStore, Subject(ALICE_SUBJECT_VALUE), ReadDirection.Forward, Limit.None)
+        )
+
+        assertThat(result).isEqualTo(StreamFactsBySubjectResult.StoreNotFound(nonExistingStore))
+    }
+
+    @Test
+    fun testStreamFactsBySubjectOnlyContainsFactsOfTheRequestedStore(): Unit = runBlocking {
+        val otherStore = StoreName("other-store")
+        store.create(CreateStoreRequest(otherStore))
+
+        val fact = appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload))
+        appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload), otherStore)
+
+        assertThat(streamToList(subjectRequest(ALICE_SUBJECT_VALUE, ReadDirection.Forward, Limit.None)))
+            .containsExactly(fact)
+    }
+
+    @Test
+    fun testStreamFactsBySubjectExcludesFactsAppendedAfterCall(): Unit = runBlocking {
+        val fact1 = appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload))
+
+        // The head is pinned when the stream is requested, not when it is collected.
+        val stream = (store.streamFactsBySubject(subjectRequest(ALICE_SUBJECT_VALUE, ReadDirection.Forward, Limit.None))
+                as StreamFactsBySubjectResult.FactStream).facts
+
+        appendStored(input(ALICE_SUBJECT_VALUE, "USER_LOCKED", alicePayload))
+
+        assertThat(withTimeout(10.seconds) { stream.toList() }).containsExactly(fact1)
+    }
+
+    @Test
+    fun testStreamFactsBySubjectIsRepeatable(): Unit = runBlocking {
+        val (fact1, _, fact3) = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
+                input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload),
+                input(ALICE_SUBJECT_VALUE, "USER_LOCKED", alicePayload),
+            )
+        )
+
+        val stream = (store.streamFactsBySubject(subjectRequest(ALICE_SUBJECT_VALUE, ReadDirection.Forward, Limit.None))
+                as StreamFactsBySubjectResult.FactStream).facts
+
+        val first = withTimeout(10.seconds) { stream.toList() }
+        appendStored(input(ALICE_SUBJECT_VALUE, "USER_UNLOCKED", alicePayload))
+        val second = withTimeout(10.seconds) { stream.toList() }
+
+        assertThat(first).containsExactly(fact1, fact3)
+        assertThat(second).isEqualTo(first)
+    }
+
+    @Test
+    fun testStreamFactsBySubjectOfLargeHistory(): Unit = runBlocking {
+        val aliceFacts = appendLargeHistory().filter { it.subject.value == ALICE_SUBJECT_VALUE }
+
+        assertThat(streamToList(subjectRequest(ALICE_SUBJECT_VALUE, ReadDirection.Forward, Limit.None)))
+            .containsExactlyElementsOf(aliceFacts)
+        assertThat(streamToList(subjectRequest(ALICE_SUBJECT_VALUE, ReadDirection.Backward, Limit.None)))
+            .containsExactlyElementsOf(aliceFacts.reversed())
+        assertThat(streamToList(subjectRequest(ALICE_SUBJECT_VALUE, ReadDirection.Forward, Limit.of(333))))
+            .containsExactlyElementsOf(aliceFacts.take(333))
+        assertThat(streamToList(subjectRequest(ALICE_SUBJECT_VALUE, ReadDirection.Backward, Limit.of(333))))
+            .containsExactlyElementsOf(aliceFacts.reversed().take(333))
+    }
+
+    private fun subjectRequest(subject: String, direction: ReadDirection, limit: Limit) =
+        StreamFactsBySubjectRequest(testStore, Subject(subject), direction, limit)
+
+    private suspend fun streamToList(request: StreamFactsRequest): List<Fact> {
+        val stream = (store.streamFacts(request) as StreamFactsResult.FactStream).facts
+        return withTimeout(10.seconds) { stream.toList() }
+    }
+
+    private suspend fun streamToList(request: StreamFactsBySubjectRequest): List<Fact> {
+        val stream = (store.streamFactsBySubject(request) as StreamFactsBySubjectResult.FactStream).facts
+        return withTimeout(10.seconds) { stream.toList() }
+    }
+
+    /**
+     * Appends 2,000 facts, alternating between Alice and Bob, in appends of the maximum size.
+     *
+     * Large enough that a backend reading in batches needs several of them, so the
+     * tests cover batch boundaries without knowing a backend's batch size.
+     */
+    private suspend fun appendLargeHistory(): List<Fact> {
+        val inputs = (0 until 2_000).map { i ->
+            val subject = if (i % 2 == 0) ALICE_SUBJECT_VALUE else BOB_SUBJECT_VALUE
+            input(subject, "FACT_$i", """{ "index": $i }""".toFactPayload())
+        }
+        return inputs.chunked(AppendRequest.MAX_FACTS).flatMap { appendStored(it) }
+    }
+
     @Test
     fun testFindByTagQuery(): Unit = runBlocking {
 

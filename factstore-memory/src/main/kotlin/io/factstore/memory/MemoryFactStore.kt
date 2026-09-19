@@ -2,6 +2,9 @@ package io.factstore.memory
 
 import io.factstore.core.*
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.asFlow
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -166,6 +169,42 @@ class MemoryFactStore : FactStore {
             request.query.queryItems.any { it.matches(fact) }
         } ?: emptyList()
         FindByTagQueryResult.Found(foundFacts)
+    }
+
+    // ===== FactStreamer Implementation =====
+
+    override suspend fun streamFacts(request: StreamFactsRequest): StreamFactsResult = lock.withLock {
+        val internalId = resolveId(request.storeName) ?: return StreamFactsResult.StoreNotFound(request.storeName)
+        val store = facts[internalId] ?: return StreamFactsResult.StoreNotFound(request.storeName)
+        StreamFactsResult.FactStream(store.pinnedStream(request.direction, request.limit) { true })
+    }
+
+    override suspend fun streamFactsBySubject(request: StreamFactsBySubjectRequest): StreamFactsBySubjectResult = lock.withLock {
+        val internalId = resolveId(request.storeName) ?: return StreamFactsBySubjectResult.StoreNotFound(request.storeName)
+        val store = facts[internalId] ?: return StreamFactsBySubjectResult.StoreNotFound(request.storeName)
+        StreamFactsBySubjectResult.FactStream(
+            store.pinnedStream(request.direction, request.limit) { it.subject == request.subject }
+        )
+    }
+
+    /**
+     * Pins the head of this store's facts when called, and reads the matching facts
+     * up to it only when collected.
+     *
+     * The list is append-only, so the facts up to the pinned head never change and
+     * every collection emits the same facts. Must be called while holding [lock].
+     */
+    private fun List<Fact>.pinnedStream(
+        direction: ReadDirection,
+        limit: Limit,
+        predicate: (Fact) -> Boolean,
+    ): Flow<Fact> {
+        val head = size
+        return flow {
+            // Copy under the lock, emit outside of it: a collector may append in between.
+            val selected = lock.withLock { subList(0, head).filter(predicate) }
+            emitAll(selected.applyDirection(direction).applyLimit(limit).asFlow())
+        }
     }
 
     // ===== FactSubscriber Implementation =====
