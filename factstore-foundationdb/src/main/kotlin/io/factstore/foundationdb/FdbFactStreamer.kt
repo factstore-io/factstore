@@ -17,30 +17,195 @@ import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.transform
 import java.util.concurrent.CompletableFuture
 
 const val DEFAULT_BATCH_SIZE = 10_000
 const val RAW_CHANNEL_CAPACITY = 4
 
 /**
- * FoundationDB streaming engine. Backs both the live [FactSubscriber] and the
- * bounded [FactReplayer]: each entry point resolves a start cursor and an
- * [EndBoundary], then delegates to a single shared [scan] pipeline.
+ * The number of entries a [FactStreamer] stream reads per transaction.
+ *
+ * Every batch is read in its own short transaction, far from FoundationDB's five-second
+ * limit: even at the largest fact the specification allows, about 75 kB, a batch loads
+ * less than 20 MB.
+ */
+const val STREAM_BATCH_SIZE = 256
+
+/**
+ * The number of batches a [FactStreamer] stream reads ahead of its consumer.
+ *
+ * Reading ahead lets the next batches be read while the consumer processes the current one.
+ * The batches read ahead wait in memory: with the batch being processed, a stream holds at
+ * most 5 batches, which is about 96 MB at the largest fact size and a few MB for typical facts.
+ */
+const val STREAM_PREFETCH_BATCHES = 4
+
+/** Turns the entries of a batch into the serialized facts behind them, within the batch's transaction. */
+private typealias BatchLoader = (ReadTransaction, List<KeyValue>) -> CompletableFuture<List<ByteArray>>
+
+/**
+ * FoundationDB streaming engine.
+ *
+ * Backs the bounded [FactStreamer], which pins the store's head when called and then
+ * scans an index up to it in batches ([scanPinned]), as well as the live
+ * [FactSubscriber] and the bounded [FactReplayer]: each of those resolves a start
+ * cursor and an [EndBoundary], then delegates to a single shared [scan] pipeline.
+ *
+ * @param streamBatchSize the number of entries a [FactStreamer] stream reads per transaction
  */
 class FdbFactStreamer(
     private val store: FdbFactStore,
     private val deserializationDispatcher: CoroutineDispatcher = Dispatchers.Default,
+    private val streamBatchSize: Int = STREAM_BATCH_SIZE,
 ) : FactStreamer, FactSubscriber, FactReplayer {
+
+    init {
+        require(streamBatchSize > 0) { "The stream batch size must be positive, but was $streamBatchSize." }
+    }
 
     // -------------------------------------------------------------------------
     // Stream (bounded, pinned at call time)
     // -------------------------------------------------------------------------
 
-    override suspend fun streamFacts(request: StreamFactsRequest): StreamFactsResult =
-        TODO("Not yet implemented")
+    override suspend fun streamFacts(request: StreamFactsRequest): StreamFactsResult {
+        val pinned = pinHead(request.storeName) ?: return StreamFactsResult.StoreNotFound(request.storeName)
+        val head = pinned.head ?: return StreamFactsResult.FactStream(emptyFlow())
 
-    override suspend fun streamFactsBySubject(request: StreamFactsBySubjectRequest): StreamFactsBySubjectResult =
-        TODO("Not yet implemented")
+        // The facts themselves are stored in position order, so they are their own index.
+        val factSubspace = store.context.factSubspace
+        val facts = scanPinned(
+            keys = PinnedKeys(
+                range = factSubspace.getRange(pinned.storeId),
+                pinnedEndKey = factSubspace.getFactKey(pinned.storeId, head),
+                direction = request.direction,
+            ),
+            limit = request.limit,
+        ) { _, entries -> CompletableFuture.completedFuture(entries.map { it.value }) }
+
+        return StreamFactsResult.FactStream(facts)
+    }
+
+    override suspend fun streamFactsBySubject(request: StreamFactsBySubjectRequest): StreamFactsBySubjectResult {
+        val pinned = pinHead(request.storeName) ?: return StreamFactsBySubjectResult.StoreNotFound(request.storeName)
+        val head = pinned.head ?: return StreamFactsBySubjectResult.FactStream(emptyFlow())
+
+        val subjectIndex = store.context.subjectIndexSubspace
+        val facts = scanPinned(
+            keys = PinnedKeys(
+                range = subjectIndex.range(pinned.storeId, request.subject),
+                pinnedEndKey = subjectIndex.getKey(pinned.storeId, request.subject, head),
+                direction = request.direction,
+            ),
+            limit = request.limit,
+        ) { tr, entries -> loadFacts(tr, pinned.storeId, entries.map { subjectIndex.unpackPosition(it.key) }) }
+
+        return StreamFactsBySubjectResult.FactStream(facts)
+    }
+
+    /** A store and its head at the moment it was resolved; no head means the store holds no facts. */
+    private class PinnedStore(val storeId: StoreId, val head: FactPosition?)
+
+    /** Resolves the store and its current head in one read, or `null` if the store does not exist. */
+    private suspend fun pinHead(storeName: StoreName): PinnedStore? =
+        read { tr ->
+            with(tr) {
+                store.context.lookUpStoreIdByName(storeName).thenCompose { storeId ->
+                    if (storeId == null) CompletableFuture.completedFuture(null)
+                    else store.getHead(storeId, tr).thenApply { head -> PinnedStore(storeId, head) }
+                }
+            }
+        }
+
+    /**
+     * Streams the facts behind [keys], at most [limit] of them.
+     *
+     * The batches are read in their own coroutine, up to [STREAM_PREFETCH_BATCHES] ahead of the
+     * consumer, so reading the next batches overlaps with processing the current one.
+     *
+     * [load] turns the entries of a batch into serialized facts, within the batch's transaction.
+     */
+    private fun scanPinned(keys: PinnedKeys, limit: Limit, load: BatchLoader): Flow<Fact> =
+        readPinnedBatches(keys, limit, load)
+            .buffer(capacity = STREAM_PREFETCH_BATCHES, onBufferOverflow = SUSPEND)
+            .map { serializedFacts ->
+                withContext(deserializationDispatcher) {
+                    serializedFacts.map { it.toSerializableFdbFact().toFact() }
+                }
+            }
+            .transform { facts -> facts.forEach { emit(it) } }
+
+    /**
+     * Reads the serialized facts behind [keys], at most [limit] of them, and emits them batch by batch.
+     *
+     * Each batch is read in its own transaction and emitted only once that transaction is done,
+     * so no transaction stays open while a batch waits or is processed. The last key a batch read
+     * is the cursor the next batch continues from. Keys are versionstamped and positions only grow,
+     * so every batch sees the same entries up to the pinned key: together, the batches read what a
+     * single transaction would have read.
+     */
+    private fun readPinnedBatches(keys: PinnedKeys, limit: Limit, load: BatchLoader): Flow<List<ByteArray>> = flow {
+        var cursor: ByteArray? = null
+        var remaining = limit.value ?: Int.MAX_VALUE
+        do {
+            val size = minOf(streamBatchSize, remaining)
+            val batch = readBatch(keys, cursor, size, load)
+            if (batch.facts.isNotEmpty()) emit(batch.facts)
+            cursor = batch.entries.lastOrNull()?.key
+            remaining -= batch.entries.size
+            // A batch smaller than requested means every key up to the pinned one was read.
+        } while (batch.entries.size == size && remaining > 0)
+    }
+
+    /** Reads, in one transaction, up to [size] of the [keys] that follow [cursor], and the facts behind them. */
+    private suspend fun readBatch(keys: PinnedKeys, cursor: ByteArray?, size: Int, load: BatchLoader): Batch =
+        read { tr ->
+            val (begin, end) = keys.remainingAfter(cursor)
+            tr.getRange(begin, end, size, keys.reverse, StreamingMode.WANT_ALL).asList()
+                .thenCompose { entries -> load(tr, entries).thenApply { facts -> Batch(entries, facts) } }
+        }
+
+    /** The entries one batch read, and the serialized facts behind them. */
+    private class Batch(val entries: List<KeyValue>, val facts: List<ByteArray>)
+
+    /**
+     * The keys of [range] up to and including [pinnedEndKey], read in [direction].
+     *
+     * A read starts at one end and continues from its cursor, the last key read, towards the
+     * other end: reading forward moves the begin past the cursor, reading backward moves the end
+     * before it.
+     */
+    private class PinnedKeys(range: Range, pinnedEndKey: ByteArray, direction: ReadDirection) {
+
+        val reverse = direction.isReverse()
+
+        private val first = KeySelector.firstGreaterOrEqual(range.begin)
+
+        // An exclusive end that includes the pinned key itself.
+        private val last = KeySelector.firstGreaterThan(pinnedEndKey)
+
+        /** The begin and end of the keys still to be read after [cursor]; all of them if it is `null`. */
+        fun remainingAfter(cursor: ByteArray?): Pair<KeySelector, KeySelector> = when {
+            cursor == null -> first to last
+            reverse -> first to KeySelector.firstGreaterOrEqual(cursor)
+            else -> KeySelector.firstGreaterThan(cursor) to last
+        }
+    }
+
+    /** Loads the serialized facts at [positions], in their order. */
+    private fun loadFacts(
+        tr: ReadTransaction,
+        storeId: StoreId,
+        positions: List<FactPosition>,
+    ): CompletableFuture<List<ByteArray>> {
+        val futures = positions.map { position ->
+            with(tr) { store.context.factSubspace.findFact(storeId, position) }.thenApply { fact ->
+                // An index entry and its fact are written, and removed, in the same transaction.
+                fact ?: throw IllegalStateException("Store $storeId has an index entry at $position without a fact.")
+            }
+        }
+        return CompletableFuture.allOf(*futures.toTypedArray()).thenApply { futures.map { it.resultNow() } }
+    }
 
     // -------------------------------------------------------------------------
     // Subscribe (live tail)

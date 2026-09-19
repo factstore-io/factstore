@@ -258,6 +258,9 @@ value class SubjectIndexSubspace(val subspace: Subspace) {
     fun range(storeId: StoreId, subject: Subject): Range =
         subspace.range(Tuple.from(storeId.uuid, subject.value))
 
+    fun getKey(storeId: StoreId, subject: Subject, position: FactPosition): ByteArray =
+        subspace.pack(Tuple.from(storeId.uuid, subject.value, position))
+
     context(tr: Transaction)
     fun save(storeId: StoreId, factId: FactId, subject: Subject, incompleteVersionstamp: Versionstamp) {
         val keyTuple = Tuple.from(storeId.uuid, subject.value, incompleteVersionstamp)
