@@ -53,6 +53,9 @@ internal fun String.asUuid(): UUID =
 
 internal fun String.asFactId(): FactId = FactId(asUuid())
 
+/** Absent means no fact; anything else must be a UUID. */
+internal fun String?.asFactIdOrNull(): FactId? = this?.trim()?.ifEmpty { null }?.asFactId()
+
 internal fun String?.asInstant(): Instant? = this?.let { Instant.parse(it.trim()) }
 
 /** Absent means no limit; anything but a positive integer is rejected. */
@@ -62,6 +65,12 @@ internal fun String?.asLimit(): Limit {
     requireNotNull(value) { "Limit must be a positive integer, but was '$this'." }
     return Limit.of(value)
 }
+
+/**
+ * An absent direction reads forward, the natural order of an append-only log.
+ */
+/** Absent means no limit; anything but a positive integer is rejected. */
+internal fun Int?.asLimit(): Limit = this?.let { Limit.of(it) } ?: Limit.None
 
 internal fun String?.asReadDirection(): ReadDirection = when (this?.trim()?.lowercase()) {
     null, "forward" -> ReadDirection.Forward

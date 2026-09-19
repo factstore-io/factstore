@@ -1,9 +1,16 @@
 package io.factstore.server.grpc
 
 import com.google.protobuf.ByteString
+import com.google.protobuf.CodedOutputStream
 import com.google.protobuf.Timestamp
 import io.factstore.core.*
 import io.factstore.grpc.v1.*
+import kotlinx.coroutines.channels.ReceiveChannel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.buffer
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.produceIn
 import java.time.Instant
 
 /*
@@ -15,9 +22,94 @@ internal fun Instant.toTimestamp(): Timestamp = Timestamp.newBuilder()
     .setNanos(nano)
     .build()
 
-internal fun List<Fact>.toProtoFactBatch(): FactStoreProto.FactBatch = factBatch {
-    facts += this@toProtoFactBatch.map { it.toProto() }
+/**
+ * The maximum encoded size of a [FactStoreProto.FactBatch]: 1 MiB.
+ *
+ * Far below gRPC's default message limit of 4 MiB, and large enough for any single fact,
+ * which the specification's limits keep below 80 kB.
+ */
+internal const val MAX_FACT_BATCH_BYTES = 1_048_576
+
+/**
+ * Groups the facts into batches whose encoded size stays within [maxBytes].
+ *
+ * A batch is sent once the next fact would not fit, and the last one when the facts are
+ * exhausted, so this suits bounded streams only: a live stream would hold back facts
+ * until a batch is full.
+ */
+internal fun Flow<Fact>.toProtoFactBatches(maxBytes: Int = MAX_FACT_BATCH_BYTES): Flow<FactStoreProto.FactBatch> =
+    flow {
+        val batch = mutableListOf<FactStoreProto.Fact>()
+        var batchBytes = 0
+        collect { fact ->
+            val proto = fact.toProto()
+            val size = proto.sizeInBatch()
+            if (batch.isNotEmpty() && batchBytes + size > maxBytes) {
+                emit(factBatch { facts += batch })
+                batch.clear()
+                batchBytes = 0
+            }
+            batch += proto
+            batchBytes += size
+        }
+        if (batch.isNotEmpty()) emit(factBatch { facts += batch })
+    }
+
+/**
+ * The number of facts a live stream keeps ready to be batched.
+ *
+ * Reading ahead is what gives [toLiveProtoFactBatches] something to group: while a subscription
+ * drains history the facts queue up here, and at the live tail the queue is empty, so a fact is
+ * sent on its own.
+ */
+internal const val LIVE_BATCH_BUFFER = 512
+
+/**
+ * Groups the facts of a live stream into batches whose encoded size stays within [maxBytes].
+ *
+ * Unlike [toProtoFactBatches] a batch is never waited for: it holds the facts that were ready
+ * when it was built, so a subscription draining history sends full batches while one following
+ * the tail sends each fact as it arrives. A fact that no longer fits [maxBytes] opens the next
+ * batch rather than being dropped or delayed.
+ */
+internal fun Flow<Fact>.toLiveProtoFactBatches(
+    maxBytes: Int = MAX_FACT_BATCH_BYTES,
+): Flow<FactStoreProto.FactBatch> = flow {
+    coroutineScope {
+        val ready = buffer(LIVE_BATCH_BUFFER).produceIn(this)
+        // The fact that did not fit the batch just sent; it opens the next one.
+        var carried: FactStoreProto.Fact? = null
+        while (true) {
+            val first = carried ?: ready.receiveOrNull()?.toProto() ?: break
+            carried = null
+            val batch = mutableListOf(first)
+            var batchBytes = first.sizeInBatch()
+            while (true) {
+                // Takes what is already there, and never waits for more.
+                val next = ready.tryReceive().getOrNull()?.toProto() ?: break
+                val size = next.sizeInBatch()
+                if (batchBytes + size > maxBytes) {
+                    carried = next
+                    break
+                }
+                batch += next
+                batchBytes += size
+            }
+            emit(factBatch { facts += batch })
+        }
+    }
 }
+
+/** Receives the next fact, or `null` once the channel is closed; a failure upstream is rethrown. */
+private suspend fun ReceiveChannel<Fact>.receiveOrNull(): Fact? {
+    val received = receiveCatching()
+    received.exceptionOrNull()?.let { throw it }
+    return received.getOrNull()
+}
+
+/** The size the fact takes up as an element of `FactBatch.facts`, tag and length included. */
+private fun FactStoreProto.Fact.sizeInBatch(): Int =
+    CodedOutputStream.computeMessageSize(FactStoreProto.FactBatch.FACTS_FIELD_NUMBER, this)
 
 internal fun Fact.toProto(): FactStoreProto.Fact = fact {
     id = this@toProto.id.uuid.toString()
@@ -73,58 +165,6 @@ internal fun ExistsByIdResult.toGrpcResponse(): GrpcFactExistsResponse =
             ExistsByIdResult.Exists -> present = factPresent { }
             ExistsByIdResult.DoesNotExist -> absent = factAbsent { }
             is ExistsByIdResult.StoreNotFound -> storeNotFound = storeNotFound { storeName = this@toGrpcResponse.storeName.value }
-        }
-    }
-
-typealias GrpcFindBySubjectResponse = FactStoreProto.FindFactsBySubjectResponse
-
-internal fun FindBySubjectResult.toGrpcResponse(): GrpcFindBySubjectResponse =
-    findFactsBySubjectResponse {
-        when (this@toGrpcResponse) {
-            is FindBySubjectResult.Found ->
-                found = factsFound { facts += this@toGrpcResponse.facts.map { it.toProto() } }
-
-            is FindBySubjectResult.StoreNotFound ->
-                storeNotFound = storeNotFound { storeName = this@toGrpcResponse.storeName.value }
-        }
-    }
-
-typealias GrpcFindFactsByTagsResponse = FactStoreProto.FindFactsByTagsResponse
-
-internal fun FindByTagsResult.toGrpcResponse(): GrpcFindFactsByTagsResponse =
-    findFactsByTagsResponse {
-        when (this@toGrpcResponse) {
-            is FindByTagsResult.Found ->
-                found = factsFound { facts += this@toGrpcResponse.facts.map { it.toProto() } }
-
-            is FindByTagsResult.StoreNotFound ->
-                storeNotFound = storeNotFound { storeName = this@toGrpcResponse.storeName.value }
-        }
-    }
-
-typealias GrpcQueryFactsResponse = FactStoreProto.QueryFactsResponse
-
-internal fun FindByTagQueryResult.toGrpcResponse(): GrpcQueryFactsResponse =
-    queryFactsResponse {
-        when (this@toGrpcResponse) {
-            is FindByTagQueryResult.Found ->
-                found = factsFound { facts += this@toGrpcResponse.facts.map { it.toProto() } }
-
-            is FindByTagQueryResult.StoreNotFound ->
-                storeNotFound = storeNotFound { storeName = this@toGrpcResponse.storeName.value }
-        }
-    }
-
-typealias GrpcFindInTimeRangeResponse = FactStoreProto.FindFactsInTimeRangeResponse
-
-internal fun FindInTimeRangeResult.toGrpcResponse(): GrpcFindInTimeRangeResponse =
-    findFactsInTimeRangeResponse {
-        when (this@toGrpcResponse) {
-            is FindInTimeRangeResult.Found ->
-                found = factsFound { facts += this@toGrpcResponse.facts.map { it.toProto() } }
-
-            is FindInTimeRangeResult.StoreNotFound ->
-                storeNotFound = storeNotFound { storeName = this@toGrpcResponse.storeName.value }
         }
     }
 

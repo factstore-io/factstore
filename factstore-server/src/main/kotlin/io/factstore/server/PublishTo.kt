@@ -15,23 +15,23 @@ internal suspend fun FindByIdRequest.publishTo(factStore: FactStore): FindByIdRe
 internal suspend fun ExistsByIdRequest.publishTo(factStore: FactStore): ExistsByIdResult =
     factStore.existsById(this)
 
-internal suspend fun FindBySubjectRequest.publishTo(factStore: FactStore): FindBySubjectResult =
-    factStore.findBySubject(this)
+internal suspend fun StreamFactsRequest.publishTo(factStore: FactStore): StreamFactsResult =
+    factStore.streamFacts(this)
 
-internal suspend fun FindByTagsRequest.publishTo(factStore: FactStore): FindByTagsResult =
-    factStore.findByTags(this)
+internal suspend fun StreamFactsBySubjectRequest.publishTo(factStore: FactStore): StreamFactsBySubjectResult =
+    factStore.streamFactsBySubject(this)
 
-internal suspend fun FindByTagQueryRequest.publishTo(factStore: FactStore): FindByTagQueryResult =
-    factStore.findByTagQuery(this)
+internal suspend fun StreamFactsByTypeRequest.publishTo(factStore: FactStore): StreamFactsByTypeResult =
+    factStore.streamFactsByType(this)
 
-internal suspend fun FindInTimeRangeRequest.publishTo(factStore: FactStore): FindInTimeRangeResult =
-    factStore.findInTimeRange(this)
+internal suspend fun StreamFactsByTagsRequest.publishTo(factStore: FactStore): StreamFactsByTagsResult =
+    factStore.streamFactsByTags(this)
+
+internal suspend fun StreamFactsByQueryRequest.publishTo(factStore: FactStore): StreamFactsByQueryResult =
+    factStore.streamFactsByQuery(this)
 
 internal suspend fun SubscribeRequest.publishTo(factStore: FactStore): SubscribeResult =
     factStore.subscribe(this)
-
-internal suspend fun ReplayRequest.publishTo(factStore: FactStore): ReplayResult =
-    factStore.replay(this)
 
 internal suspend fun CreateStoreRequest.publishTo(factStore: FactStore): CreateStoreResult =
     factStore.create(this)

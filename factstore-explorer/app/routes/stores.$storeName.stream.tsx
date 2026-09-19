@@ -8,7 +8,7 @@ import { Label } from "~/components/ui/label"
 import { Badge } from "~/components/ui/badge"
 import { Alert, AlertDescription } from "~/components/ui/alert"
 import { FactTable } from "~/components/FactTable"
-import { createFactStream, type Fact, type StreamPosition } from "~/lib/api"
+import { subscribeToFacts, type Fact, type FactSubscription, type SubscriptionPosition } from "~/lib/api"
 
 export function meta({ params }: Route.MetaArgs) {
   return [{ title: `Stream — ${params.storeName} — FactStore Explorer` }]
@@ -30,7 +30,7 @@ export default function StreamPage() {
   const [frozen, setFrozen] = useState(false)
   const [pendingCount, setPendingCount] = useState(0)
 
-  const esRef = useRef<EventSource | null>(null)
+  const subscriptionRef = useRef<FactSubscription | null>(null)
   const pendingRef = useRef<Fact[]>([])
   // Ref keeps onFact callback current without restarting the stream
   const frozenRef = useRef(false)
@@ -40,8 +40,8 @@ export default function StreamPage() {
   }, [frozen])
 
   const stop = useCallback(() => {
-    esRef.current?.close()
-    esRef.current = null
+    subscriptionRef.current?.close()
+    subscriptionRef.current = null
     setRunning(false)
   }, [])
 
@@ -52,14 +52,14 @@ export default function StreamPage() {
     pendingRef.current = []
     setPendingCount(0)
 
-    const position: StreamPosition =
+    const position: SubscriptionPosition =
       startMode === "end"
         ? "end"
         : startMode === "beginning"
         ? "beginning"
-        : { after: afterId.trim() }
+        : { continueAfter: afterId.trim() }
 
-    const es = createFactStream(
+    const subscription = subscribeToFacts(
       storeName,
       position,
       (fact) => {
@@ -80,7 +80,7 @@ export default function StreamPage() {
       },
     )
 
-    esRef.current = es
+    subscriptionRef.current = subscription
     setRunning(true)
     setFacts([])
     setTotalReceived(0)

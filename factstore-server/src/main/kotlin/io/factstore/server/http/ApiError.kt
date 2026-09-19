@@ -60,6 +60,13 @@ fun factNotFoundError(factId: FactId): Response = apiErrorResponse(
     details = mapOf("kind" to "fact", "id" to factId.uuid)
 )
 
+fun continuationNotFoundError(factId: FactId): Response = apiErrorResponse(
+    status = NOT_FOUND,
+    reason = Reason.NotFound,
+    message = "The fact '${factId.uuid}' to continue after does not exist.",
+    details = mapOf("kind" to "continuation", "id" to factId.uuid)
+)
+
 fun storeAlreadyExistsError(storeName: StoreName): Response = apiErrorResponse(
     status = CONFLICT,
     reason = Reason.AlreadyExists,

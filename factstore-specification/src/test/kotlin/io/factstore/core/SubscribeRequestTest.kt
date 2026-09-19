@@ -21,10 +21,10 @@ class SubscribeRequestTest {
 
         val request = SubscribeRequest(
             storeName = StoreName("test-store"),
-            startPosition = StartPosition.After(lastSeenId),
+            startPosition = StartPosition.ContinueAfter(lastSeenId),
         )
 
-        assertThat(request.startPosition).isEqualTo(StartPosition.After(lastSeenId))
+        assertThat(request.startPosition).isEqualTo(StartPosition.ContinueAfter(lastSeenId))
     }
 
 }

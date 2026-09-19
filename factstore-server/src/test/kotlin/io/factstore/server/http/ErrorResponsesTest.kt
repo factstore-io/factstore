@@ -1,5 +1,6 @@
 package io.factstore.server.http
 
+import com.fasterxml.jackson.databind.ObjectMapper
 import io.quarkus.test.junit.QuarkusTest
 import io.restassured.RestAssured.given
 import io.restassured.http.ContentType.JSON
@@ -37,6 +38,24 @@ class ErrorResponsesTest {
 
         assertThat(error.reason).isEqualTo(Reason.InternalError)
         assertThat(error.message).doesNotContain(FailingTestResource.SECRET)
+    }
+
+    @Test
+    @DisplayName("Any fact stream - Should close with an error line instead of an end line when it fails part way")
+    fun failureInFactStream() {
+        val body = given()
+            .get("/api/test/failures/fact-stream")
+            .then()
+            .statusCode(200)
+            .contentType("application/x-ndjson")
+            .extract().asString()
+
+        val lines = body.lines().filter { it.isNotBlank() }.map { ObjectMapper().readTree(it) }
+        assertThat(lines).hasSize(2)
+        assertThat(lines[0].has("fact")).isTrue()
+        assertThat(lines[1]["error"]["reason"].asText()).isEqualTo(Reason.InternalError.name)
+        assertThat(lines[1]["error"]["details"].has("errorId")).isTrue()
+        assertThat(body).doesNotContain(FailingTestResource.SECRET)
     }
 
     @Test

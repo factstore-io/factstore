@@ -20,10 +20,6 @@ internal fun AppendHttpRequest.toDomainRequest(storeName: String): AppendRequest
     )
 }
 
-internal fun FactQueryHttp.toDomainRequest(storeName: String): FindByTagQueryRequest = parseInput {
-    FindByTagQueryRequest(storeName.asStoreName(), toTagQuery())
-}
-
 internal fun CreateStoreHttpRequest.toDomainRequest(): CreateStoreRequest = parseInput {
     CreateStoreRequest(name.asStoreName())
 }
@@ -44,67 +40,131 @@ internal fun findByIdRequest(storeName: String, factId: String): FindByIdRequest
     FindByIdRequest(storeName.asStoreName(), factId.asFactId())
 }
 
-internal fun findBySubjectRequest(
+internal fun streamFactsRequest(
     storeName: String,
-    subject: String,
-    limit: String?,
+    continueAfter: String?,
     direction: String?,
-): FindBySubjectRequest = parseInput {
-    FindBySubjectRequest(
+    limit: String?,
+): StreamFactsRequest = parseInput {
+    StreamFactsRequest(
         storeName = storeName.asStoreName(),
-        subject = subject.asSubject(),
-        limit = limit.asLimit(),
+        continueAfter = continueAfter.asFactIdOrNull(),
         direction = direction.asReadDirection(),
+        limit = limit.asLimit(),
     )
 }
 
-internal fun findByTagsRequest(
+internal fun StreamFactsByQueryHttpRequest.toDomainRequest(storeName: String): StreamFactsByQueryRequest = parseInput {
+    StreamFactsByQueryRequest(
+        storeName = storeName.asStoreName(),
+        query = FactQuery(filters.map { it.toFactFilter() }),
+        continueAfter = continueAfter?.let { FactId(it) },
+        direction = direction.asReadDirection(),
+        limit = limit.asLimit(),
+    )
+}
+
+internal fun FactFilterHttp.toFactFilter(): FactFilter = FactFilter(
+    subjects = subjects?.map { it.asSubject() }?.toSet() ?: emptySet(),
+    types = types?.map { it.asFactType() }?.toSet() ?: emptySet(),
+    tags = tags?.asTags() ?: emptyMap(),
+)
+
+internal fun streamFactsByTagsRequest(
     storeName: String,
     tags: List<String>,
-    from: String?,
-    to: String?,
-    limit: String?,
+    continueAfter: String?,
     direction: String?,
-): FindByTagsRequest = parseInput {
-    require(from == null && to == null) { "Combining tag filters with time range is not yet supported." }
-    FindByTagsRequest(
+    limit: String?,
+): StreamFactsByTagsRequest = parseInput {
+    StreamFactsByTagsRequest(
         storeName = storeName.asStoreName(),
         tags = tags.asTagFilter(),
-        limit = limit.asLimit(),
+        continueAfter = continueAfter.asFactIdOrNull(),
         direction = direction.asReadDirection(),
+        limit = limit.asLimit(),
     )
 }
 
-internal fun findInTimeRangeRequest(
+/**
+ * Requests the facts matching one filter, given as repeated query parameters.
+ *
+ * Several subjects or types match any of them, while every tag must be carried — the meaning of a
+ * single [FactFilter]. A query of several filters needs a body, and is `POST /facts:query`.
+ */
+internal fun streamFactsByFilterRequest(
+    storeName: String,
+    subjects: List<String>,
+    types: List<String>,
+    tags: List<String>,
+    continueAfter: String?,
+    direction: String?,
+    limit: String?,
+): StreamFactsByQueryRequest = parseInput {
+    StreamFactsByQueryRequest(
+        storeName = storeName.asStoreName(),
+        query = FactQuery(
+            listOf(
+                FactFilter(
+                    subjects = subjects.map { it.asSubject() }.toSet(),
+                    types = types.map { it.asFactType() }.toSet(),
+                    tags = tags.asTagFilter(),
+                )
+            )
+        ),
+        continueAfter = continueAfter.asFactIdOrNull(),
+        direction = direction.asReadDirection(),
+        limit = limit.asLimit(),
+    )
+}
+
+internal fun streamFactsByTypeRequest(
+    storeName: String,
+    type: String,
+    continueAfter: String?,
+    direction: String?,
+    limit: String?,
+): StreamFactsByTypeRequest = parseInput {
+    StreamFactsByTypeRequest(
+        storeName = storeName.asStoreName(),
+        type = type.asFactType(),
+        continueAfter = continueAfter.asFactIdOrNull(),
+        direction = direction.asReadDirection(),
+        limit = limit.asLimit(),
+    )
+}
+
+internal fun streamFactsBySubjectRequest(
+    storeName: String,
+    subject: String,
+    continueAfter: String?,
+    direction: String?,
+    limit: String?,
+): StreamFactsBySubjectRequest = parseInput {
+    StreamFactsBySubjectRequest(
+        storeName = storeName.asStoreName(),
+        subject = subject.asSubject(),
+        continueAfter = continueAfter.asFactIdOrNull(),
+        direction = direction.asReadDirection(),
+        limit = limit.asLimit(),
+    )
+}
+
+internal fun subscribeRequest(
     storeName: String,
     from: String?,
-    to: String?,
-    limit: String?,
-    direction: String?,
-): FindInTimeRangeRequest = parseInput {
-    FindInTimeRangeRequest(
-        storeName = storeName.asStoreName(),
-        timeRange = TimeRange(start = from.asInstant(), end = to.asInstant()),
-        limit = limit.asLimit(),
-        direction = direction.asReadDirection(),
-    )
-}
-
-internal fun subscribeRequest(storeName: String, after: String?, from: String?): SubscribeRequest = parseInput {
+    continueAfter: String?,
+): SubscribeRequest = parseInput {
+    require(from == null || continueAfter == null) {
+        "'from' and 'continueAfter' cannot be combined: a subscription starts at one position."
+    }
     val startPosition = when (from?.trim()?.lowercase()) {
         "beginning" -> StartPosition.Beginning
         "end" -> StartPosition.End
-        null -> after?.let { StartPosition.After(it.asFactId()) } ?: StartPosition.Beginning
+        null -> continueAfter?.let { StartPosition.ContinueAfter(it.asFactId()) } ?: StartPosition.Beginning
         else -> throw IllegalArgumentException("'from' must be 'beginning' or 'end', but was '$from'.")
     }
     SubscribeRequest(storeName.asStoreName(), startPosition)
-}
-
-internal fun replayRequest(storeName: String, after: String?): ReplayRequest = parseInput {
-    ReplayRequest(
-        storeName = storeName.asStoreName(),
-        start = after?.let { ReplayStart.After(it.asFactId()) } ?: ReplayStart.Beginning,
-    )
 }
 
 // ─── The HTTP shapes as the specification's values ───────────────────────────

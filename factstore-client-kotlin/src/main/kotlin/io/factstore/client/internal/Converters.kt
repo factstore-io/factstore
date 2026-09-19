@@ -4,6 +4,7 @@ import com.google.protobuf.ByteString
 import com.google.protobuf.timestamp
 import io.factstore.client.model.AppendCondition
 import io.factstore.client.model.Fact
+import io.factstore.client.model.FactFilter
 import io.factstore.client.model.FactInput
 import io.factstore.client.model.FactPayload
 import io.factstore.client.model.ReadDirection
@@ -15,6 +16,7 @@ import io.factstore.grpc.v1.FactStoreProto
 import io.factstore.grpc.v1.all
 import io.factstore.grpc.v1.appendCondition
 import io.factstore.grpc.v1.expectedLastFact
+import io.factstore.grpc.v1.factFilter
 import io.factstore.grpc.v1.factInput
 import io.factstore.grpc.v1.factPayload
 import io.factstore.grpc.v1.tagOnlyItem
@@ -104,7 +106,13 @@ internal fun TagQueryItem.toProto(): FactStoreProto.TagQueryItem = tagQueryItem 
     }
 }
 
+internal fun FactFilter.toProto(): FactStoreProto.FactFilter = factFilter {
+    subjects += this@toProto.subjects
+    types += this@toProto.types
+    tags.putAll(this@toProto.tags)
+}
+
 internal fun ReadDirection.toProto(): FactStoreProto.ReadDirection = when (this) {
-    ReadDirection.FORWARD -> FactStoreProto.ReadDirection.FORWARD
-    ReadDirection.BACKWARD -> FactStoreProto.ReadDirection.BACKWARD
+    ReadDirection.FORWARD -> FactStoreProto.ReadDirection.READ_DIRECTION_FORWARD
+    ReadDirection.BACKWARD -> FactStoreProto.ReadDirection.READ_DIRECTION_BACKWARD
 }

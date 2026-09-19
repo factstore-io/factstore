@@ -13,10 +13,10 @@ import java.util.UUID
 import java.util.concurrent.Callable
 
 @Command(
-    name = "find-by-id",
-    description = ["Find a fact by its ID"]
+    name = "get",
+    description = ["Get a single fact by its ID"]
 )
-class FindByIdCommand : Callable<Int> {
+class GetFactCommand : Callable<Int> {
 
     @Inject
     lateinit var client: FactStoreClient
@@ -24,7 +24,7 @@ class FindByIdCommand : Callable<Int> {
     @Parameters(
         index = "0",
         arity = "1",
-        description = ["The UUID of the fact to find"],
+        description = ["The UUID of the fact to get"],
         paramLabel = "<factId>",
     )
     lateinit var factId: UUID
@@ -38,7 +38,7 @@ class FindByIdCommand : Callable<Int> {
 
     @Option(
         names = ["--output", "-o"],
-        description = ["Output format (default: \${DEFAULT-VALUE})"],
+        description = ["Output format: \${COMPLETION-CANDIDATES} (default: \${DEFAULT-VALUE})"],
         defaultValue = "table",
     )
     var outputFormat: OutputFormat = OutputFormat.Table

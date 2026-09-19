@@ -40,7 +40,7 @@ class ErrorMappers {
     @ServerExceptionMapper
     fun streamOutcome(e: StreamApiException): Response = when (e) {
         is StreamApiException.StoreNotFoundException -> storeNotFoundError(e.storeName)
-        is StreamApiException.FactNotFoundException -> factNotFoundError(e.factId)
+        is StreamApiException.ContinuationNotFoundException -> continuationNotFoundError(e.factId)
     }
 
     /** Responses produced by the framework, such as 404, 405 or 415, keep their status and headers. */
@@ -57,16 +57,22 @@ class ErrorMappers {
     }
 
     @ServerExceptionMapper
-    fun unexpected(e: Exception): Response {
-        val errorId = UUID.randomUUID()
-        logger.error(e) { "Unexpected error $errorId" }
-        return apiErrorResponse(
-            status = INTERNAL_SERVER_ERROR,
-            reason = Reason.InternalError,
-            message = "An unexpected error occurred.",
-            details = mapOf("errorId" to errorId),
-        )
-    }
+    fun unexpected(e: Exception): Response = unexpectedError(e).toResponse()
+}
+
+/**
+ * Logs an unexpected failure under a new error ID and describes it without internal details,
+ * so the client can quote the ID without learning what went wrong inside the server.
+ */
+internal fun unexpectedError(e: Throwable): ApiError {
+    val errorId = UUID.randomUUID()
+    logger.error(e) { "Unexpected error $errorId" }
+    return ApiError(
+        message = "An unexpected error occurred.",
+        reason = Reason.InternalError,
+        code = INTERNAL_SERVER_ERROR.statusCode,
+        details = mapOf("errorId" to errorId),
+    )
 }
 
 /** Where in the body the offending value is, such as `facts[0].payload`, without internal class names. */

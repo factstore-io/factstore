@@ -14,50 +14,48 @@ import {
   SelectValue,
 } from "~/components/ui/select"
 import { FactTable } from "~/components/FactTable"
-import { queryFacts, type Fact } from "~/lib/api"
+import { queryFacts, type Fact, type FactFilter } from "~/lib/api"
 
 export function meta({ params }: Route.MetaArgs) {
   return [{ title: `Facts — ${params.storeName} — FactStore Explorer` }]
 }
 
-type QueryMode = "timeRange" | "tags" | "subject"
+type QueryMode = "all" | "tags" | "subject" | "type" | "query"
 
-type TimePreset = "5m" | "15m" | "1h" | "6h" | "24h" | "custom"
 
-const PRESET_LABELS: Record<TimePreset, string> = {
-  "5m": "Last 5 min",
-  "15m": "Last 15 min",
-  "1h": "Last 1h",
-  "6h": "Last 6h",
-  "24h": "Last 24h",
-  "custom": "Custom",
+type QueryFilterInput = { id: number; subjects: string; types: string; tags: string }
+
+const MODE_LABELS: Record<QueryMode, string> = {
+  all: "All Facts",
+  tags: "Tags",
+  subject: "Subject",
+  type: "Type",
+  query: "Query",
 }
 
-function resolvePreset(preset: TimePreset): { from: string; to: string } | null {
-  if (preset === "custom") return null
-  const now = new Date()
-  const ms: Record<string, number> = {
-    "5m": 5 * 60_000,
-    "15m": 15 * 60_000,
-    "1h": 60 * 60_000,
-    "6h": 6 * 60 * 60_000,
-    "24h": 24 * 60 * 60_000,
-  }
-  return {
-    from: new Date(now.getTime() - ms[preset]).toISOString(),
-    to: now.toISOString(),
-  }
+/** Turns the comma-separated inputs of one filter into the shape the API expects. */
+function toFactFilter(input: QueryFilterInput): FactFilter {
+  const values = (raw: string) => raw.split(",").map((value) => value.trim()).filter(Boolean)
+  const filter: FactFilter = {}
+
+  const subjects = values(input.subjects)
+  if (subjects.length > 0) filter.subjects = subjects
+
+  const types = values(input.types)
+  if (types.length > 0) filter.types = types
+
+  const tags = values(input.tags)
+    .map((tag) => tag.split("=", 2))
+    .filter((parts) => parts.length === 2 && parts[0] && parts[1])
+  if (tags.length > 0) filter.tags = Object.fromEntries(tags)
+
+  return filter
 }
 
 export default function FactsPage() {
   const { storeName } = useParams<{ storeName: string }>()
 
-  const [mode, setMode] = useState<QueryMode>("timeRange")
-
-  // time range
-  const [preset, setPreset] = useState<TimePreset>("1h")
-  const [customFrom, setCustomFrom] = useState("")
-  const [customTo, setCustomTo] = useState("")
+  const [mode, setMode] = useState<QueryMode>("all")
 
   // tags
   const tagIdRef = useRef(1)
@@ -65,6 +63,15 @@ export default function FactsPage() {
 
   // subject
   const [subject, setSubject] = useState("")
+
+  // type
+  const [type, setType] = useState("")
+
+  // query: each filter matches subjects, types and tags; a fact matches when any filter does
+  const filterIdRef = useRef(1)
+  const [queryFilters, setQueryFilters] = useState<QueryFilterInput[]>([
+    { id: 0, subjects: "", types: "", tags: "" },
+  ])
 
   // query options
   const [limit, setLimit] = useState("100")
@@ -76,18 +83,18 @@ export default function FactsPage() {
   const [error, setError] = useState<string | null>(null)
   const [queried, setQueried] = useState(false)
 
+  const updateFilter = (index: number, patch: Partial<QueryFilterInput>) =>
+    setQueryFilters((filters) => filters.map((filter, i) => (i === index ? { ...filter, ...patch } : filter)))
+
   const runQuery = useCallback(async () => {
     if (!storeName) return
     setLoading(true)
     setError(null)
     try {
       let result: Fact[]
-      if (mode === "timeRange") {
-        const range = preset !== "custom" ? resolvePreset(preset) : null
+      if (mode === "all") {
         result = await queryFacts(storeName, {
-          mode: "timeRange",
-          from: range?.from ?? (customFrom ? new Date(customFrom).toISOString() : undefined),
-          to: range?.to ?? (customTo ? new Date(customTo).toISOString() : undefined),
+          mode: "all",
           limit: Number(limit) || 0,
           direction,
         })
@@ -106,10 +113,30 @@ export default function FactsPage() {
           limit: Number(limit) || 0,
           direction,
         })
-      } else {
+      } else if (mode === "subject") {
         result = await queryFacts(storeName, {
           mode: "subject",
           subject: subject.trim(),
+          limit: Number(limit) || 0,
+          direction,
+        })
+      } else if (mode === "type") {
+        result = await queryFacts(storeName, {
+          mode: "type",
+          type: type.trim(),
+          limit: Number(limit) || 0,
+          direction,
+        })
+      } else {
+        const filters = queryFilters.map(toFactFilter).filter((filter) => Object.keys(filter).length > 0)
+        if (filters.length === 0) {
+          setError("Add at least one filter with a subject, a type or a tag before running a query.")
+          setLoading(false)
+          return
+        }
+        result = await queryFacts(storeName, {
+          mode: "query",
+          filters,
           limit: Number(limit) || 0,
           direction,
         })
@@ -121,7 +148,7 @@ export default function FactsPage() {
     } finally {
       setLoading(false)
     }
-  }, [storeName, mode, preset, customFrom, customTo, tagInputs, subject, limit, direction])
+  }, [storeName, mode, tagInputs, subject, type, queryFilters, limit, direction])
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 space-y-6">
@@ -132,7 +159,7 @@ export default function FactsPage() {
           <div className="flex items-center gap-2 flex-wrap">
             {/* Mode selector */}
             <div className="flex rounded-lg border border-border overflow-hidden text-xs">
-              {(["timeRange", "tags", "subject"] as QueryMode[]).map((m) => (
+              {(["all", "tags", "subject", "type", "query"] as QueryMode[]).map((m) => (
                 <button
                   key={m}
                   className={`px-3 py-1.5 font-medium transition-colors ${
@@ -142,55 +169,13 @@ export default function FactsPage() {
                   }`}
                   onClick={() => setMode(m)}
                 >
-                  {m === "timeRange" ? "Time Range" : m === "tags" ? "Tags" : "Subject"}
+                  {MODE_LABELS[m]}
                 </button>
               ))}
             </div>
           </div>
         </div>
 
-        {/* Time range controls */}
-        {mode === "timeRange" && (
-          <div className="space-y-3">
-            <div className="flex flex-wrap gap-1.5">
-              {(["5m", "15m", "1h", "6h", "24h", "custom"] as TimePreset[]).map((p) => (
-                <button
-                  key={p}
-                  onClick={() => setPreset(p)}
-                  className={`rounded-md border px-3 py-1 text-xs font-medium transition-colors ${
-                    preset === p
-                      ? "border-foreground bg-foreground text-background"
-                      : "border-border text-muted-foreground hover:border-foreground hover:text-foreground"
-                  }`}
-                >
-                  {PRESET_LABELS[p]}
-                </button>
-              ))}
-            </div>
-            {preset === "custom" && (
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <Label className="text-xs">From</Label>
-                  <Input
-                    type="datetime-local"
-                    value={customFrom}
-                    onChange={(e) => setCustomFrom(e.target.value)}
-                    className="text-xs h-8"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">To</Label>
-                  <Input
-                    type="datetime-local"
-                    value={customTo}
-                    onChange={(e) => setCustomTo(e.target.value)}
-                    className="text-xs h-8"
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-        )}
 
         {/* Tags controls */}
         {mode === "tags" && (
@@ -258,6 +243,76 @@ export default function FactsPage() {
               placeholder="e.g. user:123, order:456"
               className="font-mono text-xs h-8 max-w-sm"
             />
+          </div>
+        )}
+
+        {/* Type controls */}
+        {mode === "type" && (
+          <div className="space-y-1.5">
+            <Label className="text-xs">Fact type</Label>
+            <Input
+              value={type}
+              onChange={(e) => setType(e.target.value)}
+              placeholder="e.g. OrderPlaced, com.acme.OrderPlaced"
+              className="font-mono text-xs h-8 max-w-sm"
+            />
+            <p className="text-xs text-muted-foreground">Matched exactly.</p>
+          </div>
+        )}
+
+        {/* Query controls */}
+        {mode === "query" && (
+          <div className="space-y-3">
+            <p className="text-xs text-muted-foreground">
+              A fact matches when it matches any filter. Within a filter, subjects, types and tags must all
+              hold; subjects and types are comma-separated and match any of their values.
+            </p>
+            {queryFilters.map((filter, i) => (
+              <div key={filter.id} className="rounded-lg border border-border p-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label className="text-xs">Filter {i + 1}</Label>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    disabled={queryFilters.length === 1}
+                    onClick={() => setQueryFilters(queryFilters.filter((_, j) => j !== i))}
+                  >
+                    <X className="size-3.5" />
+                  </Button>
+                </div>
+                <div className="grid gap-2 md:grid-cols-3">
+                  <Input
+                    value={filter.subjects}
+                    onChange={(e) => updateFilter(i, { subjects: e.target.value })}
+                    placeholder="subjects: order/1, order/2"
+                    className="font-mono text-xs h-8"
+                  />
+                  <Input
+                    value={filter.types}
+                    onChange={(e) => updateFilter(i, { types: e.target.value })}
+                    placeholder="types: OrderPlaced, OrderPaid"
+                    className="font-mono text-xs h-8"
+                  />
+                  <Input
+                    value={filter.tags}
+                    onChange={(e) => updateFilter(i, { tags: e.target.value })}
+                    placeholder="tags: region=eu, tier=gold"
+                    className="font-mono text-xs h-8"
+                  />
+                </div>
+              </div>
+            ))}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-xs h-7"
+              onClick={() =>
+                setQueryFilters([...queryFilters, { id: filterIdRef.current++, subjects: "", types: "", tags: "" }])
+              }
+            >
+              <Plus className="size-3" />
+              Add filter
+            </Button>
           </div>
         )}
 
