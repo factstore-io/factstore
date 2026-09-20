@@ -76,9 +76,9 @@ internal fun StreamFactsByTypeResult.toResponse(): Flow<FactStreamLineHttp> = wh
     is StreamFactsByTypeResult.FactStream -> facts.toFactStreamLines()
 }
 
-internal fun FindByTagsResult.toResponse(): Flow<FactStreamLineHttp> = when (this) {
-    is FindByTagsResult.StoreNotFound -> throw StreamApiException.StoreNotFoundException(storeName)
-    is FindByTagsResult.Found -> facts.asFlow().toFactStreamLines()
+internal fun StreamFactsByTagsResult.toResponse(): Flow<FactStreamLineHttp> = when (this) {
+    is StreamFactsByTagsResult.StoreNotFound -> throw StreamApiException.StoreNotFoundException(storeName)
+    is StreamFactsByTagsResult.FactStream -> facts.toFactStreamLines()
 }
 
 internal fun FindInTimeRangeResult.toResponse(): Flow<FactStreamLineHttp> = when (this) {

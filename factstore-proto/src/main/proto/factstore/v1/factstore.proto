@@ -226,6 +226,10 @@ service FactService {
   // then complete. Delivery and completion semantics mirror StreamFacts.
   rpc StreamFactsByType(StreamFactsByTypeRequest) returns (stream StreamFactsByTypeResponse);
 
+  // Stream the facts carrying ALL of the given tags, up to the head pinned at call time,
+  // then complete. Delivery and completion semantics mirror StreamFacts.
+  rpc StreamFactsByTags(StreamFactsByTagsRequest) returns (stream StreamFactsByTagsResponse);
+
   // Find facts whose tags match ALL the specified key-value pairs.
   rpc FindFactsByTags(FindFactsByTagsRequest) returns (FindFactsByTagsResponse);
 
@@ -420,6 +424,22 @@ message StreamFactsByTypeRequest {
 }
 
 message StreamFactsByTypeResponse {
+  oneof message {
+    FactBatch batch = 1;
+    StoreNotFound store_not_found = 2;
+  }
+}
+
+// -- StreamFactsByTags --
+
+message StreamFactsByTagsRequest {
+  string store_name = 1;
+  map<string, string> tags = 2; // all tags must match (AND semantics); at least one
+  ReadDirection direction = 3;
+  optional int32 limit = 4; // absent = no limit
+}
+
+message StreamFactsByTagsResponse {
   oneof message {
     FactBatch batch = 1;
     StoreNotFound store_not_found = 2;

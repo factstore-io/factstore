@@ -12,11 +12,14 @@ import kotlinx.coroutines.future.await
 import kotlinx.coroutines.withContext
 import io.factstore.core.*
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.BufferOverflow.SUSPEND
 import kotlinx.coroutines.flow.buffer
+import kotlinx.coroutines.flow.chunked
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.transform
 import java.util.concurrent.CompletableFuture
 
@@ -120,6 +123,35 @@ class FdbFactStreamer(
         return StreamFactsByTypeResult.FactStream(facts)
     }
 
+    override suspend fun streamFactsByTags(request: StreamFactsByTagsRequest): StreamFactsByTagsResult {
+        val pinned = pinHead(request.storeName) ?: return StreamFactsByTagsResult.StoreNotFound(request.storeName)
+        val head = pinned.head ?: return StreamFactsByTagsResult.FactStream(emptyFlow())
+
+        val tagsIndex = store.context.tagsIndexSubspace
+        val tags = request.tags.map { (key, value) -> key to value }
+
+        // One tag is a plain scan of its index; several are an intersection of their scans.
+        val facts = if (tags.size == 1) {
+            scanPinned(
+                keys = tagsIndex.pinnedKeys(pinned.storeId, tags.single(), head, request.direction),
+                limit = request.limit,
+            ) { tr, entries -> loadFacts(tr, pinned.storeId, entries.map { tagsIndex.unpackPosition(it.key) }) }
+        } else {
+            val cursors = tags.map { tag ->
+                PositionCursor(
+                    db = store.db,
+                    keys = tagsIndex.pinnedKeys(pinned.storeId, tag, head, request.direction),
+                    batchSize = streamBatchSize,
+                    positionOf = { key -> tagsIndex.unpackPosition(key) },
+                    keyOf = { position -> tagsIndex.getKey(pinned.storeId, tag, position) },
+                )
+            }
+            intersect(cursors, request.direction).loadFacts(pinned.storeId, request.limit)
+        }
+
+        return StreamFactsByTagsResult.FactStream(facts)
+    }
+
     /** A store and its head at the moment it was resolved; no head means the store holds no facts. */
     private class PinnedStore(val storeId: StoreId, val head: FactPosition?)
 
@@ -186,28 +218,24 @@ class FdbFactStreamer(
     private class Batch(val entries: List<KeyValue>, val facts: List<ByteArray>)
 
     /**
-     * The keys of [range] up to and including [pinnedEndKey], read in [direction].
+     * Loads the facts at the positions, at most [limit] of them.
      *
-     * A read starts at one end and continues from its cursor, the last key read, towards the
-     * other end: reading forward moves the begin past the cursor, reading backward moves the end
-     * before it.
+     * Positions are collected into batches, and each batch is loaded in one transaction, so that
+     * matching a sparse intersection does not cost one read round trip per fact. As in
+     * [scanPinned], reading runs ahead of the consumer.
      */
-    private class PinnedKeys(range: Range, pinnedEndKey: ByteArray, direction: ReadDirection) {
-
-        val reverse = direction.isReverse()
-
-        private val first = KeySelector.firstGreaterOrEqual(range.begin)
-
-        // An exclusive end that includes the pinned key itself.
-        private val last = KeySelector.firstGreaterThan(pinnedEndKey)
-
-        /** The begin and end of the keys still to be read after [cursor]; all of them if it is `null`. */
-        fun remainingAfter(cursor: ByteArray?): Pair<KeySelector, KeySelector> = when {
-            cursor == null -> first to last
-            reverse -> first to KeySelector.firstGreaterOrEqual(cursor)
-            else -> KeySelector.firstGreaterThan(cursor) to last
-        }
-    }
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private fun Flow<FactPosition>.loadFacts(storeId: StoreId, limit: Limit): Flow<Fact> =
+        (limit.value?.let { take(it) } ?: this)
+            .chunked(streamBatchSize)
+            .map { positions -> read { tr -> loadFacts(tr, storeId, positions) } }
+            .buffer(capacity = STREAM_PREFETCH_BATCHES, onBufferOverflow = SUSPEND)
+            .map { serializedFacts ->
+                withContext(deserializationDispatcher) {
+                    serializedFacts.map { it.toSerializableFdbFact().toFact() }
+                }
+            }
+            .transform { facts -> facts.forEach { emit(it) } }
 
     /** Loads the serialized facts at [positions], in their order. */
     private fun loadFacts(

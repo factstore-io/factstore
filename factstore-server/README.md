@@ -162,12 +162,13 @@ Stream all facts of a store, or those carrying the given tags, or those appended
 
 ```bash
 curl "http://localhost:8080/api/v1/stores/default/facts?direction=backward&limit=10"
-curl "http://localhost:8080/api/v1/stores/default/facts?tag=role%3Duser"
+curl "http://localhost:8080/api/v1/stores/default/facts?tag=role%3Duser&tag=region%3Deu"
 curl "http://localhost:8080/api/v1/stores/default/facts?from=2026-01-01T00:00:00Z&to=2026-02-01T00:00:00Z"
 ```
 
-The response is an NDJSON fact stream, as for a subject. In a time range, `from` is inclusive and
-`to` exclusive; either may be omitted. Tags and a time range cannot be combined yet.
+The response is an NDJSON fact stream, as for a subject. A fact must carry **all** of the given
+tags, so repeating `tag` narrows the result. In a time range, `from` is inclusive and `to`
+exclusive; either may be omitted. Tags and a time range cannot be combined yet.
 
 ### 5. Subscribe to Facts (Server-Sent Events)
 
@@ -397,10 +398,10 @@ grpcurl -plaintext \
 
 Outcomes: `present` · `absent` · `store_not_found`
 
-#### StreamFacts, StreamFactsBySubject and StreamFactsByType
+#### StreamFacts, StreamFactsBySubject, StreamFactsByType and StreamFactsByTags
 
-Stream the facts of a store, of one subject, or of one type, as they are stored when the call is
-made, then complete.
+Stream the facts of a store, of one subject, of one type, or those carrying a set of tags, as they
+are stored when the call is made, then complete.
 
 ```bash
 grpcurl -plaintext \
@@ -416,7 +417,14 @@ grpcurl -plaintext \
   localhost:8080 io.factstore.server.grpc.FactService/StreamFactsByType
 ```
 
-`StreamFactsByType` matches the type exactly.
+```bash
+grpcurl -plaintext \
+  -d '{"store_name": "orders", "tags": {"region": "eu"}, "direction": "READ_DIRECTION_FORWARD"}' \
+  localhost:8080 io.factstore.server.grpc.FactService/StreamFactsByTags
+```
+
+`StreamFactsByType` matches the type exactly. `StreamFactsByTags` requires a fact to carry every
+given tag (AND semantics), and at least one tag must be given.
 
 Each message carries a `batch` of facts, at most 1 MiB in size. A missing store is reported as a
 single `store_not_found` message instead. The stream completes with status `OK` once every fact

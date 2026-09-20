@@ -56,6 +56,23 @@ internal fun streamFactsRequest(
     )
 }
 
+internal fun streamFactsByTagsRequest(
+    storeName: String,
+    tags: List<String>,
+    from: String?,
+    to: String?,
+    direction: String?,
+    limit: String?,
+): StreamFactsByTagsRequest = parseInput {
+    require(from == null && to == null) { "Combining tag filters with time range is not yet supported." }
+    StreamFactsByTagsRequest(
+        storeName = storeName.asStoreName(),
+        tags = tags.asTagFilter(),
+        direction = direction.asReadDirection(),
+        limit = limit.asLimit(),
+    )
+}
+
 internal fun streamFactsByTypeRequest(
     storeName: String,
     type: String,

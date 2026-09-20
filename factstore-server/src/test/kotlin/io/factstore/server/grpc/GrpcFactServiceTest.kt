@@ -280,6 +280,37 @@ class GrpcFactServiceTest {
         assertThat(responses.single().hasStoreNotFound()).isTrue()
     }
 
+    // ─── StreamFactsByTags ────────────────────────────────────────────────────
+
+    @Test
+    @Order(13)
+    @DisplayName("StreamFactsByTags - should stream the facts carrying the tags and complete")
+    fun streamFactsByTags(): Unit = runBlocking {
+        val responses = factService.streamFactsByTags(streamFactsByTagsRequest {
+            storeName = STORE
+            tags["region"] = "eu"
+            direction = ReadDirection.READ_DIRECTION_FORWARD
+        }).toList()
+
+        val facts = responses.flatMap { it.batch.factsList }
+        assertThat(facts).isNotEmpty()
+        assertThat(facts).allMatch { it.tagsMap["region"] == "eu" }
+    }
+
+    @Test
+    @Order(13)
+    @DisplayName("StreamFactsByTags - should emit a store_not_found message when the store does not exist")
+    fun streamFactsByTagsStoreNotFound(): Unit = runBlocking {
+        val responses = factService.streamFactsByTags(streamFactsByTagsRequest {
+            storeName = "ghost-store"
+            tags["region"] = "eu"
+            direction = ReadDirection.READ_DIRECTION_FORWARD
+        }).toList()
+
+        assertThat(responses).hasSize(1)
+        assertThat(responses.single().hasStoreNotFound()).isTrue()
+    }
+
     // ─── StreamFacts ──────────────────────────────────────────────────────────
 
     @Test

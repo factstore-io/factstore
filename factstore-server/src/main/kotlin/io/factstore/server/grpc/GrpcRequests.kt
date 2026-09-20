@@ -129,6 +129,17 @@ internal fun GrpcStreamFactsRequest.toDomainRequest(): StreamFactsRequest = pars
     )
 }
 
+typealias GrpcStreamFactsByTagsRequest = FactStoreProto.StreamFactsByTagsRequest
+
+internal fun GrpcStreamFactsByTagsRequest.toDomainRequest(): StreamFactsByTagsRequest = parseRequest {
+    StreamFactsByTagsRequest(
+        storeName = storeName.asStoreName(),
+        tags = tagsMap.asTags(),
+        direction = direction.toCore(),
+        limit = if (hasLimit()) Limit.of(limit) else Limit.None,
+    )
+}
+
 typealias GrpcStreamFactsByTypeRequest = FactStoreProto.StreamFactsByTypeRequest
 
 internal fun GrpcStreamFactsByTypeRequest.toDomainRequest(): StreamFactsByTypeRequest = parseRequest {

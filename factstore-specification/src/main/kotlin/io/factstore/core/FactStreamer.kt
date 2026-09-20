@@ -48,6 +48,17 @@ interface FactStreamer {
      */
     suspend fun streamFactsByType(request: StreamFactsByTypeRequest): StreamFactsByTypeResult
 
+    /**
+     * Streams the facts that carry all of the requested tags.
+     *
+     * A fact matches when it carries every tag with exactly the requested value, so the tags are
+     * combined with AND. A tag key can therefore be required only once: "region is eu or us" is
+     * not a tag stream but a query.
+     *
+     * @return [StreamFactsByTagsResult.FactStream] or [StreamFactsByTagsResult.StoreNotFound]
+     */
+    suspend fun streamFactsByTags(request: StreamFactsByTagsRequest): StreamFactsByTagsResult
+
 }
 
 /**
@@ -128,4 +139,39 @@ sealed interface StreamFactsByTypeResult {
 
     /** The requested store does not exist. */
     data class StoreNotFound(val storeName: StoreName) : StreamFactsByTypeResult
+}
+
+/**
+ * Requests the facts that carry all of the given tags.
+ *
+ * @property storeName the store to stream from
+ * @property tags the tags a fact must carry, all of them; at least one, and at most
+ *         [FactInput.MAX_TAGS], since no fact carries more
+ * @property direction the order in which facts are emitted
+ * @property limit the maximum number of facts to emit
+ *
+ * @throws IllegalArgumentException if [tags] is empty, or requires more tags than a fact can carry
+ */
+data class StreamFactsByTagsRequest(
+    val storeName: StoreName,
+    val tags: Map<TagKey, TagValue>,
+    val direction: ReadDirection,
+    val limit: Limit,
+) {
+    init {
+        require(tags.isNotEmpty()) { "Tags must be defined!" }
+        requireSatisfiableTagCount(tags)
+    }
+}
+
+/**
+ * The outcome of [FactStreamer.streamFactsByTags].
+ */
+sealed interface StreamFactsByTagsResult {
+
+    /** The facts carrying the tags, read when collected; empty if no fact carries them all. */
+    class FactStream(val facts: Flow<Fact>) : StreamFactsByTagsResult
+
+    /** The requested store does not exist. */
+    data class StoreNotFound(val storeName: StoreName) : StreamFactsByTagsResult
 }

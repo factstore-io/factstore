@@ -6,6 +6,7 @@ import io.factstore.cli.converter.TagConverter
 import io.factstore.client.FactStoreClient
 import io.factstore.client.model.ReadDirection
 import jakarta.inject.Inject
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import picocli.CommandLine
 import picocli.CommandLine.Command
@@ -62,12 +63,13 @@ class FindByTagsCommand : Callable<Int> {
 
 
     override fun call(): Int = runBlocking {
-        val facts = client.facts.findByTags(
+        // Collected in full: the table needs every row to size its columns, and --limit bounds it.
+        val facts = client.facts.streamFactsByTags(
             storeName = storeName,
             tags = tags.toMap(),
+            direction = direction,
             limit = limit,
-            direction = direction
-        )
+        ).toList()
         facts.print(outputFormat)
         CommandLine.ExitCode.OK
     }

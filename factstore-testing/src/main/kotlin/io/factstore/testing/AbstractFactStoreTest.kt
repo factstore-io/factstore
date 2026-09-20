@@ -1510,6 +1510,166 @@ abstract class AbstractFactStoreTest {
             .containsExactlyElementsOf(evenFacts.take(333))
     }
 
+    // ===== FactStreamer: streamFactsByTags =====
+
+    @Test
+    fun testStreamFactsByOneTag(): Unit = runBlocking {
+        val (alice, _, charlie) = appendStored(
+            listOf(
+                userInput("ALICE", "Alice", role = "admin", region = "eu"),
+                userInput("BOB", "Bob", role = "user", region = "us"),
+                userInput("CHARLIE", "Charlie", role = "admin", region = "us"),
+            )
+        )
+
+        assertThat(streamToList(tagsRequest(mapOf("role" to "admin"), ReadDirection.Forward, Limit.None)))
+            .containsExactly(alice, charlie)
+    }
+
+    @Test
+    fun testStreamFactsByTagsRequiresAllTags(): Unit = runBlocking {
+        val (_, _, charlie) = appendStored(
+            listOf(
+                userInput("ALICE", "Alice", role = "admin", region = "eu"),
+                userInput("BOB", "Bob", role = "user", region = "us"),
+                userInput("CHARLIE", "Charlie", role = "admin", region = "us"),
+            )
+        )
+
+        // Only Charlie carries both tags; Alice and Bob carry one each.
+        assertThat(streamToList(tagsRequest(mapOf("role" to "admin", "region" to "us"), ReadDirection.Forward, Limit.None)))
+            .containsExactly(charlie)
+    }
+
+    @Test
+    fun testStreamFactsByTagsMatchesTheTagValueExactly(): Unit = runBlocking {
+        appendStored(userInput("ALICE", "Alice", role = "admin", region = "eu"))
+
+        assertThat(streamToList(tagsRequest(mapOf("role" to "admins"), ReadDirection.Forward, Limit.None))).isEmpty()
+        assertThat(streamToList(tagsRequest(mapOf("role" to "adm"), ReadDirection.Forward, Limit.None))).isEmpty()
+    }
+
+    @Test
+    fun testStreamFactsByTagsBackward(): Unit = runBlocking {
+        val (alice, _, charlie) = appendStored(
+            listOf(
+                userInput("ALICE", "Alice", role = "admin", region = "eu"),
+                userInput("BOB", "Bob", role = "user", region = "us"),
+                userInput("CHARLIE", "Charlie", role = "admin", region = "us"),
+            )
+        )
+
+        assertThat(streamToList(tagsRequest(mapOf("role" to "admin"), ReadDirection.Backward, Limit.None)))
+            .containsExactly(charlie, alice)
+    }
+
+    @Test
+    fun testStreamFactsByTagsWithLimit(): Unit = runBlocking {
+        val (alice, _, charlie) = appendStored(
+            listOf(
+                userInput("ALICE", "Alice", role = "admin", region = "eu"),
+                userInput("BOB", "Bob", role = "user", region = "eu"),
+                userInput("CHARLIE", "Charlie", role = "admin", region = "eu"),
+            )
+        )
+
+        // The limit counts matching facts only, whatever lies between them.
+        assertThat(streamToList(tagsRequest(mapOf("role" to "admin"), ReadDirection.Forward, Limit.of(1))))
+            .containsExactly(alice)
+        assertThat(streamToList(tagsRequest(mapOf("role" to "admin", "region" to "eu"), ReadDirection.Backward, Limit.of(1))))
+            .containsExactly(charlie)
+    }
+
+    @Test
+    fun testStreamFactsByTagsWithoutMatches(): Unit = runBlocking {
+        appendStored(userInput("ALICE", "Alice", role = "admin", region = "eu"))
+
+        assertThat(streamToList(tagsRequest(mapOf("role" to "guest"), ReadDirection.Forward, Limit.None))).isEmpty()
+        assertThat(streamToList(tagsRequest(mapOf("role" to "admin", "region" to "us"), ReadDirection.Forward, Limit.None)))
+            .isEmpty()
+    }
+
+    @Test
+    fun testStreamFactsByTagsOfNonExistingStore(): Unit = runBlocking {
+        val result = store.streamFactsByTags(
+            StreamFactsByTagsRequest(
+                nonExistingStore,
+                mapOf(TagKey("role") to TagValue("admin")),
+                ReadDirection.Forward,
+                Limit.None,
+            )
+        )
+
+        assertThat(result).isEqualTo(StreamFactsByTagsResult.StoreNotFound(nonExistingStore))
+    }
+
+    @Test
+    fun testStreamFactsByTagsExcludesFactsAppendedAfterCall(): Unit = runBlocking {
+        val alice = appendStored(userInput("ALICE", "Alice", role = "admin", region = "eu"))
+
+        val stream = (store.streamFactsByTags(tagsRequest(mapOf("role" to "admin"), ReadDirection.Forward, Limit.None))
+                as StreamFactsByTagsResult.FactStream).facts
+
+        appendStored(userInput("CHARLIE", "Charlie", role = "admin", region = "eu"))
+
+        assertThat(withTimeout(10.seconds) { stream.toList() }).containsExactly(alice)
+    }
+
+    @Test
+    fun testStreamFactsByTagsIsRepeatable(): Unit = runBlocking {
+        val alice = appendStored(userInput("ALICE", "Alice", role = "admin", region = "eu"))
+
+        val stream = (store.streamFactsByTags(tagsRequest(mapOf("role" to "admin"), ReadDirection.Forward, Limit.None))
+                as StreamFactsByTagsResult.FactStream).facts
+
+        val first = withTimeout(10.seconds) { stream.toList() }
+        appendStored(userInput("CHARLIE", "Charlie", role = "admin", region = "eu"))
+        val second = withTimeout(10.seconds) { stream.toList() }
+
+        assertThat(first).containsExactly(alice)
+        assertThat(second).isEqualTo(first)
+    }
+
+    @Test
+    fun testStreamFactsByTagsOfLargeHistory(): Unit = runBlocking {
+        // 900 facts: every third carries role=admin, every fifth region=eu, so the tags match
+        // different, interleaved sets. The 300 admin facts are more than a backend reads at once,
+        // so matching the two tags has to continue across several reads of that tag's index.
+        val inputs = (0 until 900).map { i ->
+            val tags = buildMap {
+                if (i % 3 == 0) put(TagKey("role"), TagValue("admin"))
+                if (i % 5 == 0) put(TagKey("region"), TagValue("eu"))
+            }
+            input(ALICE_SUBJECT_VALUE, "FACT_$i", alicePayload, tags = tags)
+        }
+        val facts = inputs.chunked(AppendRequest.MAX_FACTS).flatMap { appendStored(it) }
+
+        val admins = facts.filterIndexed { i, _ -> i % 3 == 0 }
+        val adminsInEu = facts.filterIndexed { i, _ -> i % 3 == 0 && i % 5 == 0 }
+
+        assertThat(streamToList(tagsRequest(mapOf("role" to "admin"), ReadDirection.Forward, Limit.None)))
+            .containsExactlyElementsOf(admins)
+        assertThat(streamToList(tagsRequest(mapOf("role" to "admin", "region" to "eu"), ReadDirection.Forward, Limit.None)))
+            .containsExactlyElementsOf(adminsInEu)
+        assertThat(streamToList(tagsRequest(mapOf("role" to "admin", "region" to "eu"), ReadDirection.Backward, Limit.None)))
+            .containsExactlyElementsOf(adminsInEu.reversed())
+        assertThat(streamToList(tagsRequest(mapOf("role" to "admin", "region" to "eu"), ReadDirection.Forward, Limit.of(7))))
+            .containsExactlyElementsOf(adminsInEu.take(7))
+    }
+
+    private fun tagsRequest(tags: Map<String, String>, direction: ReadDirection, limit: Limit) =
+        StreamFactsByTagsRequest(
+            storeName = testStore,
+            tags = tags.entries.associate { TagKey(it.key) to TagValue(it.value) },
+            direction = direction,
+            limit = limit,
+        )
+
+    private suspend fun streamToList(request: StreamFactsByTagsRequest): List<Fact> {
+        val stream = (store.streamFactsByTags(request) as StreamFactsByTagsResult.FactStream).facts
+        return withTimeout(10.seconds) { stream.toList() }
+    }
+
     private fun typeRequest(type: String, direction: ReadDirection, limit: Limit) =
         StreamFactsByTypeRequest(testStore, FactType(type), direction, limit)
 

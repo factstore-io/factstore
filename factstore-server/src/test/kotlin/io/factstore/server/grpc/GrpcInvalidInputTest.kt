@@ -81,6 +81,14 @@ class GrpcInvalidInputTest {
         case("stream the facts of a subject without a direction") {
             facts.streamFactsBySubject(streamFactsBySubjectRequest { storeName = STORE; subject = "s" }).first()
         },
+        case("stream facts without tags") {
+            facts.streamFactsByTags(streamFactsByTagsRequest { storeName = STORE; direction = FORWARD }).first()
+        },
+        case("stream facts by six tags") {
+            facts.streamFactsByTags(streamFactsByTagsRequest {
+                storeName = STORE; direction = FORWARD; (1..6).forEach { tags["k$it"] = "v" }
+            }).first()
+        },
         case("stream the facts of an invalid type") {
             facts.streamFactsByType(streamFactsByTypeRequest {
                 storeName = STORE; type = "order created"; direction = FORWARD

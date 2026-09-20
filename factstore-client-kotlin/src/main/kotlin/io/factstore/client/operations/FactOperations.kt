@@ -29,6 +29,7 @@ import io.factstore.grpc.v1.getFactRequest
 import io.factstore.grpc.v1.queryFactsRequest
 import io.factstore.grpc.v1.replayFactsRequest
 import io.factstore.grpc.v1.streamFactsBySubjectRequest
+import io.factstore.grpc.v1.streamFactsByTagsRequest
 import io.factstore.grpc.v1.streamFactsByTypeRequest
 import io.factstore.grpc.v1.streamFactsRequest
 import io.factstore.grpc.v1.subscribeFactsRequest
@@ -219,6 +220,33 @@ class FactOperations internal constructor(
     ): Flow<Fact> = stub.streamFactsByType(streamFactsByTypeRequest {
         this.storeName = storeName
         this.type = type
+        this.direction = direction.toProto()
+        limit?.let { this.limit = it }
+    }).toFactFlow { response ->
+        when {
+            response.hasBatch() -> response.batch.factsList.forEach { emit(it.toDomain()) }
+            response.hasStoreNotFound() -> throw StoreNotFoundException(storeName)
+            else -> error("Unexpected stream message: $response")
+        }
+    }
+
+    /**
+     * Streams the facts carrying all of the given tags, up to the newest fact at the time of the
+     * call, then completes.
+     *
+     * Throws [StoreNotFoundException] when collected if the store does not exist.
+     *
+     * @param tags the tags a fact must carry, all of them; at least one
+     * @param limit the maximum number of facts to emit, or `null` for all of them
+     */
+    fun streamFactsByTags(
+        storeName: String,
+        tags: Map<String, String>,
+        direction: ReadDirection,
+        limit: Int? = null,
+    ): Flow<Fact> = stub.streamFactsByTags(streamFactsByTagsRequest {
+        this.storeName = storeName
+        this.tags.putAll(tags)
         this.direction = direction.toProto()
         limit?.let { this.limit = it }
     }).toFactFlow { response ->

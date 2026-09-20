@@ -87,7 +87,7 @@ class QueryResource(
     ): Flow<FactStreamLineHttp> =
         when {
             tags.isNotEmpty() ->
-                findByTagsRequest(storeName, tags, from, to, limit, direction).publishTo(store).toResponse()
+                streamFactsByTagsRequest(storeName, tags, from, to, direction, limit).publishTo(store).toResponse()
 
             from != null || to != null ->
                 findInTimeRangeRequest(storeName, from, to, limit, direction).publishTo(store).toResponse()

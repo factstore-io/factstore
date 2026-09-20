@@ -24,6 +24,9 @@ internal suspend fun StreamFactsBySubjectRequest.publishTo(factStore: FactStore)
 internal suspend fun StreamFactsByTypeRequest.publishTo(factStore: FactStore): StreamFactsByTypeResult =
     factStore.streamFactsByType(this)
 
+internal suspend fun StreamFactsByTagsRequest.publishTo(factStore: FactStore): StreamFactsByTagsResult =
+    factStore.streamFactsByTags(this)
+
 internal suspend fun FindByTagsRequest.publishTo(factStore: FactStore): FindByTagsResult =
     factStore.findByTags(this)
 
