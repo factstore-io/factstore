@@ -72,10 +72,9 @@ class InvalidInputTest {
             case("stream the facts of an invalid subject") {
                 forward().get("$STORES/unknown-store/subjects/order 1/facts")
             },
-            case("stream the facts of a subject without a direction") {
-                given().get("$STORES/unknown-store/subjects/order-1/facts")
+            case("stream the facts of an invalid type") {
+                forward().get("$STORES/unknown-store/types/order created/facts")
             },
-            case("stream facts without a direction") { given().get(FACTS) },
             case("stream facts with limit 0") { forward().queryParam("limit", 0).get(FACTS) },
             case("stream facts in an unknown direction") { given().queryParam("direction", "sideways").get(FACTS) },
             case("stream facts from an unparseable instant") { forward().queryParam("from", "yesterday").get(FACTS) },

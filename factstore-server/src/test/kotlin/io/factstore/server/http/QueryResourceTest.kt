@@ -84,6 +84,27 @@ class QueryResourceTest {
     }
 
     @Test
+    @Order(2)
+    @DisplayName("GET /v1/stores/{name}/types/{type}/facts - Should stream the type's facts as NDJSON")
+    fun streamFactsByType() {
+        val body = given()
+            .pathParam("storeName", storeName)
+            .pathParam("type", "test.type")
+            .queryParam("direction", "forward")
+            .`when`()
+            .get("/api/v1/stores/{storeName}/types/{type}/facts")
+            .then()
+            .statusCode(200)
+            .contentType(NDJSON)
+            .extract().asString()
+
+        val lines = ndjsonLines(body)
+        assertThat(lines).hasSize(2)
+        assertThat(lines[0]["fact"]["type"].asText()).isEqualTo("test.type")
+        assertThat(lines[1]["end"]["count"].asLong()).isEqualTo(1)
+    }
+
+    @Test
     @Order(3)
     @DisplayName("GET /v1/stores/{name}/facts - Should return 400 ApiError when tags and time range are combined")
     fun findFactsConflict() {
@@ -123,6 +144,26 @@ class QueryResourceTest {
         val lines = ndjsonLines(body)
         assertThat(lines).hasSize(2)
         assertThat(lines[0]["fact"]["tags"]["region"].asText()).isEqualTo("europe")
+        assertThat(lines[1]["end"]["count"].asLong()).isEqualTo(1)
+    }
+
+    @Test
+    @Order(5)
+    @DisplayName("GET /v1/stores/{name}/facts - Should stream forward by default when no direction is given")
+    fun streamFactsDefaultsToForward() {
+        val body = given()
+            .pathParam("storeName", storeName)
+            .queryParam("limit", 1)
+            .`when`()
+            .get("/api/v1/stores/{storeName}/facts")
+            .then()
+            .statusCode(200)
+            .contentType(NDJSON)
+            .extract().asString()
+
+        // Forward with limit 1: the oldest fact, seeded by the first test.
+        val lines = ndjsonLines(body)
+        assertThat(lines[0]["fact"]["subject"].asText()).isEqualTo(subject)
         assertThat(lines[1]["end"]["count"].asLong()).isEqualTo(1)
     }
 

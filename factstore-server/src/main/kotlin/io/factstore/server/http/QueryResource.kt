@@ -48,10 +48,26 @@ class QueryResource(
     suspend fun streamFactsBySubject(
         @PathParam("storeName") storeName: String,
         @PathParam("subject") subject: String,
-        @QueryParam("direction") @Parameter(required = true, schema = Schema(enumeration = ["forward", "backward"])) direction: String?,
+        @QueryParam("direction") @Parameter(schema = Schema(enumeration = ["forward", "backward"], defaultValue = "forward")) direction: String?,
         @QueryParam("limit") @Parameter(schema = Schema(type = SchemaType.INTEGER, minimum = "1")) limit: String?,
     ): Flow<FactStreamLineHttp> =
         streamFactsBySubjectRequest(storeName, subject, direction, limit).publishTo(store).toResponse()
+
+    @GET
+    @Produces(APPLICATION_NDJSON)
+    @RestStreamElementType(APPLICATION_JSON)
+    @Path("/types/{type}/facts")
+    @Operation(
+        summary = "Stream the facts of one type, matched exactly",
+        description = FACT_STREAM_DESCRIPTION,
+    )
+    suspend fun streamFactsByType(
+        @PathParam("storeName") storeName: String,
+        @PathParam("type") type: String,
+        @QueryParam("direction") @Parameter(schema = Schema(enumeration = ["forward", "backward"], defaultValue = "forward")) direction: String?,
+        @QueryParam("limit") @Parameter(schema = Schema(type = SchemaType.INTEGER, minimum = "1")) limit: String?,
+    ): Flow<FactStreamLineHttp> =
+        streamFactsByTypeRequest(storeName, type, direction, limit).publishTo(store).toResponse()
 
     @GET
     @Produces(APPLICATION_NDJSON)
@@ -63,7 +79,7 @@ class QueryResource(
     )
     suspend fun streamFacts(
         @PathParam("storeName") storeName: String,
-        @QueryParam("direction") @Parameter(required = true, schema = Schema(enumeration = ["forward", "backward"])) direction: String?,
+        @QueryParam("direction") @Parameter(schema = Schema(enumeration = ["forward", "backward"], defaultValue = "forward")) direction: String?,
         @QueryParam("limit") @Parameter(schema = Schema(type = SchemaType.INTEGER, minimum = "1")) limit: String?,
         @QueryParam("from") @Parameter(schema = Schema(type = SchemaType.STRING, format = "date-time")) from: String?,
         @QueryParam("to") @Parameter(schema = Schema(type = SchemaType.STRING, format = "date-time")) to: String?,

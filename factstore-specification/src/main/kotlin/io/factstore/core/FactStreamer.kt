@@ -39,6 +39,15 @@ interface FactStreamer {
      */
     suspend fun streamFactsBySubject(request: StreamFactsBySubjectRequest): StreamFactsBySubjectResult
 
+    /**
+     * Streams the facts of a single type.
+     *
+     * The type is matched exactly: `com.acme.OrderPlaced` is not matched by `com.acme`.
+     *
+     * @return [StreamFactsByTypeResult.FactStream] or [StreamFactsByTypeResult.StoreNotFound]
+     */
+    suspend fun streamFactsByType(request: StreamFactsByTypeRequest): StreamFactsByTypeResult
+
 }
 
 /**
@@ -91,4 +100,32 @@ sealed interface StreamFactsBySubjectResult {
 
     /** The requested store does not exist. */
     data class StoreNotFound(val storeName: StoreName) : StreamFactsBySubjectResult
+}
+
+
+/**
+ * Requests the facts of a single type.
+ *
+ * @property storeName the store to stream from
+ * @property type the type whose facts are emitted, matched exactly
+ * @property direction the order in which facts are emitted
+ * @property limit the maximum number of facts to emit
+ */
+data class StreamFactsByTypeRequest(
+    val storeName: StoreName,
+    val type: FactType,
+    val direction: ReadDirection,
+    val limit: Limit,
+)
+
+/**
+ * The outcome of [FactStreamer.streamFactsByType].
+ */
+sealed interface StreamFactsByTypeResult {
+
+    /** The type's facts, read when collected; empty if no fact has the type. */
+    class FactStream(val facts: Flow<Fact>) : StreamFactsByTypeResult
+
+    /** The requested store does not exist. */
+    data class StoreNotFound(val storeName: StoreName) : StreamFactsByTypeResult
 }

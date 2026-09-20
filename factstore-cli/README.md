@@ -94,6 +94,15 @@ factstore fact find-by-subject order-12345 --store orders
 factstore fact find-by-subject order-12345 --store orders --limit 50 --direction backward
 ```
 
+#### Find by type
+
+The type is matched exactly, so `com.acme.OrderPlaced` is not matched by `com.acme`:
+
+```bash
+factstore fact find-by-type OrderPlaced --store orders
+factstore fact find-by-type com.acme.OrderPlaced --store orders --limit 50 --direction backward
+```
+
 #### Find by tags
 
 All specified tags must match (AND semantics):

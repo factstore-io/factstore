@@ -63,11 +63,12 @@ internal fun String?.asLimit(): Limit {
     return Limit.of(value)
 }
 
-/** Every read states its direction: an absent direction is invalid, not a default. */
+/**
+ * An absent direction reads forward, the natural order of an append-only log.
+ */
 internal fun String?.asReadDirection(): ReadDirection = when (this?.trim()?.lowercase()) {
-    "forward" -> ReadDirection.Forward
+    null, "forward" -> ReadDirection.Forward
     "backward" -> ReadDirection.Backward
-    null -> throw IllegalArgumentException("A direction is required: 'forward' or 'backward'.")
     else -> throw IllegalArgumentException("Direction must be 'forward' or 'backward', but was '$this'.")
 }
 

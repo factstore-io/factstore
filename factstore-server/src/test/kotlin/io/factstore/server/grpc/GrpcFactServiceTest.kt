@@ -249,6 +249,37 @@ class GrpcFactServiceTest {
         assertThat(responses).isEmpty()
     }
 
+    // ─── StreamFactsByType ────────────────────────────────────────────────────
+
+    @Test
+    @Order(13)
+    @DisplayName("StreamFactsByType - should stream the type's facts and complete")
+    fun streamFactsByType(): Unit = runBlocking {
+        val responses = factService.streamFactsByType(streamFactsByTypeRequest {
+            storeName = STORE
+            type = "order.created"
+            direction = ReadDirection.READ_DIRECTION_FORWARD
+        }).toList()
+
+        val facts = responses.flatMap { it.batch.factsList }
+        assertThat(facts).isNotEmpty()
+        assertThat(facts).allMatch { it.type == "order.created" }
+    }
+
+    @Test
+    @Order(13)
+    @DisplayName("StreamFactsByType - should emit a store_not_found message when the store does not exist")
+    fun streamFactsByTypeStoreNotFound(): Unit = runBlocking {
+        val responses = factService.streamFactsByType(streamFactsByTypeRequest {
+            storeName = "ghost-store"
+            type = "order.created"
+            direction = ReadDirection.READ_DIRECTION_FORWARD
+        }).toList()
+
+        assertThat(responses).hasSize(1)
+        assertThat(responses.single().hasStoreNotFound()).isTrue()
+    }
+
     // ─── StreamFacts ──────────────────────────────────────────────────────────
 
     @Test

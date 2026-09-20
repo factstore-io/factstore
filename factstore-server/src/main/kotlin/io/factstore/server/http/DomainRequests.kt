@@ -56,6 +56,20 @@ internal fun streamFactsRequest(
     )
 }
 
+internal fun streamFactsByTypeRequest(
+    storeName: String,
+    type: String,
+    direction: String?,
+    limit: String?,
+): StreamFactsByTypeRequest = parseInput {
+    StreamFactsByTypeRequest(
+        storeName = storeName.asStoreName(),
+        type = type.asFactType(),
+        direction = direction.asReadDirection(),
+        limit = limit.asLimit(),
+    )
+}
+
 internal fun streamFactsBySubjectRequest(
     storeName: String,
     subject: String,

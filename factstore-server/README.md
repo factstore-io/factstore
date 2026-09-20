@@ -122,7 +122,7 @@ Response (example):
 Stream all facts of a specific subject.
 
 ```bash
-curl "http://localhost:8080/api/v1/stores/default/subjects/user:123/facts?direction=forward"
+curl "http://localhost:8080/api/v1/stores/default/subjects/user:123/facts"
 ```
 
 Reads of several facts respond with NDJSON (`application/x-ndjson`): one JSON object per line,
@@ -140,10 +140,21 @@ each with exactly one property.
 - **A stream that stops without an `end` or `error` line is incomplete**, however the connection ended.
 - A missing store or invalid input is answered before the stream starts, with an `ApiError`.
 
-`direction` (`forward` or `backward`) is required; `limit` is optional.
+`direction` is `forward` (oldest first, the default) or `backward` (newest first); `limit` is optional.
 
 The facts are those stored when the request is made: facts appended while the stream is
 being read are not included.
+
+### 3b. Stream Facts by Type
+
+Stream all facts of one type. The type is matched exactly, so `com.acme.OrderPlaced` is not
+matched by `com.acme`.
+
+```bash
+curl "http://localhost:8080/api/v1/stores/default/types/UserRegistered/facts"
+```
+
+The response is an NDJSON fact stream, as for a subject.
 
 ### 4. Stream Facts of a Store
 
@@ -151,8 +162,8 @@ Stream all facts of a store, or those carrying the given tags, or those appended
 
 ```bash
 curl "http://localhost:8080/api/v1/stores/default/facts?direction=backward&limit=10"
-curl "http://localhost:8080/api/v1/stores/default/facts?tag=role%3Duser&direction=forward"
-curl "http://localhost:8080/api/v1/stores/default/facts?from=2026-01-01T00:00:00Z&to=2026-02-01T00:00:00Z&direction=forward"
+curl "http://localhost:8080/api/v1/stores/default/facts?tag=role%3Duser"
+curl "http://localhost:8080/api/v1/stores/default/facts?from=2026-01-01T00:00:00Z&to=2026-02-01T00:00:00Z"
 ```
 
 The response is an NDJSON fact stream, as for a subject. In a time range, `from` is inclusive and
@@ -386,10 +397,10 @@ grpcurl -plaintext \
 
 Outcomes: `present` · `absent` · `store_not_found`
 
-#### StreamFacts and StreamFactsBySubject
+#### StreamFacts, StreamFactsBySubject and StreamFactsByType
 
-Stream the facts of a store, or of one subject, as they are stored when the call is made, then
-complete.
+Stream the facts of a store, of one subject, or of one type, as they are stored when the call is
+made, then complete.
 
 ```bash
 grpcurl -plaintext \
@@ -399,7 +410,13 @@ grpcurl -plaintext \
 grpcurl -plaintext \
   -d '{"store_name": "orders", "subject": "order-42", "direction": "READ_DIRECTION_FORWARD"}' \
   localhost:8080 io.factstore.server.grpc.FactService/StreamFactsBySubject
+
+grpcurl -plaintext \
+  -d '{"store_name": "orders", "type": "OrderPlaced", "direction": "READ_DIRECTION_FORWARD"}' \
+  localhost:8080 io.factstore.server.grpc.FactService/StreamFactsByType
 ```
+
+`StreamFactsByType` matches the type exactly.
 
 Each message carries a `batch` of facts, at most 1 MiB in size. A missing store is reported as a
 single `store_not_found` message instead. The stream completes with status `OK` once every fact

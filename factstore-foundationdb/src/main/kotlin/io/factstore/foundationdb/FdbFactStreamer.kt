@@ -103,6 +103,23 @@ class FdbFactStreamer(
         return StreamFactsBySubjectResult.FactStream(facts)
     }
 
+    override suspend fun streamFactsByType(request: StreamFactsByTypeRequest): StreamFactsByTypeResult {
+        val pinned = pinHead(request.storeName) ?: return StreamFactsByTypeResult.StoreNotFound(request.storeName)
+        val head = pinned.head ?: return StreamFactsByTypeResult.FactStream(emptyFlow())
+
+        val typeIndex = store.context.eventTypeIndexSubspace
+        val facts = scanPinned(
+            keys = PinnedKeys(
+                range = typeIndex.range(pinned.storeId, request.type),
+                pinnedEndKey = typeIndex.getKey(pinned.storeId, request.type, head),
+                direction = request.direction,
+            ),
+            limit = request.limit,
+        ) { tr, entries -> loadFacts(tr, pinned.storeId, entries.map { typeIndex.unpackPosition(it.key) }) }
+
+        return StreamFactsByTypeResult.FactStream(facts)
+    }
+
     /** A store and its head at the moment it was resolved; no head means the store holds no facts. */
     private class PinnedStore(val storeId: StoreId, val head: FactPosition?)
 

@@ -27,6 +27,8 @@ import kotlin.time.Duration.Companion.seconds
 private const val ALICE_SUBJECT_VALUE = "USER:ALICE"
 private const val BOB_SUBJECT_VALUE = "USER:BOB"
 private const val CHARLIE_SUBJECT_VALUE = "USER:CHARLIE"
+private const val EVEN_FACT_TYPE = "FACT_EVEN"
+private const val ODD_FACT_TYPE = "FACT_ODD"
 
 abstract class AbstractFactStoreTest {
 
@@ -1343,6 +1345,179 @@ abstract class AbstractFactStoreTest {
             .containsExactlyElementsOf(aliceFacts.reversed().take(333))
     }
 
+    // ===== FactStreamer: streamFactsByType =====
+
+    @Test
+    fun testStreamFactsByTypeForward(): Unit = runBlocking {
+        val (fact1, _, fact3) = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
+                input(BOB_SUBJECT_VALUE, "USER_LOCKED", bobPayload),
+                input(CHARLIE_SUBJECT_VALUE, "USER_CREATED", charliePayload),
+            )
+        )
+
+        // Facts of one type, across subjects.
+        assertThat(streamToList(typeRequest("USER_CREATED", ReadDirection.Forward, Limit.None)))
+            .containsExactly(fact1, fact3)
+    }
+
+    @Test
+    fun testStreamFactsByTypeBackward(): Unit = runBlocking {
+        val (fact1, _, fact3) = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
+                input(BOB_SUBJECT_VALUE, "USER_LOCKED", bobPayload),
+                input(CHARLIE_SUBJECT_VALUE, "USER_CREATED", charliePayload),
+            )
+        )
+
+        assertThat(streamToList(typeRequest("USER_CREATED", ReadDirection.Backward, Limit.None)))
+            .containsExactly(fact3, fact1)
+    }
+
+    @Test
+    fun testStreamFactsByTypeWithLimit(): Unit = runBlocking {
+        val (fact1, fact2, fact3) = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
+                input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload),
+                input(CHARLIE_SUBJECT_VALUE, "USER_CREATED", charliePayload),
+            )
+        )
+
+        assertThat(streamToList(typeRequest("USER_CREATED", ReadDirection.Forward, Limit.of(2))))
+            .containsExactly(fact1, fact2)
+        assertThat(streamToList(typeRequest("USER_CREATED", ReadDirection.Backward, Limit.of(2))))
+            .containsExactly(fact3, fact2)
+    }
+
+    @Test
+    fun testStreamFactsByTypeLimitCountsOnlyTheTypesFacts(): Unit = runBlocking {
+        val (fact1, _, _, fact4) = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
+                input(BOB_SUBJECT_VALUE, "USER_LOCKED", bobPayload),
+                input(BOB_SUBJECT_VALUE, "USER_UNLOCKED", bobPayload),
+                input(CHARLIE_SUBJECT_VALUE, "USER_CREATED", charliePayload),
+            )
+        )
+
+        // Facts of other types in between must neither be emitted nor count towards the limit.
+        assertThat(streamToList(typeRequest("USER_CREATED", ReadDirection.Forward, Limit.of(2))))
+            .containsExactly(fact1, fact4)
+    }
+
+    @Test
+    fun testStreamFactsByTypeMatchesTheTypeExactly(): Unit = runBlocking {
+        val exact = appendStored(input(ALICE_SUBJECT_VALUE, "com.acme.OrderPlaced", alicePayload))
+        appendStored(input(ALICE_SUBJECT_VALUE, "com.acme.OrderPlaced.V2", alicePayload))
+
+        assertThat(streamToList(typeRequest("com.acme.OrderPlaced", ReadDirection.Forward, Limit.None)))
+            .containsExactly(exact)
+        assertThat(streamToList(typeRequest("com.acme", ReadDirection.Forward, Limit.None))).isEmpty()
+    }
+
+    @Test
+    fun testStreamFactsByTypeWithoutFacts(): Unit = runBlocking {
+        appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload))
+
+        assertThat(streamToList(typeRequest("USER_DELETED", ReadDirection.Forward, Limit.None))).isEmpty()
+    }
+
+    @Test
+    fun testStreamFactsByTypeOfNonExistingStore(): Unit = runBlocking {
+        val result = store.streamFactsByType(
+            StreamFactsByTypeRequest(nonExistingStore, FactType("USER_CREATED"), ReadDirection.Forward, Limit.None)
+        )
+
+        assertThat(result).isEqualTo(StreamFactsByTypeResult.StoreNotFound(nonExistingStore))
+    }
+
+    @Test
+    fun testStreamFactsByTypeOnlyContainsFactsOfTheRequestedStore(): Unit = runBlocking {
+        val otherStore = StoreName("other-store")
+        store.create(CreateStoreRequest(otherStore))
+
+        val fact = appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload))
+        appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload), otherStore)
+
+        assertThat(streamToList(typeRequest("USER_CREATED", ReadDirection.Forward, Limit.None)))
+            .containsExactly(fact)
+    }
+
+    @Test
+    fun testStreamFactsByTypeExcludesFactsAppendedAfterCall(): Unit = runBlocking {
+        val fact1 = appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload))
+
+        val stream = (store.streamFactsByType(typeRequest("USER_CREATED", ReadDirection.Forward, Limit.None))
+                as StreamFactsByTypeResult.FactStream).facts
+
+        appendStored(input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload))
+
+        assertThat(withTimeout(10.seconds) { stream.toList() }).containsExactly(fact1)
+    }
+
+    @Test
+    fun testStreamFactsByTypeExcludesFactsAppendedWhileCollected(): Unit = runBlocking {
+        // More facts than a backend is likely to read at once, so collecting spans several reads.
+        val facts = appendStored((0 until 300).map { input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload) })
+
+        val stream = (store.streamFactsByType(typeRequest("USER_CREATED", ReadDirection.Forward, Limit.None))
+                as StreamFactsByTypeResult.FactStream).facts
+
+        val collected = mutableListOf<Fact>()
+        withTimeout(10.seconds) {
+            stream.collect { fact ->
+                if (collected.isEmpty()) appendStored(input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload))
+                collected += fact
+            }
+        }
+
+        assertThat(collected).containsExactlyElementsOf(facts)
+    }
+
+    @Test
+    fun testStreamFactsByTypeIsRepeatable(): Unit = runBlocking {
+        val (fact1, _, fact3) = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
+                input(BOB_SUBJECT_VALUE, "USER_LOCKED", bobPayload),
+                input(CHARLIE_SUBJECT_VALUE, "USER_CREATED", charliePayload),
+            )
+        )
+
+        val stream = (store.streamFactsByType(typeRequest("USER_CREATED", ReadDirection.Forward, Limit.None))
+                as StreamFactsByTypeResult.FactStream).facts
+
+        val first = withTimeout(10.seconds) { stream.toList() }
+        appendStored(input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload))
+        val second = withTimeout(10.seconds) { stream.toList() }
+
+        assertThat(first).containsExactly(fact1, fact3)
+        assertThat(second).isEqualTo(first)
+    }
+
+    @Test
+    fun testStreamFactsByTypeOfLargeHistory(): Unit = runBlocking {
+        val evenFacts = appendLargeHistory().filterIndexed { index, _ -> index % 2 == 0 }
+
+        assertThat(streamToList(typeRequest(EVEN_FACT_TYPE, ReadDirection.Forward, Limit.None)))
+            .containsExactlyElementsOf(evenFacts)
+        assertThat(streamToList(typeRequest(EVEN_FACT_TYPE, ReadDirection.Backward, Limit.None)))
+            .containsExactlyElementsOf(evenFacts.reversed())
+        assertThat(streamToList(typeRequest(EVEN_FACT_TYPE, ReadDirection.Forward, Limit.of(333))))
+            .containsExactlyElementsOf(evenFacts.take(333))
+    }
+
+    private fun typeRequest(type: String, direction: ReadDirection, limit: Limit) =
+        StreamFactsByTypeRequest(testStore, FactType(type), direction, limit)
+
+    private suspend fun streamToList(request: StreamFactsByTypeRequest): List<Fact> {
+        val stream = (store.streamFactsByType(request) as StreamFactsByTypeResult.FactStream).facts
+        return withTimeout(10.seconds) { stream.toList() }
+    }
+
     private fun subjectRequest(subject: String, direction: ReadDirection, limit: Limit) =
         StreamFactsBySubjectRequest(testStore, Subject(subject), direction, limit)
 
@@ -1365,7 +1540,8 @@ abstract class AbstractFactStoreTest {
     private suspend fun appendLargeHistory(): List<Fact> {
         val inputs = (0 until 2_000).map { i ->
             val subject = if (i % 2 == 0) ALICE_SUBJECT_VALUE else BOB_SUBJECT_VALUE
-            input(subject, "FACT_$i", """{ "index": $i }""".toFactPayload())
+            val type = if (i % 2 == 0) EVEN_FACT_TYPE else ODD_FACT_TYPE
+            input(subject, type, """{ "index": $i }""".toFactPayload())
         }
         return inputs.chunked(AppendRequest.MAX_FACTS).flatMap { appendStored(it) }
     }

@@ -8,6 +8,7 @@ import io.factstore.grpc.v1.factNotFound
 import io.factstore.grpc.v1.storeNotFound
 import io.factstore.grpc.v1.replayFactsResponse
 import io.factstore.grpc.v1.streamFactsBySubjectResponse
+import io.factstore.grpc.v1.streamFactsByTypeResponse
 import io.factstore.grpc.v1.streamFactsResponse
 import io.factstore.grpc.v1.subscribeFactsResponse
 import io.quarkus.grpc.GrpcService
@@ -67,6 +68,20 @@ class GrpcFactService(
 
                 is StreamFactsBySubjectResult.FactStream -> result.facts.toProtoFactBatches().map { facts ->
                     streamFactsBySubjectResponse { batch = facts }
+                }
+            }
+        )
+    }
+
+    override fun streamFactsByType(request: GrpcStreamFactsByTypeRequest): Flow<StreamFactsByTypeResponse> = flow {
+        emitAll(
+            when (val result = request.toDomainRequest().publishTo(factStore)) {
+                is StreamFactsByTypeResult.StoreNotFound -> flowOf(streamFactsByTypeResponse {
+                    storeNotFound = storeNotFound { storeName = result.storeName.value }
+                })
+
+                is StreamFactsByTypeResult.FactStream -> result.facts.toProtoFactBatches().map { facts ->
+                    streamFactsByTypeResponse { batch = facts }
                 }
             }
         )

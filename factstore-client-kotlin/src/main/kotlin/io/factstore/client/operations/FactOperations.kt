@@ -29,6 +29,7 @@ import io.factstore.grpc.v1.getFactRequest
 import io.factstore.grpc.v1.queryFactsRequest
 import io.factstore.grpc.v1.replayFactsRequest
 import io.factstore.grpc.v1.streamFactsBySubjectRequest
+import io.factstore.grpc.v1.streamFactsByTypeRequest
 import io.factstore.grpc.v1.streamFactsRequest
 import io.factstore.grpc.v1.subscribeFactsRequest
 import kotlinx.coroutines.flow.Flow
@@ -199,6 +200,32 @@ class FactOperations internal constructor(
             response.hasFound() -> response.found.factsList.map { it.toDomain() }
             response.hasStoreNotFound() -> throw StoreNotFoundException(storeName)
             else -> error("Unexpected response: $response")
+        }
+    }
+
+    /**
+     * Streams the facts of one type, up to the newest fact at the time of the call, then completes.
+     *
+     * The type is matched exactly. Throws [StoreNotFoundException] when collected if the store
+     * does not exist.
+     *
+     * @param limit the maximum number of facts to emit, or `null` for all of them
+     */
+    fun streamFactsByType(
+        storeName: String,
+        type: String,
+        direction: ReadDirection,
+        limit: Int? = null,
+    ): Flow<Fact> = stub.streamFactsByType(streamFactsByTypeRequest {
+        this.storeName = storeName
+        this.type = type
+        this.direction = direction.toProto()
+        limit?.let { this.limit = it }
+    }).toFactFlow { response ->
+        when {
+            response.hasBatch() -> response.batch.factsList.forEach { emit(it.toDomain()) }
+            response.hasStoreNotFound() -> throw StoreNotFoundException(storeName)
+            else -> error("Unexpected stream message: $response")
         }
     }
 

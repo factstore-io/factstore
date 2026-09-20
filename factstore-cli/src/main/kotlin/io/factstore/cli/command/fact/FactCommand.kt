@@ -11,6 +11,7 @@ import picocli.CommandLine.Command
         SubscribeFactsCommand::class,
         ReplayFactsCommand::class,
         FindBySubjectCommand::class,
+        FindByTypeCommand::class,
         FindByTagsCommand::class,
         FindInTimeRangeCommand::class,
         FindByIdCommand::class,

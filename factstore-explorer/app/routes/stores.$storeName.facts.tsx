@@ -20,7 +20,7 @@ export function meta({ params }: Route.MetaArgs) {
   return [{ title: `Facts — ${params.storeName} — FactStore Explorer` }]
 }
 
-type QueryMode = "timeRange" | "tags" | "subject"
+type QueryMode = "timeRange" | "tags" | "subject" | "type"
 
 type TimePreset = "5m" | "15m" | "1h" | "6h" | "24h" | "custom"
 
@@ -66,6 +66,9 @@ export default function FactsPage() {
   // subject
   const [subject, setSubject] = useState("")
 
+  // type
+  const [type, setType] = useState("")
+
   // query options
   const [limit, setLimit] = useState("100")
   const [direction, setDirection] = useState<"forward" | "backward">("backward")
@@ -106,10 +109,17 @@ export default function FactsPage() {
           limit: Number(limit) || 0,
           direction,
         })
-      } else {
+      } else if (mode === "subject") {
         result = await queryFacts(storeName, {
           mode: "subject",
           subject: subject.trim(),
+          limit: Number(limit) || 0,
+          direction,
+        })
+      } else {
+        result = await queryFacts(storeName, {
+          mode: "type",
+          type: type.trim(),
           limit: Number(limit) || 0,
           direction,
         })
@@ -121,7 +131,7 @@ export default function FactsPage() {
     } finally {
       setLoading(false)
     }
-  }, [storeName, mode, preset, customFrom, customTo, tagInputs, subject, limit, direction])
+  }, [storeName, mode, preset, customFrom, customTo, tagInputs, subject, type, limit, direction])
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 space-y-6">
@@ -132,7 +142,7 @@ export default function FactsPage() {
           <div className="flex items-center gap-2 flex-wrap">
             {/* Mode selector */}
             <div className="flex rounded-lg border border-border overflow-hidden text-xs">
-              {(["timeRange", "tags", "subject"] as QueryMode[]).map((m) => (
+              {(["timeRange", "tags", "subject", "type"] as QueryMode[]).map((m) => (
                 <button
                   key={m}
                   className={`px-3 py-1.5 font-medium transition-colors ${
@@ -142,7 +152,7 @@ export default function FactsPage() {
                   }`}
                   onClick={() => setMode(m)}
                 >
-                  {m === "timeRange" ? "Time Range" : m === "tags" ? "Tags" : "Subject"}
+                  {m === "timeRange" ? "Time Range" : m === "tags" ? "Tags" : m === "subject" ? "Subject" : "Type"}
                 </button>
               ))}
             </div>
@@ -258,6 +268,20 @@ export default function FactsPage() {
               placeholder="e.g. user:123, order:456"
               className="font-mono text-xs h-8 max-w-sm"
             />
+          </div>
+        )}
+
+        {/* Type controls */}
+        {mode === "type" && (
+          <div className="space-y-1.5">
+            <Label className="text-xs">Fact type</Label>
+            <Input
+              value={type}
+              onChange={(e) => setType(e.target.value)}
+              placeholder="e.g. OrderPlaced, com.acme.OrderPlaced"
+              className="font-mono text-xs h-8 max-w-sm"
+            />
+            <p className="text-xs text-muted-foreground">Matched exactly.</p>
           </div>
         )}
 

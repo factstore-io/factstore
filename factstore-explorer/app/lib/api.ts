@@ -71,11 +71,12 @@ export async function deleteStore(name: string): Promise<void> {
 // ─── Facts ───────────────────────────────────────────────────────────────────
 
 export interface QueryOptions {
-  mode: "timeRange" | "tags" | "subject"
+  mode: "timeRange" | "tags" | "subject" | "type"
   from?: string
   to?: string
   tags?: string[]
   subject?: string
+  type?: string
   limit?: number
   direction?: "forward" | "backward"
 }
@@ -95,6 +96,10 @@ export async function queryFacts(storeName: string, opts: QueryOptions): Promise
 
   if (opts.mode === "subject" && opts.subject) {
     return fetchFactStream(`${BASE_URL}/v1/stores/${encodeURIComponent(storeName)}/subjects/${encodeURIComponent(opts.subject)}/facts?${params}`)
+  }
+
+  if (opts.mode === "type" && opts.type) {
+    return fetchFactStream(`${BASE_URL}/v1/stores/${encodeURIComponent(storeName)}/types/${encodeURIComponent(opts.type)}/facts?${params}`)
   }
 
   return fetchFactStream(`${BASE_URL}/v1/stores/${encodeURIComponent(storeName)}/facts?${params}`)
