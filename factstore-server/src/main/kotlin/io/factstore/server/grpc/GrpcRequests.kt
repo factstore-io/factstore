@@ -129,6 +129,25 @@ internal fun GrpcStreamFactsRequest.toDomainRequest(): StreamFactsRequest = pars
     )
 }
 
+internal fun FactStoreProto.FactFilter.toDomain(): FactFilter = FactFilter(
+    subjects = subjectsList.map { it.asSubject() }.toSet(),
+    types = typesList.map { it.asFactType() }.toSet(),
+    tags = tagsMap.asTags(),
+)
+
+internal fun FactStoreProto.FactQuery.toDomain(): FactQuery = FactQuery(filtersList.map { it.toDomain() })
+
+typealias GrpcStreamFactsByQueryRequest = FactStoreProto.StreamFactsByQueryRequest
+
+internal fun GrpcStreamFactsByQueryRequest.toDomainRequest(): StreamFactsByQueryRequest = parseRequest {
+    StreamFactsByQueryRequest(
+        storeName = storeName.asStoreName(),
+        query = query.toDomain(),
+        direction = direction.toCore(),
+        limit = if (hasLimit()) Limit.of(limit) else Limit.None,
+    )
+}
+
 typealias GrpcStreamFactsByTagsRequest = FactStoreProto.StreamFactsByTagsRequest
 
 internal fun GrpcStreamFactsByTagsRequest.toDomainRequest(): StreamFactsByTagsRequest = parseRequest {

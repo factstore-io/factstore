@@ -105,6 +105,54 @@ class QueryResourceTest {
     }
 
     @Test
+    @Order(2)
+    @DisplayName("POST /v1/stores/{name}/facts:query - Should stream the matching facts as NDJSON")
+    fun streamFactsByQuery() {
+        // RestAssured percent-encodes `:` by default, and `facts%3Aquery` is a different path.
+        val body = given()
+            .urlEncodingEnabled(false)
+            .contentType(JSON)
+            .body(
+                mapOf(
+                    "filters" to listOf(
+                        mapOf("subjects" to listOf(subject)),
+                        mapOf("types" to listOf("test.type"), "tags" to mapOf("region" to "europe")),
+                    ),
+                    "direction" to "forward",
+                )
+            )
+            .`when`()
+            .post("/api/v1/stores/$storeName/facts:query")
+            .then()
+            .statusCode(200)
+            .contentType(NDJSON)
+            .extract().asString()
+
+        val lines = ndjsonLines(body)
+        assertThat(lines.dropLast(1)).allMatch { it.has("fact") }
+        assertThat(lines[0]["fact"]["subject"].asText()).isEqualTo(subject)
+        assertThat(lines.last()["end"]["count"].asLong()).isEqualTo(lines.size - 1L)
+    }
+
+    @Test
+    @Order(2)
+    @DisplayName("POST /v1/stores/{name}/facts:query - Should return 404 ApiError when the store does not exist")
+    fun streamFactsByQueryOfMissingStore() {
+        val error = given()
+            .urlEncodingEnabled(false)
+            .contentType(JSON)
+            .body(mapOf("filters" to listOf(mapOf("types" to listOf("test.type")))))
+            .`when`()
+            .post("/api/v1/stores/missing-store/facts:query")
+            .then()
+            .statusCode(404)
+            .contentType(JSON)
+            .extract().`as`(ApiError::class.java)
+
+        assertThat(error.reason).isEqualTo(Reason.NotFound)
+    }
+
+    @Test
     @Order(3)
     @DisplayName("GET /v1/stores/{name}/facts - Should return 400 ApiError when tags and time range are combined")
     fun findFactsConflict() {

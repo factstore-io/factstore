@@ -81,6 +81,22 @@ class GrpcInvalidInputTest {
         case("stream the facts of a subject without a direction") {
             facts.streamFactsBySubject(streamFactsBySubjectRequest { storeName = STORE; subject = "s" }).first()
         },
+        case("stream facts by a query without filters") {
+            facts.streamFactsByQuery(streamFactsByQueryRequest {
+                storeName = STORE; direction = FORWARD; query = factQuery { }
+            }).first()
+        },
+        case("stream facts by a filter without predicates") {
+            facts.streamFactsByQuery(streamFactsByQueryRequest {
+                storeName = STORE; direction = FORWARD; query = factQuery { filters += factFilter { } }
+            }).first()
+        },
+        case("stream facts by a query with an invalid subject") {
+            facts.streamFactsByQuery(streamFactsByQueryRequest {
+                storeName = STORE; direction = FORWARD
+                query = factQuery { filters += factFilter { subjects += "order 1" } }
+            }).first()
+        },
         case("stream facts without tags") {
             facts.streamFactsByTags(streamFactsByTagsRequest { storeName = STORE; direction = FORWARD }).first()
         },

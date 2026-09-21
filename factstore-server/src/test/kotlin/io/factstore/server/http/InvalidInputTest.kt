@@ -44,6 +44,13 @@ class InvalidInputTest {
 
         private fun json(body: Any): RequestSpecification = given().contentType(JSON).body(body)
 
+        /**
+         * A request whose path keeps its colon: RestAssured percent-encodes `:` by default, and
+         * `facts%3Aquery` is a different path than the `facts:query` operation.
+         */
+        private fun jsonToOperation(body: Any): RequestSpecification =
+            given().urlEncodingEnabled(false).contentType(JSON).body(body)
+
         private fun forward(): RequestSpecification = given().queryParam("direction", "forward")
 
         @JvmStatic
@@ -71,6 +78,22 @@ class InvalidInputTest {
             case("find a fact by an id that is not a UUID") { given().get("$FACTS/not-a-uuid") },
             case("stream the facts of an invalid subject") {
                 forward().get("$STORES/unknown-store/subjects/order 1/facts")
+            },
+            case("query facts without filters") {
+                jsonToOperation(mapOf("filters" to emptyList<Any>())).post("$FACTS:query")
+            },
+            case("query facts with a filter without predicates") {
+                jsonToOperation(mapOf("filters" to listOf(emptyMap<String, Any>()))).post("$FACTS:query")
+            },
+            case("query facts with an invalid type") {
+                jsonToOperation(mapOf("filters" to listOf(mapOf("types" to listOf("order created"))))).post("$FACTS:query")
+            },
+            case("query facts in an unknown direction") {
+                jsonToOperation(mapOf("filters" to listOf(mapOf("types" to listOf("T"))), "direction" to "sideways"))
+                    .post("$FACTS:query")
+            },
+            case("query facts with limit 0") {
+                jsonToOperation(mapOf("filters" to listOf(mapOf("types" to listOf("T"))), "limit" to 0)).post("$FACTS:query")
             },
             case("stream the facts of an invalid type") {
                 forward().get("$STORES/unknown-store/types/order created/facts")

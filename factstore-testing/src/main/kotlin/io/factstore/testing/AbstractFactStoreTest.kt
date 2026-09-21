@@ -1657,6 +1657,208 @@ abstract class AbstractFactStoreTest {
             .containsExactlyElementsOf(adminsInEu.take(7))
     }
 
+    // ===== FactStreamer: streamFactsByQuery =====
+
+    @Test
+    fun testStreamFactsByQueryWithOneFilterMatchesTheShorthands(): Unit = runBlocking {
+        val (alice, bob, aliceLocked) = appendStored(
+            listOf(
+                userInput("ALICE", "Alice", role = "admin", region = "eu"),
+                userInput("BOB", "Bob", role = "user", region = "us"),
+                input(ALICE_SUBJECT_VALUE, "USER_LOCKED", alicePayload, tags = mapOf(TagKey("role") to TagValue("admin"))),
+            )
+        )
+
+        // A single filter is exactly the shorthand it constrains.
+        assertThat(streamToList(query(FactFilter(subjects = setOf(Subject(ALICE_SUBJECT_VALUE))))))
+            .containsExactly(alice, aliceLocked)
+        assertThat(streamToList(query(FactFilter(types = setOf(FactType("USER_CREATED"))))))
+            .containsExactly(alice, bob)
+        assertThat(streamToList(query(FactFilter(tags = mapOf(TagKey("role") to TagValue("admin"))))))
+            .containsExactly(alice, aliceLocked)
+    }
+
+    @Test
+    fun testStreamFactsByQueryCombinesPredicatesWithAnd(): Unit = runBlocking {
+        val (_, _, aliceLocked) = appendStored(
+            listOf(
+                userInput("ALICE", "Alice", role = "admin", region = "eu"),
+                userInput("BOB", "Bob", role = "admin", region = "eu"),
+                input(ALICE_SUBJECT_VALUE, "USER_LOCKED", alicePayload, tags = mapOf(TagKey("role") to TagValue("admin"))),
+            )
+        )
+
+        // Subject AND type AND tag: only the third fact satisfies all three.
+        val filter = FactFilter(
+            subjects = setOf(Subject(ALICE_SUBJECT_VALUE)),
+            types = setOf(FactType("USER_LOCKED")),
+            tags = mapOf(TagKey("role") to TagValue("admin")),
+        )
+
+        assertThat(streamToList(query(filter))).containsExactly(aliceLocked)
+    }
+
+    @Test
+    fun testStreamFactsByQueryMatchesAnyValueOfAPredicate(): Unit = runBlocking {
+        val (alice, bob, charlie) = appendStored(
+            listOf(
+                userInput("ALICE", "Alice", role = "admin", region = "eu"),
+                userInput("BOB", "Bob", role = "user", region = "us"),
+                input(CHARLIE_SUBJECT_VALUE, "USER_LOCKED", charliePayload),
+            )
+        )
+
+        // Several types in one filter match any of them.
+        assertThat(streamToList(query(FactFilter(types = setOf(FactType("USER_CREATED"), FactType("USER_LOCKED"))))))
+            .containsExactly(alice, bob, charlie)
+
+        // The same for subjects.
+        assertThat(streamToList(query(FactFilter(subjects = setOf(Subject(ALICE_SUBJECT_VALUE), Subject(CHARLIE_SUBJECT_VALUE))))))
+            .containsExactly(alice, charlie)
+    }
+
+    @Test
+    fun testStreamFactsByQueryCombinesFiltersWithOr(): Unit = runBlocking {
+        val (alice, _, charlie) = appendStored(
+            listOf(
+                userInput("ALICE", "Alice", role = "admin", region = "eu"),
+                userInput("BOB", "Bob", role = "user", region = "us"),
+                input(CHARLIE_SUBJECT_VALUE, "USER_LOCKED", charliePayload, tags = mapOf(TagKey("role") to TagValue("guest"))),
+            )
+        )
+
+        val result = streamToList(
+            query(
+                FactFilter(subjects = setOf(Subject(ALICE_SUBJECT_VALUE))),
+                FactFilter(tags = mapOf(TagKey("role") to TagValue("guest"))),
+            )
+        )
+
+        assertThat(result).containsExactly(alice, charlie)
+    }
+
+    @Test
+    fun testStreamFactsByQueryEmitsAFactMatchingSeveralFiltersOnce(): Unit = runBlocking {
+        val (alice, bob) = appendStored(
+            listOf(
+                userInput("ALICE", "Alice", role = "admin", region = "eu"),
+                userInput("BOB", "Bob", role = "admin", region = "eu"),
+            )
+        )
+
+        // Alice satisfies both filters, yet is one fact.
+        val result = streamToList(
+            query(
+                FactFilter(subjects = setOf(Subject(ALICE_SUBJECT_VALUE))),
+                FactFilter(tags = mapOf(TagKey("role") to TagValue("admin"))),
+            )
+        )
+
+        assertThat(result).containsExactly(alice, bob)
+    }
+
+    @Test
+    fun testStreamFactsByQueryBackwardAndWithLimit(): Unit = runBlocking {
+        val (alice, bob, charlie) = appendStored(
+            listOf(
+                userInput("ALICE", "Alice", role = "admin", region = "eu"),
+                userInput("BOB", "Bob", role = "user", region = "us"),
+                userInput("CHARLIE", "Charlie", role = "admin", region = "us"),
+            )
+        )
+
+        val filters = arrayOf(
+            FactFilter(subjects = setOf(Subject(BOB_SUBJECT_VALUE))),
+            FactFilter(tags = mapOf(TagKey("role") to TagValue("admin"))),
+        )
+
+        assertThat(streamToList(query(*filters), ReadDirection.Backward))
+            .containsExactly(charlie, bob, alice)
+        // The limit counts the merged result, not each filter.
+        assertThat(streamToList(query(*filters), ReadDirection.Forward, Limit.of(2)))
+            .containsExactly(alice, bob)
+    }
+
+    @Test
+    fun testStreamFactsByQueryWithoutMatches(): Unit = runBlocking {
+        appendStored(userInput("ALICE", "Alice", role = "admin", region = "eu"))
+
+        assertThat(streamToList(query(FactFilter(types = setOf(FactType("USER_DELETED")))))).isEmpty()
+    }
+
+    @Test
+    fun testStreamFactsByQueryOfNonExistingStore(): Unit = runBlocking {
+        val result = store.streamFactsByQuery(
+            StreamFactsByQueryRequest(
+                nonExistingStore,
+                FactQuery(listOf(FactFilter(types = setOf(FactType("USER_CREATED"))))),
+                ReadDirection.Forward,
+                Limit.None,
+            )
+        )
+
+        assertThat(result).isEqualTo(StreamFactsByQueryResult.StoreNotFound(nonExistingStore))
+    }
+
+    @Test
+    fun testStreamFactsByQueryExcludesFactsAppendedAfterCall(): Unit = runBlocking {
+        val alice = appendStored(userInput("ALICE", "Alice", role = "admin", region = "eu"))
+
+        val stream = (store.streamFactsByQuery(
+            StreamFactsByQueryRequest(
+                testStore,
+                FactQuery(listOf(FactFilter(types = setOf(FactType("USER_CREATED"))))),
+                ReadDirection.Forward,
+                Limit.None,
+            )
+        ) as StreamFactsByQueryResult.FactStream).facts
+
+        appendStored(userInput("BOB", "Bob", role = "user", region = "us"))
+
+        assertThat(withTimeout(10.seconds) { stream.toList() }).containsExactly(alice)
+    }
+
+    @Test
+    fun testStreamFactsByQueryOfLargeHistory(): Unit = runBlocking {
+        // 900 facts: every third is an admin, every fifth is in the EU, and the types alternate,
+        // so every part of the query spans more than one read of a backend.
+        val inputs = (0 until 900).map { i ->
+            val tags = buildMap {
+                if (i % 3 == 0) put(TagKey("role"), TagValue("admin"))
+                if (i % 5 == 0) put(TagKey("region"), TagValue("eu"))
+            }
+            val subject = if (i % 2 == 0) ALICE_SUBJECT_VALUE else BOB_SUBJECT_VALUE
+            val type = if (i % 2 == 0) EVEN_FACT_TYPE else ODD_FACT_TYPE
+            input(subject, type, alicePayload, tags = tags)
+        }
+        val facts = inputs.chunked(AppendRequest.MAX_FACTS).flatMap { appendStored(it) }
+
+        // Admins in the EU (every fifteenth), or anything of Bob's subject (every odd one).
+        val expected = facts.filterIndexed { i, _ -> (i % 3 == 0 && i % 5 == 0) || i % 2 == 1 }
+
+        val request = query(
+            FactFilter(tags = mapOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("eu"))),
+            FactFilter(subjects = setOf(Subject(BOB_SUBJECT_VALUE))),
+        )
+
+        assertThat(streamToList(request)).containsExactlyElementsOf(expected)
+        assertThat(streamToList(request, ReadDirection.Backward)).containsExactlyElementsOf(expected.reversed())
+        assertThat(streamToList(request, ReadDirection.Forward, Limit.of(17)))
+            .containsExactlyElementsOf(expected.take(17))
+    }
+
+    private fun query(vararg filters: FactFilter) = FactQuery(filters.toList())
+
+    private suspend fun streamToList(
+        query: FactQuery,
+        direction: ReadDirection = ReadDirection.Forward,
+        limit: Limit = Limit.None,
+    ): List<Fact> {
+        val request = StreamFactsByQueryRequest(testStore, query, direction, limit)
+        val stream = (store.streamFactsByQuery(request) as StreamFactsByQueryResult.FactStream).facts
+        return withTimeout(10.seconds) { stream.toList() }
+    }
+
     private fun tagsRequest(tags: Map<String, String>, direction: ReadDirection, limit: Limit) =
         StreamFactsByTagsRequest(
             storeName = testStore,

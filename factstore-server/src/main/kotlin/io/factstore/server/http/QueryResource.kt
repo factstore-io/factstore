@@ -37,6 +37,22 @@ class QueryResource(
     ): Response =
         factQueryHttp.toDomainRequest(storeName).publishTo(store).toResponse()
 
+    @POST
+    @Consumes(APPLICATION_JSON)
+    @Produces(APPLICATION_NDJSON)
+    @RestStreamElementType(APPLICATION_JSON)
+    @Path("/facts:query")
+    @Operation(
+        summary = "Stream the facts matching a query",
+        description = "A fact matches when it matches any of the query's filters, and a fact matching " +
+            "several of them is streamed once. " + FACT_STREAM_DESCRIPTION,
+    )
+    suspend fun streamFactsByQuery(
+        @PathParam("storeName") storeName: String,
+        request: StreamFactsByQueryHttpRequest,
+    ): Flow<FactStreamLineHttp> =
+        request.toDomainRequest(storeName).publishTo(store).toResponse()
+
     @GET
     @Produces(APPLICATION_NDJSON)
     @RestStreamElementType(APPLICATION_JSON)

@@ -205,6 +205,16 @@ class MemoryFactStore : FactStore {
         )
     }
 
+    override suspend fun streamFactsByQuery(request: StreamFactsByQueryRequest): StreamFactsByQueryResult = lock.withLock {
+        val internalId = resolveId(request.storeName) ?: return StreamFactsByQueryResult.StoreNotFound(request.storeName)
+        val store = facts[internalId] ?: return StreamFactsByQueryResult.StoreNotFound(request.storeName)
+        StreamFactsByQueryResult.FactStream(
+            store.pinnedStream(request.direction, request.limit) { fact ->
+                request.query.filters.any { it.matches(fact) }
+            }
+        )
+    }
+
     /**
      * Pins the head of this store's facts when called, and reads the matching facts
      * up to it only when collected.

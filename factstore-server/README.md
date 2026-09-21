@@ -156,6 +156,29 @@ curl "http://localhost:8080/api/v1/stores/default/types/UserRegistered/facts"
 
 The response is an NDJSON fact stream, as for a subject.
 
+### 3c. Stream Facts by Query
+
+Stream the facts matching a query. A fact matches when it matches **any** of the filters; within a
+filter, the properties that are set must **all** hold, and a property with several values matches
+any of them. A fact matching several filters is streamed once.
+
+```bash
+curl -X POST "http://localhost:8080/api/v1/stores/default/facts:query" \
+  -H 'Content-Type: application/json' \
+  -d '{
+        "filters": [
+          { "subjects": ["user:123"] },
+          { "types": ["UserRegistered", "UserLocked"], "tags": { "role": "user" } }
+        ],
+        "direction": "backward",
+        "limit": 100
+      }'
+```
+
+The whole request lives in the body, including `direction` and `limit`. The colon separates the
+operation from the resource it acts on, so it cannot be mistaken for a sub-resource. The response
+is an NDJSON fact stream, as for a subject.
+
 ### 4. Stream Facts of a Store
 
 Stream all facts of a store, or those carrying the given tags, or those appended in a time range.
@@ -397,6 +420,24 @@ grpcurl -plaintext \
 ```
 
 Outcomes: `present` · `absent` · `store_not_found`
+
+#### StreamFactsByQuery
+
+```bash
+grpcurl -plaintext \
+  -d '{
+    "store_name": "orders",
+    "direction": "READ_DIRECTION_FORWARD",
+    "query": { "filters": [
+      { "subjects": ["order-42"] },
+      { "types": ["OrderPlaced"], "tags": { "region": "eu" } }
+    ] }
+  }' \
+  localhost:8080 io.factstore.server.grpc.FactService/StreamFactsByQuery
+```
+
+A fact matches when it matches any filter, and is streamed once even if several match. A query
+holds at most 10 filters, and a filter at most 10 subjects, 10 types and 5 tags.
 
 #### StreamFacts, StreamFactsBySubject, StreamFactsByType and StreamFactsByTags
 

@@ -56,6 +56,21 @@ internal fun streamFactsRequest(
     )
 }
 
+internal fun StreamFactsByQueryHttpRequest.toDomainRequest(storeName: String): StreamFactsByQueryRequest = parseInput {
+    StreamFactsByQueryRequest(
+        storeName = storeName.asStoreName(),
+        query = FactQuery(filters.map { it.toFactFilter() }),
+        direction = direction.asReadDirection(),
+        limit = limit.asLimit(),
+    )
+}
+
+internal fun FactFilterHttp.toFactFilter(): FactFilter = FactFilter(
+    subjects = subjects?.map { it.asSubject() }?.toSet() ?: emptySet(),
+    types = types?.map { it.asFactType() }?.toSet() ?: emptySet(),
+    tags = tags?.asTags() ?: emptyMap(),
+)
+
 internal fun streamFactsByTagsRequest(
     storeName: String,
     tags: List<String>,

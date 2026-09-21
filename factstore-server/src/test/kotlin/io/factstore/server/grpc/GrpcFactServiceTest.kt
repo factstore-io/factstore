@@ -280,6 +280,40 @@ class GrpcFactServiceTest {
         assertThat(responses.single().hasStoreNotFound()).isTrue()
     }
 
+    // ─── StreamFactsByQuery ───────────────────────────────────────────────────
+
+    @Test
+    @Order(13)
+    @DisplayName("StreamFactsByQuery - should stream the facts matching any filter, each once")
+    fun streamFactsByQuery(): Unit = runBlocking {
+        val responses = factService.streamFactsByQuery(streamFactsByQueryRequest {
+            storeName = STORE
+            direction = ReadDirection.READ_DIRECTION_FORWARD
+            query = factQuery {
+                // Both filters match the seeded fact: it must still be streamed once.
+                filters += factFilter { subjects += SUBJECT }
+                filters += factFilter { types += "order.created"; tags["region"] = "eu" }
+            }
+        }).toList()
+
+        val facts = responses.flatMap { it.batch.factsList }
+        assertThat(facts.map { it.id }).containsExactly(seedFactId)
+    }
+
+    @Test
+    @Order(13)
+    @DisplayName("StreamFactsByQuery - should emit a store_not_found message when the store does not exist")
+    fun streamFactsByQueryStoreNotFound(): Unit = runBlocking {
+        val responses = factService.streamFactsByQuery(streamFactsByQueryRequest {
+            storeName = "ghost-store"
+            direction = ReadDirection.READ_DIRECTION_FORWARD
+            query = factQuery { filters += factFilter { types += "order.created" } }
+        }).toList()
+
+        assertThat(responses).hasSize(1)
+        assertThat(responses.single().hasStoreNotFound()).isTrue()
+    }
+
     // ─── StreamFactsByTags ────────────────────────────────────────────────────
 
     @Test

@@ -13,6 +13,7 @@ import io.factstore.client.model.AppendCondition
 import io.factstore.client.model.AppendFactsBuilder
 import io.factstore.client.model.AppendOutcome
 import io.factstore.client.model.Fact
+import io.factstore.client.model.FactFilter
 import io.factstore.client.model.FactInput
 import io.factstore.client.model.ReadDirection
 import io.factstore.client.model.ReplayStartPosition
@@ -29,6 +30,8 @@ import io.factstore.grpc.v1.getFactRequest
 import io.factstore.grpc.v1.queryFactsRequest
 import io.factstore.grpc.v1.replayFactsRequest
 import io.factstore.grpc.v1.streamFactsBySubjectRequest
+import io.factstore.grpc.v1.factQuery
+import io.factstore.grpc.v1.streamFactsByQueryRequest
 import io.factstore.grpc.v1.streamFactsByTagsRequest
 import io.factstore.grpc.v1.streamFactsByTypeRequest
 import io.factstore.grpc.v1.streamFactsRequest
@@ -247,6 +250,33 @@ class FactOperations internal constructor(
     ): Flow<Fact> = stub.streamFactsByTags(streamFactsByTagsRequest {
         this.storeName = storeName
         this.tags.putAll(tags)
+        this.direction = direction.toProto()
+        limit?.let { this.limit = it }
+    }).toFactFlow { response ->
+        when {
+            response.hasBatch() -> response.batch.factsList.forEach { emit(it.toDomain()) }
+            response.hasStoreNotFound() -> throw StoreNotFoundException(storeName)
+            else -> error("Unexpected stream message: $response")
+        }
+    }
+
+    /**
+     * Streams the facts matching [filters], up to the newest fact at the time of the call, then
+     * completes.
+     *
+     * A fact matches when it matches any of the filters, and a fact matching several of them is
+     * streamed once. Throws [StoreNotFoundException] when collected if the store does not exist.
+     *
+     * @param limit the maximum number of facts to emit, or `null` for all of them
+     */
+    fun streamFactsByQuery(
+        storeName: String,
+        filters: List<FactFilter>,
+        direction: ReadDirection,
+        limit: Int? = null,
+    ): Flow<Fact> = stub.streamFactsByQuery(streamFactsByQueryRequest {
+        this.storeName = storeName
+        this.query = factQuery { this.filters += filters.map { it.toProto() } }
         this.direction = direction.toProto()
         limit?.let { this.limit = it }
     }).toFactFlow { response ->

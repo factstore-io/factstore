@@ -3,7 +3,9 @@ package io.factstore.foundationdb
 import com.apple.foundationdb.KeySelector
 import com.apple.foundationdb.Range
 import io.factstore.core.ReadDirection
+import io.factstore.core.FactType
 import io.factstore.core.StoreId
+import io.factstore.core.Subject
 import io.factstore.core.TagKey
 import io.factstore.core.TagValue
 
@@ -38,6 +40,30 @@ internal class PinnedKeys(range: Range, pinnedEndKey: ByteArray, direction: Read
     /** Orders positions the way this scan reads them. */
     val readingOrder: Comparator<FactPosition> = direction.toComparator()
 }
+
+/** The keys of one subject's index in this store, up to the fact at [head]. */
+internal fun SubjectIndexSubspace.pinnedKeys(
+    storeId: StoreId,
+    subject: Subject,
+    head: FactPosition,
+    direction: ReadDirection,
+): PinnedKeys = PinnedKeys(
+    range = range(storeId, subject),
+    pinnedEndKey = getKey(storeId, subject, head),
+    direction = direction,
+)
+
+/** The keys of one type's index in this store, up to the fact at [head]. */
+internal fun EventTypeIndexSubspace.pinnedKeys(
+    storeId: StoreId,
+    type: FactType,
+    head: FactPosition,
+    direction: ReadDirection,
+): PinnedKeys = PinnedKeys(
+    range = range(storeId, type),
+    pinnedEndKey = getKey(storeId, type, head),
+    direction = direction,
+)
 
 /** The keys of one tag's index in this store, up to the fact at [head]. */
 internal fun TagsIndexSubspace.pinnedKeys(

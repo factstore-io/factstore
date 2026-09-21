@@ -66,6 +66,9 @@ internal fun String?.asLimit(): Limit {
 /**
  * An absent direction reads forward, the natural order of an append-only log.
  */
+/** Absent means no limit; anything but a positive integer is rejected. */
+internal fun Int?.asLimit(): Limit = this?.let { Limit.of(it) } ?: Limit.None
+
 internal fun String?.asReadDirection(): ReadDirection = when (this?.trim()?.lowercase()) {
     null, "forward" -> ReadDirection.Forward
     "backward" -> ReadDirection.Backward

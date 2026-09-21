@@ -70,18 +70,42 @@ export async function deleteStore(name: string): Promise<void> {
 
 // ─── Facts ───────────────────────────────────────────────────────────────────
 
+/** One filter of a fact query: every property that is set must hold. */
+export interface FactFilter {
+  subjects?: string[]
+  types?: string[]
+  tags?: Record<string, string>
+}
+
 export interface QueryOptions {
-  mode: "timeRange" | "tags" | "subject" | "type"
+  mode: "timeRange" | "tags" | "subject" | "type" | "query"
   from?: string
   to?: string
   tags?: string[]
   subject?: string
   type?: string
+  filters?: FactFilter[]
   limit?: number
   direction?: "forward" | "backward"
 }
 
 export async function queryFacts(storeName: string, opts: QueryOptions): Promise<Fact[]> {
+  // A query carries everything in its body, and is posted to an operation on the facts.
+  if (opts.mode === "query") {
+    return fetchFactStream(
+      `${BASE_URL}/v1/stores/${encodeURIComponent(storeName)}/facts:query`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filters: opts.filters ?? [],
+          direction: opts.direction,
+          ...(opts.limit && opts.limit > 0 ? { limit: opts.limit } : {}),
+        }),
+      },
+    )
+  }
+
   const params = new URLSearchParams()
 
   if (opts.mode === "timeRange") {
@@ -118,8 +142,11 @@ type FactStreamLine =
  * Reads an NDJSON fact stream line by line. Resolves only once the `end` line confirms
  * that every fact arrived; a stream that stops without it is reported as incomplete.
  */
-async function fetchFactStream(url: string): Promise<Fact[]> {
-  const res = await fetch(url, { headers: { Accept: "application/x-ndjson" } })
+async function fetchFactStream(url: string, init: RequestInit = {}): Promise<Fact[]> {
+  const res = await fetch(url, {
+    ...init,
+    headers: { Accept: "application/x-ndjson", ...(init.headers ?? {}) },
+  })
   if (!res.ok) throw await toApiError(res)
   if (!res.body) throw new Error("The fact stream has no body.")
 

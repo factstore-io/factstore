@@ -103,6 +103,19 @@ factstore fact find-by-type OrderPlaced --store orders
 factstore fact find-by-type com.acme.OrderPlaced --store orders --limit 50 --direction backward
 ```
 
+#### Query
+
+A fact matches when it matches any filter. `--subject`, `--type` and `--tag` build one filter;
+`--filter` adds filters as JSON, and `--query-file` reads a whole query from a file:
+
+```bash
+factstore fact query --store orders --type OrderPlaced --tag region=eu
+factstore fact query --store orders \
+  --filter '{"subjects":["order/42"]}' \
+  --filter '{"types":["OrderPlaced"],"tags":{"region":"eu"}}'
+factstore fact query --store orders --query-file query.json --direction backward
+```
+
 #### Find by tags
 
 All specified tags must match (AND semantics):

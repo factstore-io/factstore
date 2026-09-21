@@ -59,6 +59,18 @@ interface FactStreamer {
      */
     suspend fun streamFactsByTags(request: StreamFactsByTagsRequest): StreamFactsByTagsResult
 
+    /**
+     * Streams the facts matching a [FactQuery].
+     *
+     * The general read: a fact is emitted when it matches any of the query's filters, and a fact
+     * matching several of them is emitted once. The other operations are its shorthands, and each
+     * equals a query of a single filter — streaming by subject `S` matches
+     * `FactQuery(listOf(FactFilter(subjects = setOf(S))))`.
+     *
+     * @return [StreamFactsByQueryResult.FactStream] or [StreamFactsByQueryResult.StoreNotFound]
+     */
+    suspend fun streamFactsByQuery(request: StreamFactsByQueryRequest): StreamFactsByQueryResult
+
 }
 
 /**
@@ -174,4 +186,31 @@ sealed interface StreamFactsByTagsResult {
 
     /** The requested store does not exist. */
     data class StoreNotFound(val storeName: StoreName) : StreamFactsByTagsResult
+}
+
+/**
+ * Requests the facts matching a query.
+ *
+ * @property storeName the store to stream from
+ * @property query the query a fact must match
+ * @property direction the order in which facts are emitted
+ * @property limit the maximum number of facts to emit, counted over the whole result
+ */
+data class StreamFactsByQueryRequest(
+    val storeName: StoreName,
+    val query: FactQuery,
+    val direction: ReadDirection,
+    val limit: Limit,
+)
+
+/**
+ * The outcome of [FactStreamer.streamFactsByQuery].
+ */
+sealed interface StreamFactsByQueryResult {
+
+    /** The matching facts, read when collected; empty if the query matches nothing. */
+    class FactStream(val facts: Flow<Fact>) : StreamFactsByQueryResult
+
+    /** The requested store does not exist. */
+    data class StoreNotFound(val storeName: StoreName) : StreamFactsByQueryResult
 }

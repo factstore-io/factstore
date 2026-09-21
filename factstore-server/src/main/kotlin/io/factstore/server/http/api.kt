@@ -4,7 +4,9 @@ import com.fasterxml.jackson.annotation.JsonSubTypes
 import com.fasterxml.jackson.annotation.JsonTypeInfo
 import io.factstore.core.AppendRequest
 import io.factstore.core.CLEAN_TEXT_PATTERN
+import io.factstore.core.FactFilter
 import io.factstore.core.FactInput
+import io.factstore.core.FactQuery
 import io.factstore.core.FactPayload
 import io.factstore.core.FactType
 import io.factstore.core.StoreName
@@ -122,6 +124,35 @@ data class FactHttp(
     val payload: FactPayloadHttp,
     val metadata: Map<String, String>?,
     val tags: Map<String, String>?
+)
+
+/**
+ * A query and how to read its result, the body of `POST /facts:query`.
+ *
+ * @property filters the filters to match, of which at least one must match a fact
+ * @property direction `forward` (the default) or `backward`
+ * @property limit the maximum number of facts to stream, over the whole result
+ */
+data class StreamFactsByQueryHttpRequest(
+    @field:Schema(minItems = 1, maxItems = FactQuery.MAX_FILTERS)
+    val filters: List<FactFilterHttp>,
+    @field:Schema(enumeration = ["forward", "backward"], defaultValue = "forward")
+    val direction: String? = null,
+    @field:Schema(minimum = "1")
+    val limit: Int? = null,
+)
+
+/**
+ * Matches facts by subject, type and tags. Every property that is set must hold, while a property
+ * with several values matches any of them. At least one must be set.
+ */
+data class FactFilterHttp(
+    @field:Schema(maxItems = FactFilter.MAX_SUBJECTS)
+    val subjects: List<String>? = null,
+    @field:Schema(maxItems = FactFilter.MAX_TYPES)
+    val types: List<String>? = null,
+    @field:Schema(maxProperties = FactInput.MAX_TAGS)
+    val tags: Map<String, String>? = null,
 )
 
 /**

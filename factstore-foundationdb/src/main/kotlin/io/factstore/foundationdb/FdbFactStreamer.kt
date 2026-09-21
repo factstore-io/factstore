@@ -137,20 +137,81 @@ class FdbFactStreamer(
                 limit = request.limit,
             ) { tr, entries -> loadFacts(tr, pinned.storeId, entries.map { tagsIndex.unpackPosition(it.key) }) }
         } else {
-            val cursors = tags.map { tag ->
-                PositionCursor(
-                    db = store.db,
-                    keys = tagsIndex.pinnedKeys(pinned.storeId, tag, head, request.direction),
-                    batchSize = streamBatchSize,
-                    positionOf = { key -> tagsIndex.unpackPosition(key) },
-                    keyOf = { position -> tagsIndex.getKey(pinned.storeId, tag, position) },
-                )
-            }
-            intersect(cursors, request.direction).loadFacts(pinned.storeId, request.limit)
+            val cursors = tags.map { tag -> tagCursor(pinned.storeId, tag, head, request.direction) }
+            AllOf(cursors, request.direction).positions().loadFacts(pinned.storeId, request.limit)
         }
 
         return StreamFactsByTagsResult.FactStream(facts)
     }
+
+    override suspend fun streamFactsByQuery(request: StreamFactsByQueryRequest): StreamFactsByQueryResult {
+        val pinned = pinHead(request.storeName) ?: return StreamFactsByQueryResult.StoreNotFound(request.storeName)
+        val head = pinned.head ?: return StreamFactsByQueryResult.FactStream(emptyFlow())
+
+        // A filter is an intersection of its predicates, and the query the union of its filters.
+        val filters = request.query.filters.map { filter ->
+            filter.toSource(pinned.storeId, head, request.direction)
+        }
+        val matches = anyOf(filters, request.direction)
+
+        return StreamFactsByQueryResult.FactStream(
+            matches.positions().loadFacts(pinned.storeId, request.limit)
+        )
+    }
+
+    /**
+     * The positions of the facts this filter matches: every predicate it sets must hold, while a
+     * predicate holding several values matches any of them.
+     */
+    private fun FactFilter.toSource(storeId: StoreId, head: FactPosition, direction: ReadDirection): PositionSource {
+        val predicates = buildList {
+            if (subjects.isNotEmpty()) {
+                add(anyOf(subjects.map { subjectCursor(storeId, it, head, direction) }, direction))
+            }
+            if (types.isNotEmpty()) {
+                add(anyOf(types.map { typeCursor(storeId, it, head, direction) }, direction))
+            }
+            tags.forEach { (key, value) -> add(tagCursor(storeId, key to value, head, direction)) }
+        }
+        return if (predicates.size == 1) predicates.single() else AllOf(predicates, direction)
+    }
+
+    /** Combines sources into a union, without wrapping a single one. */
+    private fun anyOf(sources: List<PositionSource>, direction: ReadDirection): PositionSource =
+        if (sources.size == 1) sources.single() else AnyOf(sources, direction)
+
+    private fun subjectCursor(storeId: StoreId, subject: Subject, head: FactPosition, direction: ReadDirection) =
+        store.context.subjectIndexSubspace.let { index ->
+            PositionCursor(
+                db = store.db,
+                keys = index.pinnedKeys(storeId, subject, head, direction),
+                batchSize = streamBatchSize,
+                positionOf = { key -> index.unpackPosition(key) },
+                keyOf = { position -> index.getKey(storeId, subject, position) },
+            )
+        }
+
+    private fun typeCursor(storeId: StoreId, type: FactType, head: FactPosition, direction: ReadDirection) =
+        store.context.eventTypeIndexSubspace.let { index ->
+            PositionCursor(
+                db = store.db,
+                keys = index.pinnedKeys(storeId, type, head, direction),
+                batchSize = streamBatchSize,
+                positionOf = { key -> index.unpackPosition(key) },
+                keyOf = { position -> index.getKey(storeId, type, position) },
+            )
+        }
+
+    private fun tagCursor(storeId: StoreId, tag: Pair<TagKey, TagValue>, head: FactPosition, direction: ReadDirection) =
+        store.context.tagsIndexSubspace.let { index ->
+            PositionCursor(
+                db = store.db,
+                keys = index.pinnedKeys(storeId, tag, head, direction),
+                batchSize = streamBatchSize,
+                positionOf = { key -> index.unpackPosition(key) },
+                keyOf = { position -> index.getKey(storeId, tag, position) },
+            )
+        }
 
     /** A store and its head at the moment it was resolved; no head means the store holds no facts. */
     private class PinnedStore(val storeId: StoreId, val head: FactPosition?)

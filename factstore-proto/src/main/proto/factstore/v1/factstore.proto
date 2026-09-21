@@ -230,6 +230,11 @@ service FactService {
   // then complete. Delivery and completion semantics mirror StreamFacts.
   rpc StreamFactsByTags(StreamFactsByTagsRequest) returns (stream StreamFactsByTagsResponse);
 
+  // Stream the facts matching a query: a fact matches when it matches ANY of the query's
+  // filters, and a fact matching several of them is streamed once. Delivery and completion
+  // semantics mirror StreamFacts.
+  rpc StreamFactsByQuery(StreamFactsByQueryRequest) returns (stream StreamFactsByQueryResponse);
+
   // Find facts whose tags match ALL the specified key-value pairs.
   rpc FindFactsByTags(FindFactsByTagsRequest) returns (FindFactsByTagsResponse);
 
@@ -440,6 +445,35 @@ message StreamFactsByTagsRequest {
 }
 
 message StreamFactsByTagsResponse {
+  oneof message {
+    FactBatch batch = 1;
+    StoreNotFound store_not_found = 2;
+  }
+}
+
+// -- StreamFactsByQuery --
+
+// Matches facts by subject, type and tags. Every predicate that is set must hold (AND), while a
+// predicate with several values matches any of them (OR). At least one predicate must be set.
+message FactFilter {
+  repeated string subjects = 1; // the fact's subject is one of these
+  repeated string types = 2;    // the fact's type is one of these, matched exactly
+  map<string, string> tags = 3; // the fact carries all of these
+}
+
+// A fact matches the query when it matches at least one filter.
+message FactQuery {
+  repeated FactFilter filters = 1; // at least one
+}
+
+message StreamFactsByQueryRequest {
+  string store_name = 1;
+  FactQuery query = 2;
+  ReadDirection direction = 3;
+  optional int32 limit = 4; // absent = no limit; counted over the whole result
+}
+
+message StreamFactsByQueryResponse {
   oneof message {
     FactBatch batch = 1;
     StoreNotFound store_not_found = 2;

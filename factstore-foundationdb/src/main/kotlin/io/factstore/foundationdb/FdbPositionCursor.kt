@@ -24,7 +24,7 @@ internal class PositionCursor(
     private val batchSize: Int,
     private val positionOf: (ByteArray) -> FactPosition,
     private val keyOf: (FactPosition) -> ByteArray,
-) {
+) : PositionSource {
 
     private var batch: List<KeyValue> = emptyList()
     private var next = 0
@@ -38,7 +38,7 @@ internal class PositionCursor(
     private var exhausted = false
 
     /** The position the cursor points at, or `null` once the range is exhausted. */
-    suspend fun peek(): FactPosition? {
+    override suspend fun peek(): FactPosition? {
         while (next >= batch.size) {
             if (exhausted) return null
             readNextBatch()
@@ -47,7 +47,7 @@ internal class PositionCursor(
     }
 
     /** Moves to the next position. */
-    suspend fun advance() {
+    override suspend fun advance() {
         if (peek() != null) next++
     }
 
@@ -57,7 +57,7 @@ internal class PositionCursor(
      * Skipping straight to a position keeps an intersection from reading the entries in between,
      * which is what makes a rare tag cheap to combine with a common one.
      */
-    fun seekTo(position: FactPosition) {
+    override fun seekTo(position: FactPosition) {
         val order = keys.readingOrder
         // The wanted position may still be inside the batch at hand.
         while (next < batch.size) {
@@ -88,27 +88,93 @@ internal class PositionCursor(
 }
 
 /**
- * Emits the positions every cursor has, in reading order: the facts that match all of them.
+ * A stream of fact positions in reading order, which can be combined with others.
  *
- * The cursors are advanced in step, like a merge join: whichever cursor is furthest ahead sets the
- * position to meet, and the others skip to it. A position is emitted when all cursors agree on it.
+ * Sources form a tree: [PositionCursor]s read one index range each, while [AnyOf] and [AllOf]
+ * combine them. Every source visits positions in the same reading order, which is what lets them
+ * be merged, and can skip ahead with [seekTo], which is what keeps a rare source cheap to combine
+ * with a common one.
  */
-internal fun intersect(cursors: List<PositionCursor>, direction: ReadDirection): Flow<FactPosition> = flow {
-    require(cursors.isNotEmpty()) { "An intersection needs at least one cursor." }
-    val order = direction.toComparator()
+internal interface PositionSource {
 
-    while (true) {
-        // A cursor without a position means its range ended: nothing can match from here on.
-        val positions = cursors.map { it.peek() ?: return@flow }
+    /** The position this source points at, or `null` once it has none left. */
+    suspend fun peek(): FactPosition?
 
-        val furthest = positions.reduce { left, right -> if (order.compare(left, right) >= 0) left else right }
-        if (positions.all { it == furthest }) {
-            emit(furthest)
-            cursors.forEach { it.advance() }
-        } else {
-            cursors.forEachIndexed { index, cursor ->
-                if (positions[index] != furthest) cursor.seekTo(furthest)
+    /** Moves past the current position. */
+    suspend fun advance()
+
+    /** Moves to the first position at or after [position] in reading order. */
+    fun seekTo(position: FactPosition)
+}
+
+/**
+ * The positions of any of the [sources]: their union, each position visited once.
+ *
+ * This is how a filter matches several subjects or types, and how a query combines its filters.
+ */
+internal class AnyOf(private val sources: List<PositionSource>, direction: ReadDirection) : PositionSource {
+
+    init {
+        require(sources.isNotEmpty()) { "A union needs at least one source." }
+    }
+
+    private val order = direction.toComparator()
+
+    /** The next position of whichever source is furthest behind: the first one in reading order. */
+    override suspend fun peek(): FactPosition? =
+        sources.mapNotNull { it.peek() }.minWithOrNull(order)
+
+    override suspend fun advance() {
+        // Every source sitting on this position moves on, so a fact several sources hold is
+        // visited once.
+        val current = peek() ?: return
+        sources.forEach { source -> if (source.peek() == current) source.advance() }
+    }
+
+    override fun seekTo(position: FactPosition) = sources.forEach { it.seekTo(position) }
+}
+
+/**
+ * The positions every one of the [sources] has: their intersection.
+ *
+ * This is how a filter requires a subject and a type and several tags at once. The sources are
+ * advanced in step, like a merge join: whichever source is furthest ahead sets the position to
+ * meet, and the others skip to it.
+ */
+internal class AllOf(private val sources: List<PositionSource>, direction: ReadDirection) : PositionSource {
+
+    init {
+        require(sources.isNotEmpty()) { "An intersection needs at least one source." }
+    }
+
+    private val order = direction.toComparator()
+
+    override suspend fun peek(): FactPosition? {
+        while (true) {
+            // A source without a position means nothing can match from here on.
+            val positions = sources.map { it.peek() ?: return null }
+
+            val furthest = positions.reduce { left, right -> if (order.compare(left, right) >= 0) left else right }
+            if (positions.all { it == furthest }) return furthest
+
+            sources.forEachIndexed { index, source ->
+                if (positions[index] != furthest) source.seekTo(furthest)
             }
         }
+    }
+
+    override suspend fun advance() {
+        val current = peek() ?: return
+        sources.forEach { source -> if (source.peek() == current) source.advance() }
+    }
+
+    override fun seekTo(position: FactPosition) = sources.forEach { it.seekTo(position) }
+}
+
+/** Drains the source into a flow of positions, in reading order. */
+internal fun PositionSource.positions(): Flow<FactPosition> = flow {
+    while (true) {
+        emit(peek() ?: return@flow)
+        advance()
     }
 }
