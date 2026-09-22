@@ -1718,6 +1718,47 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
+    fun testStreamFactsByQueryCombinesOneTypeWithSeveralTags(): Unit = runBlocking {
+        val (alice, _, _) = appendStored(
+            listOf(
+                // Right type, both tags.
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload, tags = adminInEu),
+                // Right type, one tag missing.
+                input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload, tags = mapOf(TagKey("role") to TagValue("admin"))),
+                // Both tags, wrong type.
+                input(CHARLIE_SUBJECT_VALUE, "USER_LOCKED", charliePayload, tags = adminInEu),
+            )
+        )
+
+        val filter = FactFilter(types = setOf(FactType("USER_CREATED")), tags = adminInEu)
+
+        assertThat(streamToList(query(filter))).containsExactly(alice)
+    }
+
+    @Test
+    fun testStreamFactsByQueryCombinesSeveralTypesWithSeveralTags(): Unit = runBlocking {
+        val (alice, _, _, charlie) = appendStored(
+            listOf(
+                // Alice: right type, both tags.
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload, tags = adminInEu),
+                // Bob: right type, only one tag.
+                input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload, tags = mapOf(TagKey("role") to TagValue("admin"))),
+                // Wrong type, both tags.
+                input(BOB_SUBJECT_VALUE, "USER_DELETED", bobPayload, tags = adminInEu),
+                // Charlie: the other allowed type, both tags.
+                input(CHARLIE_SUBJECT_VALUE, "USER_LOCKED", charliePayload, tags = adminInEu),
+            )
+        )
+
+        val filter = FactFilter(
+            types = setOf(FactType("USER_CREATED"), FactType("USER_LOCKED")),
+            tags = adminInEu,
+        )
+
+        assertThat(streamToList(query(filter))).containsExactly(alice, charlie)
+    }
+
+    @Test
     fun testStreamFactsByQueryCombinesFiltersWithOr(): Unit = runBlocking {
         val (alice, _, charlie) = appendStored(
             listOf(
@@ -1846,6 +1887,8 @@ abstract class AbstractFactStoreTest {
         assertThat(streamToList(request, ReadDirection.Forward, Limit.of(17)))
             .containsExactlyElementsOf(expected.take(17))
     }
+
+    private val adminInEu = mapOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("eu"))
 
     private fun query(vararg filters: FactFilter) = FactQuery(filters.toList())
 

@@ -164,15 +164,34 @@ class FdbFactStreamer(
      * predicate holding several values matches any of them.
      */
     private fun FactFilter.toSource(storeId: StoreId, head: FactPosition, direction: ReadDirection): PositionSource {
+        val tags = tags.map { (key, value) -> key to value }
+
         val predicates = buildList {
             if (subjects.isNotEmpty()) {
                 add(anyOf(subjects.map { subjectCursor(storeId, it, head, direction) }, direction))
             }
-            if (types.isNotEmpty()) {
-                add(anyOf(types.map { typeCursor(storeId, it, head, direction) }, direction))
+
+            if (types.isNotEmpty() && tags.isNotEmpty()) {
+                // Facts are indexed by type and tag together, and that index holds only the facts
+                // carrying both, so reading a tag from it skips every fact of the type without it.
+                // Each type read this way costs its own cursor, so tags are folded into the types
+                // only as far as that keeps the number of cursors the same.
+                if (types.size == 1) {
+                    val type = types.single()
+                    tags.forEach { add(typeTagCursor(storeId, type, it, head, direction)) }
+                } else {
+                    val folded = tags.first()
+                    add(anyOf(types.map { typeTagCursor(storeId, it, folded, head, direction) }, direction))
+                    tags.drop(1).forEach { add(tagCursor(storeId, it, head, direction)) }
+                }
+            } else {
+                if (types.isNotEmpty()) {
+                    add(anyOf(types.map { typeCursor(storeId, it, head, direction) }, direction))
+                }
+                tags.forEach { add(tagCursor(storeId, it, head, direction)) }
             }
-            tags.forEach { (key, value) -> add(tagCursor(storeId, key to value, head, direction)) }
         }
+
         return if (predicates.size == 1) predicates.single() else AllOf(predicates, direction)
     }
 
@@ -201,6 +220,22 @@ class FdbFactStreamer(
                 keyOf = { position -> index.getKey(storeId, type, position) },
             )
         }
+
+    private fun typeTagCursor(
+        storeId: StoreId,
+        type: FactType,
+        tag: Pair<TagKey, TagValue>,
+        head: FactPosition,
+        direction: ReadDirection,
+    ) = store.context.tagsTypeIndexSubspace.let { index ->
+        PositionCursor(
+            db = store.db,
+            keys = index.pinnedKeys(storeId, type, tag, head, direction),
+            batchSize = streamBatchSize,
+            positionOf = { key -> index.unpackPosition(key) },
+            keyOf = { position -> index.getKey(storeId, type, tag, position) },
+        )
+    }
 
     private fun tagCursor(storeId: StoreId, tag: Pair<TagKey, TagValue>, head: FactPosition, direction: ReadDirection) =
         store.context.tagsIndexSubspace.let { index ->

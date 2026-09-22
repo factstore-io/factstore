@@ -65,6 +65,19 @@ internal fun EventTypeIndexSubspace.pinnedKeys(
     direction = direction,
 )
 
+/** The keys of one type-and-tag combination's index in this store, up to the fact at [head]. */
+internal fun TagsTypeIndexSubspace.pinnedKeys(
+    storeId: StoreId,
+    type: FactType,
+    tag: Pair<TagKey, TagValue>,
+    head: FactPosition,
+    direction: ReadDirection,
+): PinnedKeys = PinnedKeys(
+    range = range(storeId, type, tag),
+    pinnedEndKey = getKey(storeId, type, tag, head),
+    direction = direction,
+)
+
 /** The keys of one tag's index in this store, up to the fact at [head]. */
 internal fun TagsIndexSubspace.pinnedKeys(
     storeId: StoreId,
