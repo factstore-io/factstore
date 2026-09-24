@@ -127,15 +127,6 @@ class GrpcInvalidInputTest {
         case("stream facts with limit 0") {
             facts.streamFacts(streamFactsRequest { storeName = STORE; direction = FORWARD; limit = 0 }).first()
         },
-        case("find facts without tags") {
-            facts.findFactsByTags(findFactsByTagsRequest { storeName = STORE; direction = FORWARD })
-        },
-        case("find facts by tags without a direction") {
-            facts.findFactsByTags(findFactsByTagsRequest { storeName = STORE; tags["a"] = "1" })
-        },
-        case("query facts without query items") {
-            facts.queryFacts(queryFactsRequest { storeName = STORE; query = tagQuery { } })
-        },
         case("find facts with limit 0") {
             facts.findFactsInTimeRange(findFactsInTimeRangeRequest { storeName = STORE; direction = FORWARD; limit = 0 })
         },

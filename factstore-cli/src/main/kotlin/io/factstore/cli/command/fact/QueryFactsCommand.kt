@@ -7,7 +7,8 @@ import io.factstore.client.FactStoreClient
 import io.factstore.client.model.FactFilter
 import io.factstore.client.model.ReadDirection
 import jakarta.inject.Inject
-import kotlinx.coroutines.flow.toList
+import io.factstore.client.model.Fact
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
@@ -84,7 +85,7 @@ class QueryFactsCommand : Callable<Int> {
 
     @Option(
         names = ["--output", "-o"],
-        description = ["Output format (default: \${DEFAULT-VALUE})"],
+        description = ["Output format: \${COMPLETION-CANDIDATES} (default: \${DEFAULT-VALUE})"],
         defaultValue = "table",
     )
     var outputFormat: OutputFormat = OutputFormat.Table
@@ -97,13 +98,12 @@ class QueryFactsCommand : Callable<Int> {
             )
         }
 
-        // Collected in full: the table needs every row to size its columns, and --limit bounds it.
-        val facts = client.facts.streamFactsByQuery(
+        val facts: Flow<Fact> = client.facts.streamFactsByQuery(
             storeName = storeName,
             filters = filters,
             direction = direction,
             limit = limit,
-        ).toList()
+        )
 
         facts.print(outputFormat)
 

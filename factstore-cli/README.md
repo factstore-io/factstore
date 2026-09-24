@@ -94,6 +94,16 @@ factstore fact find-by-subject order-12345 --store orders
 factstore fact find-by-subject order-12345 --store orders --limit 50 --direction backward
 ```
 
+#### Output formats
+
+`--output` (`-o`) chooses how facts are printed: `table` (the default), `json` for one
+pretty-printed array, or `ndjson` for one compact fact per line, as the HTTP API streams them.
+Both JSON formats are written as the facts arrive, so they suit long results and pipelines:
+
+```bash
+factstore fact query --store orders --type OrderPlaced -o ndjson | jq 'select(.subject == "order/42")'
+```
+
 #### Find by type
 
 The type is matched exactly, so `com.acme.OrderPlaced` is not matched by `com.acme`:

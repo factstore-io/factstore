@@ -235,12 +235,6 @@ service FactService {
   // semantics mirror StreamFacts.
   rpc StreamFactsByQuery(StreamFactsByQueryRequest) returns (stream StreamFactsByQueryResponse);
 
-  // Find facts whose tags match ALL the specified key-value pairs.
-  rpc FindFactsByTags(FindFactsByTagsRequest) returns (FindFactsByTagsResponse);
-
-  // Find facts using a compound tag query (OR of AND-clauses, optionally filtered by type).
-  rpc QueryFacts(QueryFactsRequest) returns (QueryFactsResponse);
-
   // Find facts within a half-open time range [from, to).
   rpc FindFactsInTimeRange(FindFactsInTimeRangeRequest) returns (FindFactsInTimeRangeResponse);
 
@@ -330,36 +324,6 @@ message FactExistsResponse {
 }
 
 message FactPresent {}
-
-// -- FindFactsByTags --
-
-message FindFactsByTagsRequest {
-  string store_name = 1;
-  map<string, string> tags = 2; // all tags must match (AND semantics)
-  optional int32 limit = 3;
-  ReadDirection direction = 4;
-}
-
-message FindFactsByTagsResponse {
-  oneof outcome {
-    FactsFound found = 1;
-    StoreNotFound store_not_found = 2;
-  }
-}
-
-// -- QueryFacts --
-
-message QueryFactsRequest {
-  string store_name = 1;
-  TagQuery query = 2;
-}
-
-message QueryFactsResponse {
-  oneof outcome {
-    FactsFound found = 1;
-    StoreNotFound store_not_found = 2;
-  }
-}
 
 // -- FindFactsInTimeRange --
 

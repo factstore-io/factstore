@@ -28,11 +28,6 @@ internal fun FindByIdResult.toResponse(): Response = when (this) {
     is FindByIdResult.StoreNotFound -> storeNotFoundError(storeName)
 }
 
-internal fun FindByTagQueryResult.toResponse(): Response = when (this) {
-    is FindByTagQueryResult.Found -> Response.ok(facts.map { it.toFactHttp() }).build()
-    is FindByTagQueryResult.StoreNotFound -> storeNotFoundError(storeName)
-}
-
 internal fun CreateStoreResult.toResponse(): Response = when (this) {
     is CreateStoreResult.Created -> Response
         .status(Response.Status.CREATED)

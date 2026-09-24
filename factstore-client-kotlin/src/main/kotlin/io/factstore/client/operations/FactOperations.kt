@@ -19,16 +19,13 @@ import io.factstore.client.model.FactInput
 import io.factstore.client.model.ReadDirection
 import io.factstore.client.model.ReplayStartPosition
 import io.factstore.client.model.SubscribeStartPosition
-import io.factstore.client.model.TagQuery
 import io.factstore.grpc.v1.FactServiceGrpcKt.FactServiceCoroutineStub
 import io.factstore.grpc.v1.appendFactsRequest
 import io.factstore.grpc.v1.factExistsRequest
-import io.factstore.grpc.v1.findFactsByTagsRequest
 import io.factstore.grpc.v1.findFactsInTimeRangeRequest
 import io.factstore.grpc.v1.fromBeginning
 import io.factstore.grpc.v1.fromEnd
 import io.factstore.grpc.v1.getFactRequest
-import io.factstore.grpc.v1.queryFactsRequest
 import io.factstore.grpc.v1.replayFactsRequest
 import io.factstore.grpc.v1.streamFactsBySubjectRequest
 import io.factstore.grpc.v1.factQuery
@@ -159,37 +156,6 @@ class FactOperations internal constructor(
             response.hasStoreNotFound() -> throw StoreNotFoundException(storeName)
             response.hasContinuationNotFound() -> throw ContinuationNotFoundException(response.continuationNotFound.factId)
             else -> error("Unexpected stream message: $response")
-        }
-    }
-
-    suspend fun findByTags(
-        storeName: String,
-        tags: Map<String, String>,
-        limit: Int? = null,
-        direction: ReadDirection = ReadDirection.FORWARD,
-    ): List<Fact> = grpcCall {
-        val response = timedStub().findFactsByTags(findFactsByTagsRequest {
-            this.storeName = storeName
-            this.tags.putAll(tags)
-            limit?.let { this.limit = it }
-            this.direction = direction.toProto()
-        })
-        when {
-            response.hasFound() -> response.found.factsList.map { it.toDomain() }
-            response.hasStoreNotFound() -> throw StoreNotFoundException(storeName)
-            else -> error("Unexpected response: $response")
-        }
-    }
-
-    suspend fun query(storeName: String, tagQuery: TagQuery): List<Fact> = grpcCall {
-        val response = timedStub().queryFacts(queryFactsRequest {
-            this.storeName = storeName
-            query = tagQuery.toProto()
-        })
-        when {
-            response.hasFound() -> response.found.factsList.map { it.toDomain() }
-            response.hasStoreNotFound() -> throw StoreNotFoundException(storeName)
-            else -> error("Unexpected response: $response")
         }
     }
 

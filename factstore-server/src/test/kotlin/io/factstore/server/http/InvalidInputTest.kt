@@ -74,7 +74,6 @@ class InvalidInputTest {
                 json(mapOf("idempotencyKey" to "nope", "facts" to listOf(validFact))).post(FACTS)
             },
 
-            case("query without query items") { json(mapOf("queryItems" to emptyList<Any>())).post("$FACTS/query") },
             case("find a fact by an id that is not a UUID") { given().get("$FACTS/not-a-uuid") },
             case("stream the facts of an invalid subject") {
                 forward().get("$STORES/unknown-store/subjects/order 1/facts")

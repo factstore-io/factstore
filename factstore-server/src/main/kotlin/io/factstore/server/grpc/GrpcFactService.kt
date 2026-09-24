@@ -36,12 +36,6 @@ class GrpcFactService(
         request.toDomainRequest().publishTo(factStore).toGrpcResponse()
 
 
-    override suspend fun findFactsByTags(request: FindFactsByTagsRequest): FindFactsByTagsResponse =
-        request.toDomainRequest().publishTo(factStore).toGrpcResponse()
-
-    override suspend fun queryFacts(request: QueryFactsRequest): QueryFactsResponse =
-        request.toDomainRequest().publishTo(factStore).toGrpcResponse()
-
     override suspend fun findFactsInTimeRange(request: FindFactsInTimeRangeRequest): FindFactsInTimeRangeResponse =
         request.toDomainRequest().publishTo(factStore).toGrpcResponse()
 

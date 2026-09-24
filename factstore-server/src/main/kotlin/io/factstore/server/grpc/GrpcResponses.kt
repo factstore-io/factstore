@@ -113,32 +113,6 @@ internal fun ExistsByIdResult.toGrpcResponse(): GrpcFactExistsResponse =
         }
     }
 
-typealias GrpcFindFactsByTagsResponse = FactStoreProto.FindFactsByTagsResponse
-
-internal fun FindByTagsResult.toGrpcResponse(): GrpcFindFactsByTagsResponse =
-    findFactsByTagsResponse {
-        when (this@toGrpcResponse) {
-            is FindByTagsResult.Found ->
-                found = factsFound { facts += this@toGrpcResponse.facts.map { it.toProto() } }
-
-            is FindByTagsResult.StoreNotFound ->
-                storeNotFound = storeNotFound { storeName = this@toGrpcResponse.storeName.value }
-        }
-    }
-
-typealias GrpcQueryFactsResponse = FactStoreProto.QueryFactsResponse
-
-internal fun FindByTagQueryResult.toGrpcResponse(): GrpcQueryFactsResponse =
-    queryFactsResponse {
-        when (this@toGrpcResponse) {
-            is FindByTagQueryResult.Found ->
-                found = factsFound { facts += this@toGrpcResponse.facts.map { it.toProto() } }
-
-            is FindByTagQueryResult.StoreNotFound ->
-                storeNotFound = storeNotFound { storeName = this@toGrpcResponse.storeName.value }
-        }
-    }
-
 typealias GrpcFindInTimeRangeResponse = FactStoreProto.FindFactsInTimeRangeResponse
 
 internal fun FindInTimeRangeResult.toGrpcResponse(): GrpcFindInTimeRangeResponse =

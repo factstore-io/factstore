@@ -37,7 +37,7 @@ class ReplayFactsCommand : Callable<Int> {
 
     @CommandLine.Option(
         names = ["--output", "-o"],
-        description = ["Output format (default: \${DEFAULT-VALUE})"],
+        description = ["Output format: \${COMPLETION-CANDIDATES} (default: \${DEFAULT-VALUE})"],
         defaultValue = "table",
     )
     var outputFormat: OutputFormat = OutputFormat.Table

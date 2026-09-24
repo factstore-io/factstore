@@ -143,33 +143,8 @@ class MemoryFactStore : FactStore {
         FindInTimeRangeResult.Found(foundFacts)
     }
 
-    override suspend fun findBySubject(request: FindBySubjectRequest): FindBySubjectResult = lock.withLock {
-        val internalId = resolveId(request.storeName) ?: return FindBySubjectResult.StoreNotFound(request.storeName)
-        val foundFacts = facts[internalId]
-            ?.filter { it.subject == request.subject }
-            ?.applyDirection(request.direction)
-            ?.applyLimit(request.limit)
-            ?: emptyList()
-        FindBySubjectResult.Found(foundFacts)
-    }
 
-    override suspend fun findByTags(request: FindByTagsRequest): FindByTagsResult = lock.withLock {
-        val internalId = resolveId(request.storeName) ?: return FindByTagsResult.StoreNotFound(request.storeName)
-        val foundFacts = facts[internalId]
-            ?.filter { fact -> request.tags.all { (key, value) -> fact.tags[key] == value } }
-            ?.applyDirection(request.direction)
-            ?.applyLimit(request.limit)
-            ?: emptyList()
-        FindByTagsResult.Found(foundFacts)
-    }
 
-    override suspend fun findByTagQuery(request: FindByTagQueryRequest): FindByTagQueryResult = lock.withLock {
-        val internalId = resolveId(request.storeName) ?: return FindByTagQueryResult.StoreNotFound(request.storeName)
-        val foundFacts = facts[internalId]?.filter { fact ->
-            request.query.queryItems.any { it.matches(fact) }
-        } ?: emptyList()
-        FindByTagQueryResult.Found(foundFacts)
-    }
 
     // ===== FactStreamer Implementation =====
 
@@ -388,12 +363,4 @@ class MemoryFactStore : FactStore {
         null -> this
         else -> take(cap)
     }
-}
-
-/**
- * Extension for cleaner matching logic in the memory implementation
- */
-private fun TagQueryItem.matches(fact: Fact): Boolean = when (this) {
-    is TagTypeItem -> fact.type in this.types && this.tags.all { (k, v) -> fact.tags[k] == v }
-    is TagOnlyQueryItem -> this.tags.all { (k, v) -> fact.tags[k] == v }
 }

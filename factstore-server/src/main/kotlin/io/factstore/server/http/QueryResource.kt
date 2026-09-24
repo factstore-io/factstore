@@ -29,16 +29,6 @@ class QueryResource(
 
     @POST
     @Consumes(APPLICATION_JSON)
-    @Produces(APPLICATION_JSON)
-    @Path("/facts/query")
-    suspend fun findByQuery(
-        @PathParam("storeName") storeName: String,
-        factQueryHttp: FactQueryHttp,
-    ): Response =
-        factQueryHttp.toDomainRequest(storeName).publishTo(store).toResponse()
-
-    @POST
-    @Consumes(APPLICATION_JSON)
     @Produces(APPLICATION_NDJSON)
     @RestStreamElementType(APPLICATION_JSON)
     @Path("/facts:query")

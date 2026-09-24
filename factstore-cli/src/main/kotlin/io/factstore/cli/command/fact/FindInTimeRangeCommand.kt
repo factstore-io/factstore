@@ -6,6 +6,7 @@ import io.factstore.cli.converter.FlexibleInstantConverter
 import io.factstore.client.FactStoreClient
 import io.factstore.client.model.ReadDirection
 import jakarta.inject.Inject
+import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.runBlocking
 import picocli.CommandLine
 import picocli.CommandLine.Command
@@ -60,7 +61,7 @@ class FindInTimeRangeCommand : Callable<Int> {
 
     @Option(
         names = ["--output", "-o"],
-        description = ["Output format (default: \${DEFAULT-VALUE})"],
+        description = ["Output format: \${COMPLETION-CANDIDATES} (default: \${DEFAULT-VALUE})"],
         defaultValue = "table",
     )
     var outputFormat: OutputFormat = OutputFormat.Table
@@ -93,7 +94,7 @@ class FindInTimeRangeCommand : Callable<Int> {
             limit = limit,
             direction = direction
         )
-        facts.print(outputFormat)
+        facts.asFlow().print(outputFormat)
         CommandLine.ExitCode.OK
     }
 }

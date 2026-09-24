@@ -1,6 +1,8 @@
 package io.factstore.cli.command
 
 import io.factstore.client.model.Fact
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.toList
 import kotlinx.serialization.json.Json
 import java.time.temporal.ChronoUnit.SECONDS
 import kotlin.text.Charsets.UTF_8
@@ -8,7 +10,8 @@ import kotlin.text.Charsets.UTF_8
 fun Fact.printSingle(outputFormat: OutputFormat) {
     when (outputFormat) {
         OutputFormat.Table -> printTable()
-        OutputFormat.Json -> printJson()
+        OutputFormat.Json -> println(prettyJson.encodeToString(this))
+        OutputFormat.Ndjson -> println(json.encodeToString(this))
     }
 }
 
@@ -23,20 +26,40 @@ fun Fact.printTable() {
 }
 
 enum class OutputFormat {
+    /** A table, sized to its contents. */
     Table,
-    Json
+
+    /** One JSON array, pretty-printed. */
+    Json,
+
+    /** One compact JSON object per line. */
+    Ndjson,
 }
 
-fun List<Fact>.print(format: OutputFormat) {
+suspend fun Flow<Fact>.print(format: OutputFormat) {
     when (format) {
-        OutputFormat.Table -> printTable()
-        OutputFormat.Json -> printPrettyJson()
+        OutputFormat.Table -> toList().printTable()
+        OutputFormat.Json -> printJsonArray()
+        OutputFormat.Ndjson -> collect { println(json.encodeToString(it)) }
     }
 }
 
+/**
+ * Writes the facts as one pretty-printed JSON array, a fact at a time.
+ */
+private suspend fun Flow<Fact>.printJsonArray() {
+    var first = true
+    collect { fact ->
+        println(if (first) "[" else ",")
+        print(prettyJson.encodeToString(fact).prependIndent("  "))
+        first = false
+    }
+    if (first) println("[]") else println("\n]")
+}
 
 
-fun List<Fact>.printTable() {
+
+private fun List<Fact>.printTable() {
     if (this.isEmpty()) {
         println("No facts found.")
         return
@@ -76,10 +99,4 @@ fun List<Fact>.printTable() {
 private val json = Json { prettyPrint = false }
 private val prettyJson = Json { prettyPrint = true }
 
-fun List<Fact>.printPrettyJson() {
-    println(prettyJson.encodeToString(this))
-}
 
-fun Fact.printJson() {
-    println(json.encodeToString(this))
-}

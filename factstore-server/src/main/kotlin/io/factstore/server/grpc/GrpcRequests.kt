@@ -186,26 +186,6 @@ internal fun GrpcStreamFactsBySubjectRequest.toDomainRequest(): StreamFactsBySub
     )
 }
 
-typealias GrpcFindByTagsRequest = FactStoreProto.FindFactsByTagsRequest
-
-internal fun GrpcFindByTagsRequest.toDomainRequest(): FindByTagsRequest = parseRequest {
-    FindByTagsRequest(
-        storeName = storeName.asStoreName(),
-        tags = tagsMap.asTags(),
-        limit = if (hasLimit()) Limit.of(limit) else Limit.None,
-        direction = direction.toCore(),
-    )
-}
-
-typealias GrpcQueryFactsRequest = FactStoreProto.QueryFactsRequest
-
-internal fun GrpcQueryFactsRequest.toDomainRequest(): FindByTagQueryRequest = parseRequest {
-    FindByTagQueryRequest(
-        storeName = storeName.asStoreName(),
-        query = query.toDomain(),
-    )
-}
-
 typealias GrpcFindInTimeRangeRequest = FactStoreProto.FindFactsInTimeRangeRequest
 
 internal fun GrpcFindInTimeRangeRequest.toDomainRequest(): FindInTimeRangeRequest = parseRequest {

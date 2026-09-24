@@ -20,10 +20,6 @@ internal fun AppendHttpRequest.toDomainRequest(storeName: String): AppendRequest
     )
 }
 
-internal fun FactQueryHttp.toDomainRequest(storeName: String): FindByTagQueryRequest = parseInput {
-    FindByTagQueryRequest(storeName.asStoreName(), toTagQuery())
-}
-
 internal fun CreateStoreHttpRequest.toDomainRequest(): CreateStoreRequest = parseInput {
     CreateStoreRequest(name.asStoreName())
 }
@@ -122,23 +118,6 @@ internal fun streamFactsBySubjectRequest(
         continueAfter = continueAfter.asFactIdOrNull(),
         direction = direction.asReadDirection(),
         limit = limit.asLimit(),
-    )
-}
-
-internal fun findByTagsRequest(
-    storeName: String,
-    tags: List<String>,
-    from: String?,
-    to: String?,
-    limit: String?,
-    direction: String?,
-): FindByTagsRequest = parseInput {
-    require(from == null && to == null) { "Combining tag filters with time range is not yet supported." }
-    FindByTagsRequest(
-        storeName = storeName.asStoreName(),
-        tags = tags.asTagFilter(),
-        limit = limit.asLimit(),
-        direction = direction.asReadDirection(),
     )
 }
 

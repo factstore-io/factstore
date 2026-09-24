@@ -3,10 +3,10 @@ package io.factstore.core
 /**
  * Provides read access to facts stored in the FactStore.
  *
- * Each operation accepts a dedicated request object that carries the store name,
- * query parameters, and optional pagination/ordering options. Results are typed
- * sealed interfaces that explicitly distinguish store-not-found from query-specific
- * outcomes.
+ * Reads that select several facts belong to [FactStreamer], which streams them; what
+ * remains here are the lookups of a single fact. Each operation accepts a dedicated
+ * request object, and results are typed sealed interfaces that explicitly distinguish
+ * store-not-found from the operation's own outcomes.
  *
  * @author Domenic Cassisi
  */
@@ -32,25 +32,4 @@ interface FactFinder {
      * @return [FindInTimeRangeResult.Found] or [FindInTimeRangeResult.StoreNotFound]
      */
     suspend fun findInTimeRange(request: FindInTimeRangeRequest): FindInTimeRangeResult
-
-    /**
-     * Retrieves the complete history of facts associated with a specific subject.
-     *
-     * @return [FindBySubjectResult.Found] or [FindBySubjectResult.StoreNotFound]
-     */
-    suspend fun findBySubject(request: FindBySubjectRequest): FindBySubjectResult
-
-    /**
-     * Finds facts that match the provided tags (AND logic).
-     *
-     * @return [FindByTagsResult.Found] or [FindByTagsResult.StoreNotFound]
-     */
-    suspend fun findByTags(request: FindByTagsRequest): FindByTagsResult
-
-    /**
-     * Performs an expressive search for facts using a structured tag query.
-     *
-     * @return [FindByTagQueryResult.Found] or [FindByTagQueryResult.StoreNotFound]
-     */
-    suspend fun findByTagQuery(request: FindByTagQueryRequest): FindByTagQueryResult
 }
