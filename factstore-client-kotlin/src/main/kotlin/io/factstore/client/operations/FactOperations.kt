@@ -17,7 +17,6 @@ import io.factstore.client.model.Fact
 import io.factstore.client.model.FactFilter
 import io.factstore.client.model.FactInput
 import io.factstore.client.model.ReadDirection
-import io.factstore.client.model.ReplayStartPosition
 import io.factstore.client.model.SubscribeStartPosition
 import io.factstore.grpc.v1.FactServiceGrpcKt.FactServiceCoroutineStub
 import io.factstore.grpc.v1.appendFactsRequest
@@ -25,7 +24,6 @@ import io.factstore.grpc.v1.factExistsRequest
 import io.factstore.grpc.v1.fromBeginning
 import io.factstore.grpc.v1.fromEnd
 import io.factstore.grpc.v1.getFactRequest
-import io.factstore.grpc.v1.replayFactsRequest
 import io.factstore.grpc.v1.streamFactsBySubjectRequest
 import io.factstore.grpc.v1.factQuery
 import io.factstore.grpc.v1.streamFactsByQueryRequest
@@ -268,25 +266,6 @@ class FactOperations internal constructor(
         }
     }
 
-    /** Bounded replay: drains history up to the pinned head, then completes. */
-    fun replay(
-        storeName: String,
-        start: ReplayStartPosition = ReplayStartPosition.Beginning,
-    ): Flow<Fact> = stub.replayFacts(replayFactsRequest {
-        this.storeName = storeName
-        when (start) {
-            ReplayStartPosition.Beginning -> fromBeginning = fromBeginning {}
-            is ReplayStartPosition.AfterFact -> afterFactId = start.factId
-        }
-    }).toFactFlow { response ->
-        when {
-            response.hasBatch() -> response.batch.factsList.forEach { emit(it.toDomain()) }
-            response.hasStoreNotFound() -> throw StoreNotFoundException(storeName)
-            response.hasAfterFactNotFound() ->
-                throw FactNotFoundException((start as? ReplayStartPosition.AfterFact)?.factId ?: "")
-            else -> error("Unexpected stream message: $response")
-        }
-    }
 
     /**
      * Turns the messages of a streaming RPC into facts, mapping gRPC status failures to

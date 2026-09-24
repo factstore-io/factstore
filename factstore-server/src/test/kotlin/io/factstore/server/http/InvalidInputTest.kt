@@ -114,7 +114,6 @@ class InvalidInputTest {
 
             case("subscribe after an id that is not a UUID") { given().queryParam("after", "nope").get("$FACTS/subscribe") },
             case("subscribe from an unknown position") { given().queryParam("from", "middle").get("$FACTS/subscribe") },
-            case("replay after an id that is not a UUID") { given().queryParam("after", "nope").get("$FACTS/replay") },
         )
     }
 }

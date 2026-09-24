@@ -11,8 +11,6 @@ import kotlinx.coroutines.flow.Flow
  * interested. This is the classic catch-up subscription used for live
  * projections, read models and integrations.
  *
- * For a bounded, terminating read see [FactReplayer].
- *
  * @author Domenic Cassisi
  */
 fun interface FactSubscriber {

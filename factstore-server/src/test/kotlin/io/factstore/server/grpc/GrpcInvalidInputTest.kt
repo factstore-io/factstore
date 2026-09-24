@@ -131,9 +131,6 @@ class GrpcInvalidInputTest {
         case("subscribe to a store with an invalid name") {
             facts.subscribeFacts(subscribeFactsRequest { storeName = "1 bad" }).first()
         },
-        case("replay after an id that is not a UUID") {
-            facts.replayFacts(replayFactsRequest { storeName = STORE; afterFactId = "nope" }).first()
-        },
     )
 
     private fun case(description: String, call: suspend () -> Unit): Arguments = arguments(description, call)

@@ -14,7 +14,6 @@ import java.util.concurrent.Callable
 
 @CommandLine.Command(
     name = "subscribe",
-    aliases = ["stream"],
     description = ["Subscribe to a store and stream facts in real-time (similar to tail -f)"]
 )
 class SubscribeFactsCommand : Callable<Int> {

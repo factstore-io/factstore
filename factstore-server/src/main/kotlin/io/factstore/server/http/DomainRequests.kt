@@ -160,13 +160,6 @@ internal fun subscribeRequest(storeName: String, after: String?, from: String?):
     SubscribeRequest(storeName.asStoreName(), startPosition)
 }
 
-internal fun replayRequest(storeName: String, after: String?): ReplayRequest = parseInput {
-    ReplayRequest(
-        storeName = storeName.asStoreName(),
-        start = after?.let { ReplayStart.After(it.asFactId()) } ?: ReplayStart.Beginning,
-    )
-}
-
 // ─── The HTTP shapes as the specification's values ───────────────────────────
 
 internal fun AppendConditionHttp.toAppendCondition(): AppendCondition =

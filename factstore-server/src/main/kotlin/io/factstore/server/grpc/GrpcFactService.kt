@@ -7,7 +7,6 @@ import io.factstore.grpc.v1.FactStoreProto.*
 import io.factstore.grpc.v1.continuationNotFound
 import io.factstore.grpc.v1.factNotFound
 import io.factstore.grpc.v1.storeNotFound
-import io.factstore.grpc.v1.replayFactsResponse
 import io.factstore.grpc.v1.streamFactsBySubjectResponse
 import io.factstore.grpc.v1.streamFactsByQueryResponse
 import io.factstore.grpc.v1.streamFactsByTagsResponse
@@ -147,21 +146,4 @@ class GrpcFactService(
         )
     }
 
-    override fun replayFacts(request: ReplayFactsRequest): Flow<ReplayFactsResponse> = flow {
-        emitAll(
-            when (val result = request.toDomainRequest().publishTo(factStore)) {
-                is ReplayResult.StoreNotFound -> flowOf(replayFactsResponse {
-                    storeNotFound = storeNotFound { storeName = result.storeName.value }
-                })
-
-                is ReplayResult.FactIdNotFound -> flowOf(replayFactsResponse {
-                    afterFactNotFound = factNotFound { }
-                })
-
-                is ReplayResult.FactStream -> result.stream.map { facts ->
-                    replayFactsResponse { batch = facts.toProtoFactBatch() }
-                }
-            }
-        )
-    }
 }

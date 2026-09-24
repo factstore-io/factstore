@@ -200,19 +200,6 @@ internal fun GrpcSubscribeFactsRequest.toDomainRequest(): SubscribeRequest = par
     )
 }
 
-typealias GrpcReplayFactsRequest = FactStoreProto.ReplayFactsRequest
-
-internal fun GrpcReplayFactsRequest.toDomainRequest(): ReplayRequest = parseRequest {
-    val start = when (startCase) {
-        FactStoreProto.ReplayFactsRequest.StartCase.AFTER_FACT_ID -> ReplayStart.After(afterFactId.asFactId())
-        else -> ReplayStart.Beginning
-    }
-    ReplayRequest(
-        storeName = storeName.asStoreName(),
-        start = start,
-    )
-}
-
 typealias GrpcExistsStoreRequest = FactStoreProto.StoreExistsRequest
 
 internal fun GrpcExistsStoreRequest.toDomainRequest(): ExistsStoreByNameRequest = parseRequest {

@@ -29,16 +29,4 @@ class StreamResource(
     ): Flow<FactHttp> =
         subscribeRequest(storeName, after, from).publishTo(factStore).toResponse()
 
-    /** Bounded replay (completes at the head pinned at call time). */
-    @GET
-    @Path("replay")
-    @RestStreamElementType(APPLICATION_JSON)
-    @Produces(SERVER_SENT_EVENTS)
-    @Suppress("kotlin:S6309")
-    suspend fun replayFacts(
-        @PathParam("storeName") storeName: String,
-        @QueryParam("after") @Parameter(schema = Schema(type = SchemaType.STRING, format = "uuid")) after: String?,
-    ): Flow<FactHttp> =
-        replayRequest(storeName, after).publishTo(factStore).toResponse()
-
 }

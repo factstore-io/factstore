@@ -1,24 +1,22 @@
 package io.factstore.cli.command.fact
 
 import io.factstore.cli.command.OutputFormat
-import io.factstore.cli.command.print
+import io.factstore.cli.command.printSingle
 import io.factstore.client.FactStoreClient
-import io.factstore.client.model.ReadDirection
 import jakarta.inject.Inject
-import io.factstore.client.model.Fact
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.runBlocking
 import picocli.CommandLine
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
 import picocli.CommandLine.Parameters
+import java.util.UUID
 import java.util.concurrent.Callable
 
 @Command(
-    name = "find-by-subject",
-    description = ["Find facts by their subject"]
+    name = "get",
+    description = ["Get a single fact by its ID"]
 )
-class FindBySubjectCommand : Callable<Int> {
+class GetFactCommand : Callable<Int> {
 
     @Inject
     lateinit var client: FactStoreClient
@@ -26,10 +24,10 @@ class FindBySubjectCommand : Callable<Int> {
     @Parameters(
         index = "0",
         arity = "1",
-        description = ["The subject for which to find fact"],
-        paramLabel = "<factId>"
+        description = ["The UUID of the fact to get"],
+        paramLabel = "<factId>",
     )
-    lateinit var subject: String
+    lateinit var factId: UUID
 
     @Option(
         names = ["--store", "-s"],
@@ -39,21 +37,6 @@ class FindBySubjectCommand : Callable<Int> {
     lateinit var storeName: String
 
     @Option(
-        names = ["--limit"],
-        required = false,
-        description = ["Maximum number of facts to return (default: \${DEFAULT-VALUE})"],
-        defaultValue = "100",
-    )
-    var limit: Int = 100
-
-    @Option(
-        names = ["--direction"],
-        description = ["Read direction: \${COMPLETION-CANDIDATES} (default: \${DEFAULT-VALUE})"],
-        defaultValue = "forward",
-    )
-    lateinit var direction: ReadDirection
-
-    @Option(
         names = ["--output", "-o"],
         description = ["Output format: \${COMPLETION-CANDIDATES} (default: \${DEFAULT-VALUE})"],
         defaultValue = "table",
@@ -61,16 +44,11 @@ class FindBySubjectCommand : Callable<Int> {
     var outputFormat: OutputFormat = OutputFormat.Table
 
     override fun call(): Int = runBlocking {
-        val facts: Flow<Fact> = client.facts.streamFactsBySubject(
+        val fact = client.facts.get(
             storeName = storeName,
-            subject = subject,
-            direction = direction,
-            limit = limit,
+            factId = factId.toString()
         )
-
-        facts.print(outputFormat)
-
+        fact.printSingle(outputFormat)
         CommandLine.ExitCode.OK
     }
-
 }

@@ -242,51 +242,26 @@ class MemoryFactStore : FactStore {
             }
         }
 
-        // No upper bound: the subscription follows the live tail indefinitely.
-        SubscribeResult.FactStream(scanFlow(internalId, startIndex, endIndex = null))
+        SubscribeResult.FactStream(scanFlow(internalId, startIndex))
     }
 
-    // ===== FactReplayer Implementation =====
 
-    override suspend fun replay(request: ReplayRequest): ReplayResult = lock.withLock {
-        val storeName = request.storeName
-        val internalId = resolveId(storeName) ?: return ReplayResult.StoreNotFound(storeName)
-        val store = facts[internalId] ?: return ReplayResult.StoreNotFound(storeName)
-
-        val startIndex = when (val start = request.start) {
-            ReplayStart.Beginning -> 0
-            is ReplayStart.After -> {
-                val index = store.indexOfFirst { it.id == start.factId }
-                if (index == -1) return ReplayResult.FactIdNotFound(start.factId)
-                index + 1
-            }
-        }
-
-        // Pin the end at replay start; the flow completes once it is reached.
-        ReplayResult.FactStream(scanFlow(internalId, startIndex, endIndex = store.size))
-    }
-
-    private fun scanFlow(internalId: UUID, startIndex: Int, endIndex: Int?) = flow<List<Fact>> {
+    /** Follows the store from [startIndex] onwards; a subscription never ends on its own. */
+    private fun scanFlow(internalId: UUID, startIndex: Int) = flow<List<Fact>> {
         var currentIndex = startIndex
         while (true) {
             val batch = lock.withLock {
                 val store = facts[internalId]
-                // A replay (endIndex != null) never reads past its pinned end.
-                val upperBound = endIndex ?: store?.size ?: 0
-                if (store != null && currentIndex < upperBound) {
-                    val newFacts = store.subList(currentIndex, upperBound).toList()
-                    currentIndex = upperBound
+                val head = store?.size ?: 0
+                if (store != null && currentIndex < head) {
+                    val newFacts = store.subList(currentIndex, head).toList()
+                    currentIndex = head
                     newFacts
                 } else {
                     emptyList()
                 }
             }
-            when {
-                batch.isNotEmpty() -> emit(batch)
-                // Replay reached its pinned end => complete.
-                endIndex != null -> return@flow
-                else -> delay(100.milliseconds)
-            }
+            if (batch.isNotEmpty()) emit(batch) else delay(100.milliseconds)
         }
     }
 

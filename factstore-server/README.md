@@ -237,48 +237,18 @@ data: {"factId":"...","type":"UserRegistered",...}
 data: {"factId":"...","type":"UserEmailUpdated",...}
 ```
 
-### 6. Replay Facts (Server-Sent Events)
-
-Replay drains the existing facts **up to the head pinned at the moment the request
-is received, then completes** — the SSE connection closes once the client has caught
-up. Facts appended while the replay is running are excluded (a later replay will see
-them). Use it for exports, projection rebuilds, and incremental batch jobs that need
-a terminating read rather than a live tail.
-
-```bash
-# Replay everything currently in the store, then the stream ends
-curl http://localhost:8080/api/v1/stores/default/facts/replay
-```
-
-Start position (optional):
-
-| Query param      | Behaviour                                                        |
-| ---------------- | ---------------------------------------------------------------- |
-| _(none)_         | from the beginning of the store (default)                        |
-| `after=<factId>` | only facts after a checkpoint, up to the pinned head (the delta) |
-
-There is deliberately **no `from=end`** for replay: replaying from the end would
-always be empty.
-
-```bash
-# Incremental replay: everything since the last processed fact, then exit
-curl "http://localhost:8080/api/v1/stores/default/facts/replay?after=2f4d6f2c-6a3e-4a77-8c6b-0c3f6c2e5e11"
-```
-
-**Resumable batch pattern:** persist the id of the last fact you processed, then on
-the next run call `replay?after=<that id>`. Because every event carries its fact id,
-a crashed run resumes exactly where it left off — no cursor bookkeeping required.
-
-#### Streaming Semantics (subscribe & replay)
+#### Subscription semantics
 
 - Facts are emitted in storage order, one serialized Fact per SSE event.
-- Both endpoints use `text/event-stream` (SSE).
+- The endpoint uses `text/event-stream` (SSE).
 - The `after` parameter resumes from a known fact ID.
-- **Subscribe never completes**; it follows the live tail until the client disconnects.
-- **Replay completes** once it reaches the head pinned when the request was received;
-  facts appended during the replay are excluded.
+- A subscription **never completes**; it follows the live tail until the client disconnects.
 - Pre-stream errors (store not found, unknown `after` cursor) are reported as an HTTP
   error response before the SSE stream begins.
+
+For a read that ends — exports, projection rebuilds, incremental batch jobs — use the
+NDJSON fact streams above: they stop at the head pinned when the request was received,
+and `continueAfter` picks the next run up where the last one stopped.
 
 ---
 
@@ -489,36 +459,6 @@ was sent, and with an error status if it fails part way.
 reading order, and any fact of the store may be named. A fact the store does not hold is reported
 as a single `continuation_not_found` message.
 
-#### FindFactsByTags
-
-```bash
-grpcurl -plaintext \
-  -d '{"store_name": "orders", "tags": {"region": "eu"}, "direction": "READ_DIRECTION_FORWARD"}' \
-  localhost:8080 io.factstore.server.grpc.FactService/FindFactsByTags
-```
-
-All specified tags must match (AND semantics). Outcomes: `found` · `store_not_found`
-
-#### QueryFacts
-
-Supports compound tag queries with OR-of-AND semantics, optionally filtered by fact type.
-
-```bash
-grpcurl -plaintext \
-  -d '{
-    "store_name": "orders",
-    "query": {
-      "items": [
-        { "tag_only": { "tags": { "region": "eu" } } },
-        { "tag_type": { "types": ["OrderCreated"], "tags": { "env": "prod" } } }
-      ]
-    }
-  }' \
-  localhost:8080 io.factstore.server.grpc.FactService/QueryFacts
-```
-
-Outcomes: `found` · `store_not_found`
-
 #### SubscribeFacts
 
 Opens a long-lived server-side stream (catch-up subscription): existing facts first,
@@ -541,26 +481,8 @@ grpcurl -plaintext \
   localhost:8080 io.factstore.server.grpc.FactService/SubscribeFacts
 ```
 
-#### ReplayFacts
-
-Opens a **bounded** server-side stream: existing facts up to the head pinned when the
-call is received, then the stream **completes**. There is no `from_end` (it would
-always be empty).
-
-```bash
-# Replay everything currently in the store, then the stream ends
-grpcurl -plaintext \
-  -d '{"store_name": "orders"}' \
-  localhost:8080 io.factstore.server.grpc.FactService/ReplayFacts
-
-# Incremental replay: only facts after a checkpoint, up to the pinned head
-grpcurl -plaintext \
-  -d '{"store_name": "orders", "after_fact_id": "<uuid>"}' \
-  localhost:8080 io.factstore.server.grpc.FactService/ReplayFacts
-```
-
-For both RPCs, store-not-found and unknown `after_fact_id` are signalled as a
-`FAILED_PRECONDITION` gRPC status, not a response message field.
+Store-not-found and an unknown `after_fact_id` are signalled as a `FAILED_PRECONDITION`
+gRPC status, not as a response message field.
 
 ---
 

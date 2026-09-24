@@ -75,24 +75,67 @@ factstore fact append '{"orderId": "12345", "amount": 100.0}' \
 
 ---
 
-### Querying Facts
+### Reading Facts
 
-Each query mode is a dedicated subcommand under `fact`. All commands support `--limit` (default: 100) and `--direction` (`forward` / `backward`, default: `forward`).
+`fact get` reads a single fact; `fact stream` and `fact query` stream many, exactly as the
+HTTP API does. Both streaming commands support `--limit` (default: 100), `--direction`
+(`forward` / `backward`, default: `forward`), `--continue-after` and `--output`.
 
-#### Find by ID
-
-Direct lookup of a single fact by its UUID:
-
-```bash
-factstore fact find-by-id 550e8400-e29b-41d4-a716-446655440000 --store orders
-```
-
-#### Find by subject
+#### Get a fact by ID
 
 ```bash
-factstore fact find-by-subject order-12345 --store orders
-factstore fact find-by-subject order-12345 --store orders --limit 50 --direction backward
+factstore fact get 550e8400-e29b-41d4-a716-446655440000 --store orders
 ```
+
+#### Stream facts
+
+Without filters the whole store is streamed. `--subject`, `--type` and `--tag` are repeatable
+and describe **one** criterion: the fact's subject must be one of the subjects, its type one of
+the types, and it must carry **all** of the tags. The type is matched exactly, so
+`com.acme.OrderPlaced` is not matched by `com.acme`:
+
+```bash
+# Everything in the store, newest first
+factstore fact stream --store orders --direction backward --limit 20
+
+# One entity's own facts
+factstore fact stream --store orders --subject order/12345
+
+# Every order ever placed
+factstore fact stream --store orders --type com.acme.OrderPlaced
+
+# Everything carrying both tags
+factstore fact stream --store orders --tag region=eu --tag env=prod
+
+# A combination: this type, for that region
+factstore fact stream --store orders --type com.acme.OrderPlaced --tag region=eu
+```
+
+#### Continuing a stream
+
+A stream stops at the head pinned when the command ran, so it always terminates. Pass the id of
+the last fact you processed to `--continue-after` to pick up exactly where the previous run
+stopped — it is exclusive and follows the reading order, so it works with `--direction backward`
+too:
+
+```bash
+factstore fact stream --store orders --continue-after 550e8400-e29b-41d4-a716-446655440000
+```
+
+#### Query
+
+A query asks several questions at once: a fact matches when it matches **any** of its filters.
+Each filter is JSON; `--filter` adds one, and `--query-file` reads a whole query from a file:
+
+```bash
+factstore fact query --store orders \
+  --filter '{"subjects":["order/42"]}' \
+  --filter '{"types":["OrderPlaced"],"tags":{"region":"eu"}}'
+
+factstore fact query --store orders --query-file query.json --direction backward
+```
+
+For a single filter `fact stream` is the simpler command.
 
 #### Output formats
 
@@ -101,51 +144,8 @@ pretty-printed array, or `ndjson` for one compact fact per line, as the HTTP API
 Both JSON formats are written as the facts arrive, so they suit long results and pipelines:
 
 ```bash
-factstore fact query --store orders --type OrderPlaced -o ndjson | jq 'select(.subject == "order/42")'
+factstore fact stream --store orders --type OrderPlaced -o ndjson | jq 'select(.subject == "order/42")'
 ```
-
-#### Find by type
-
-The type is matched exactly, so `com.acme.OrderPlaced` is not matched by `com.acme`:
-
-```bash
-factstore fact find-by-type OrderPlaced --store orders
-factstore fact find-by-type com.acme.OrderPlaced --store orders --limit 50 --direction backward
-```
-
-#### Query
-
-A fact matches when it matches any filter. `--subject`, `--type` and `--tag` build one filter;
-`--filter` adds filters as JSON, and `--query-file` reads a whole query from a file:
-
-```bash
-factstore fact query --store orders --type OrderPlaced --tag region=eu
-factstore fact query --store orders \
-  --filter '{"subjects":["order/42"]}' \
-  --filter '{"types":["OrderPlaced"],"tags":{"region":"eu"}}'
-factstore fact query --store orders --query-file query.json --direction backward
-```
-
-#### Find by tags
-
-All specified tags must match (AND semantics):
-
-```bash
-factstore fact find-by-tags --store orders --tag region=eu
-factstore fact find-by-tags --store orders --tag region=eu --tag env=prod
-```
-
-
-#### Time expressions
-
-`--since` and `--until` accept both **relative durations** and **absolute ISO instants**:
-
-| Expression | Meaning |
-|---|---|
-| `5m` | 5 minutes ago |
-| `2h` | 2 hours ago |
-| `1d` | 1 day ago |
-| `2024-01-01T00:00:00Z` | Absolute timestamp |
 
 ---
 
@@ -166,46 +166,7 @@ factstore fact subscribe --store orders --from beginning
 factstore fact subscribe --store orders --after 550e8400-e29b-41d4-a716-446655440000
 ```
 
-Press `Ctrl+C` to stop. (`factstore fact stream` is kept as an alias for `subscribe`.)
-
----
-
-### Replaying Facts
-
-Replay drains existing facts **up to the current head and then exits** — ideal for
-exports, projection rebuilds, and incremental batch jobs that need a terminating read
-rather than a live tail. Facts appended while the replay runs are excluded.
-
-```bash
-# Replay everything currently in the store, then exit
-factstore fact replay --store orders
-
-# Incremental replay: only facts after a checkpoint, then exit
-factstore fact replay --store orders --after 550e8400-e29b-41d4-a716-446655440000
-```
-
-Because every printed fact carries its id, a resumable batch job can persist the last
-processed id and pass it to `--after` on the next run to continue exactly where it
-left off.
-
----
-
-### Output Formats
-
-Every command that prints facts supports `--output` (`-o`):
-
-```bash
-# Default: human-readable table
-factstore fact find-by-type OrderPlaced --store orders
-
-# One pretty-printed JSON array
-factstore fact find-by-type OrderPlaced --store orders --output json
-
-# One compact fact per line, as the HTTP API streams them — best for pipelines
-factstore fact find-by-type OrderPlaced --store orders --output ndjson | jq 'select(.subject == "order/42")'
-```
-
-Both JSON formats are written as the facts arrive, so they suit long results.
+Press `Ctrl+C` to stop.
 
 ---
 
@@ -223,7 +184,7 @@ export FACTSTORE_URL=http://localhost:8080
 export FACTSTORE_STORE=orders
 
 # --store is no longer needed
-factstore fact find-by-type OrderPlaced
+factstore fact stream --type OrderPlaced
 factstore fact subscribe
 ```
 

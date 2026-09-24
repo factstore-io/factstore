@@ -18,13 +18,14 @@ import picocli.CommandLine
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
 import java.io.File
+import java.util.UUID
 import java.util.concurrent.Callable
 
 @Command(
     name = "query",
     description = [
-        "Find facts matching a query: a fact matches when it matches any filter.",
-        "The options --subject, --type and --tag build one filter; --filter adds filters as JSON.",
+        "Stream the facts matching a query: a fact matches when it matches any of its filters.",
+        "Each filter is JSON; for a single filter 'fact stream' is the simpler command.",
     ]
 )
 class QueryFactsCommand : Callable<Int> {
@@ -40,24 +41,6 @@ class QueryFactsCommand : Callable<Int> {
     lateinit var storeName: String
 
     @Option(
-        names = ["--subject"],
-        description = ["A subject to match, repeatable; the fact's subject must be one of them"],
-    )
-    var subjects: MutableList<String> = mutableListOf()
-
-    @Option(
-        names = ["--type"],
-        description = ["A type to match, repeatable; the fact's type must be one of them"],
-    )
-    var types: MutableList<String> = mutableListOf()
-
-    @Option(
-        names = ["--tag"],
-        description = ["A tag the fact must carry, as key=value, repeatable; all must match"],
-    )
-    var tags: MutableList<String> = mutableListOf()
-
-    @Option(
         names = ["--filter"],
         description = ["A filter as JSON, repeatable, e.g. '{\"types\":[\"OrderPlaced\"],\"tags\":{\"region\":\"eu\"}}'"],
     )
@@ -68,6 +51,13 @@ class QueryFactsCommand : Callable<Int> {
         description = ["A file holding the query as JSON: {\"filters\":[…]}"],
     )
     var queryFile: File? = null
+
+    @Option(
+        names = ["--continue-after"],
+        description = ["Continue after this fact, exclusive and in reading order"],
+        paramLabel = "<factId>",
+    )
+    var continueAfter: UUID? = null
 
     @Option(
         names = ["--limit"],
@@ -93,9 +83,7 @@ class QueryFactsCommand : Callable<Int> {
     override fun call(): Int = runBlocking {
         val filters = collectFilters()
         if (filters.isEmpty()) {
-            throw CliUsageException(
-                "A query needs at least one filter: use --subject, --type, --tag, --filter or --query-file."
-            )
+            throw CliUsageException("A query needs at least one filter: use --filter or --query-file.")
         }
 
         val facts: Flow<Fact> = client.facts.streamFactsByQuery(
@@ -103,6 +91,7 @@ class QueryFactsCommand : Callable<Int> {
             filters = filters,
             direction = direction,
             limit = limit,
+            continueAfter = continueAfter?.toString(),
         )
 
         facts.print(outputFormat)
@@ -111,22 +100,12 @@ class QueryFactsCommand : Callable<Int> {
     }
 
     private fun collectFilters(): List<FactFilter> = buildList {
-        // The convenience options describe one filter.
-        if (subjects.isNotEmpty() || types.isNotEmpty() || tags.isNotEmpty()) {
-            add(FactFilter(subjects = subjects, types = types, tags = tags.toTagMap()))
-        }
         filters.forEach { add(it.toFactFilter()) }
         queryFile?.let { file ->
             val query = json.parseToJsonElement(file.readText()).jsonObject
             val filters = query["filters"] ?: throw CliUsageException("The query file has no 'filters'.")
             filters.jsonArray.forEach { add(it.toString().toFactFilter()) }
         }
-    }
-
-    private fun List<String>.toTagMap(): Map<String, String> = associate { tag ->
-        val parts = tag.split("=", limit = 2)
-        if (parts.size != 2) throw CliUsageException("A tag must have the form key=value, but was '$tag'.")
-        parts[0] to parts[1]
     }
 
     private fun String.toFactFilter(): FactFilter {

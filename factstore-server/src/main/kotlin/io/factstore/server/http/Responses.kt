@@ -116,12 +116,6 @@ internal fun SubscribeResult.toResponse(): Flow<FactHttp> = when (this) {
     is SubscribeResult.FactStream -> stream.transform { batch -> batch.forEach { emit(it.toFactHttp()) } }
 }
 
-internal fun ReplayResult.toResponse(): Flow<FactHttp> = when (this) {
-    is ReplayResult.StoreNotFound -> throw StreamApiException.StoreNotFoundException(storeName)
-    is ReplayResult.FactIdNotFound -> throw StreamApiException.FactNotFoundException(id)
-    is ReplayResult.FactStream -> stream.transform { batch -> batch.forEach { emit(it.toFactHttp()) } }
-}
-
 /** A stream cannot return a response, so its outcomes are thrown and rendered by [ErrorMappers]. */
 sealed class StreamApiException : RuntimeException() {
     data class FactNotFoundException(val factId: FactId) : StreamApiException()

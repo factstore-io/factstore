@@ -33,9 +33,6 @@ internal suspend fun StreamFactsByQueryRequest.publishTo(factStore: FactStore): 
 internal suspend fun SubscribeRequest.publishTo(factStore: FactStore): SubscribeResult =
     factStore.subscribe(this)
 
-internal suspend fun ReplayRequest.publishTo(factStore: FactStore): ReplayResult =
-    factStore.replay(this)
-
 internal suspend fun CreateStoreRequest.publishTo(factStore: FactStore): CreateStoreResult =
     factStore.create(this)
 

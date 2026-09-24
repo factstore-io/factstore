@@ -242,11 +242,6 @@ service FactService {
   // SubscribeFactsResponse message, after which the stream completes normally; terminal
   // failures that occur once facts are already flowing are surfaced as gRPC status errors.
   rpc SubscribeFacts(SubscribeFactsRequest) returns (stream SubscribeFactsResponse);
-
-  // Open a bounded replay: emit existing facts from the start position up to the head
-  // pinned at call time, then complete. Facts appended during the replay are excluded.
-  // Error and batching semantics mirror SubscribeFacts.
-  rpc ReplayFacts(ReplayFactsRequest) returns (stream ReplayFactsResponse);
 }
 
 // -- AppendFacts --
@@ -449,17 +444,9 @@ message StreamFactsByQueryResponse {
   }
 }
 
-// -- SubscribeFacts and ReplayFacts --
+// -- SubscribeFacts --
 
 message SubscribeFactsResponse {
-  oneof message {
-    FactBatch batch = 1;
-    StoreNotFound store_not_found = 2;
-    FactNotFound after_fact_not_found = 3; // the after_fact_id cursor does not exist
-  }
-}
-
-message ReplayFactsResponse {
   oneof message {
     FactBatch batch = 1;
     StoreNotFound store_not_found = 2;
@@ -480,17 +467,6 @@ message SubscribeFactsRequest {
     FromEnd from_end = 3;
     // Subscribe to facts appended after the given fact ID, then continue with new ones.
     string after_fact_id = 4;
-  }
-}
-
-message ReplayFactsRequest {
-  string store_name = 1;
-  // If start is not set, the replay starts from the beginning (equivalent to from_beginning).
-  // There is deliberately no from_end: replaying "from the end" would always be empty.
-  oneof start {
-    FromBeginning from_beginning = 2;
-    // Replay facts appended after the given fact ID, up to the pinned head.
-    string after_fact_id = 3;
   }
 }
 

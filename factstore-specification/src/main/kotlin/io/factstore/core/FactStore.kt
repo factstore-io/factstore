@@ -3,10 +3,9 @@ package io.factstore.core
 /**
  * The main interface for interacting with a FactStore.
  *
- * A [FactStore] provides a unified API to append, find, stream, subscribe to,
- * and replay facts. It combines the capabilities of [FactAppender], [FactFinder],
- * [FactStreamer], [FactSubscriber], [FactReplayer], and [StoreFactory] into a
- * single entry point.
+ * A [FactStore] provides a unified API to append, find, stream and subscribe to
+ * facts. It combines the capabilities of [FactAppender], [FactFinder],
+ * [FactStreamer], [FactSubscriber] and [StoreFactory] into a single entry point.
  *
  * Implementations may choose to separate responsibilities internally, but
  * the public API guarantees consistent behavior across all operations.
@@ -21,7 +20,6 @@ interface FactStore :
     FactFinder,
     FactStreamer,
     FactSubscriber,
-    FactReplayer,
     StoreFactory,
     StoreFinder,
     StoreRemover
@@ -30,8 +28,7 @@ interface FactStore :
  * Factory function to create a [FactStore] from separate components.
  *
  * This allows combining distinct implementations of [FactAppender],
- * [FactFinder], [FactStreamer], [FactSubscriber], and [FactReplayer] into
- * a single [FactStore] instance.
+ * [FactFinder], [FactStreamer] and [FactSubscriber] into a single [FactStore] instance.
  *
  * Example usage:
  * ```
@@ -40,7 +37,6 @@ interface FactStore :
  *     factFinder = myFinder,
  *     factStreamer = myStreamer,
  *     factSubscriber = mySubscriber,
- *     factReplayer = myReplayer,
  * )
  * ```
  *
@@ -48,7 +44,6 @@ interface FactStore :
  * @param factFinder the component responsible for reading and querying facts
  * @param factStreamer the component responsible for bounded fact streams
  * @param factSubscriber the component responsible for live subscriptions
- * @param factReplayer the component responsible for bounded replays
  * @param storeFactory the component responsible for creating fact stores
  * @param storeFinder the component responsible for finding fact stores
  * @param storeRemover the component responsible for removing fact stores
@@ -61,7 +56,6 @@ fun FactStore(
     factFinder: FactFinder,
     factStreamer: FactStreamer,
     factSubscriber: FactSubscriber,
-    factReplayer: FactReplayer,
     storeFactory: StoreFactory,
     storeFinder: StoreFinder,
     storeRemover: StoreRemover,
@@ -71,7 +65,6 @@ fun FactStore(
         FactFinder by factFinder,
         FactStreamer by factStreamer,
         FactSubscriber by factSubscriber,
-        FactReplayer by factReplayer,
         StoreFactory by storeFactory,
         StoreFinder by storeFinder,
         StoreRemover by storeRemover {}
