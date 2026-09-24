@@ -136,6 +136,8 @@ data class FactHttp(
 data class StreamFactsByQueryHttpRequest(
     @field:Schema(minItems = 1, maxItems = FactQuery.MAX_FILTERS)
     val filters: List<FactFilterHttp>,
+    @field:Schema(description = "Continue after this fact, exclusive and in reading order.", format = "uuid")
+    val continueAfter: UUID? = null,
     @field:Schema(enumeration = ["forward", "backward"], defaultValue = "forward")
     val direction: String? = null,
     @field:Schema(minimum = "1")

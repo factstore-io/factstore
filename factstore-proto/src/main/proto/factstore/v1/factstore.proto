@@ -385,12 +385,20 @@ message FactBatch {
   repeated Fact facts = 1;
 }
 
+// The store holds no fact with the id a stream was to continue after.
+message ContinuationNotFound {
+  string fact_id = 1;
+}
+
 // -- StreamFacts --
 
 message StreamFactsRequest {
   string store_name = 1;
   ReadDirection direction = 2;
-  optional int32 limit = 3; // absent = no limit
+  optional int32 limit = 3; // absent = no limit  // Continue after this fact, exclusive and in reading order: reading forward with the facts
+  // appended after it, reading backward with those appended before it. Any fact of the store may
+  // be named, including one this stream does not emit.
+  optional string continue_after_fact_id = 5;
 }
 
 // Each message is either a batch of facts or the pre-stream outcome that no stream
@@ -400,6 +408,7 @@ message StreamFactsResponse {
   oneof message {
     FactBatch batch = 1;
     StoreNotFound store_not_found = 2;
+    ContinuationNotFound continuation_not_found = 3;
   }
 }
 
@@ -409,13 +418,17 @@ message StreamFactsBySubjectRequest {
   string store_name = 1;
   string subject = 2;
   ReadDirection direction = 3;
-  optional int32 limit = 4; // absent = no limit
+  optional int32 limit = 4; // absent = no limit  // Continue after this fact, exclusive and in reading order: reading forward with the facts
+  // appended after it, reading backward with those appended before it. Any fact of the store may
+  // be named, including one this stream does not emit.
+  optional string continue_after_fact_id = 6;
 }
 
 message StreamFactsBySubjectResponse {
   oneof message {
     FactBatch batch = 1;
     StoreNotFound store_not_found = 2;
+    ContinuationNotFound continuation_not_found = 3;
   }
 }
 
@@ -425,13 +438,17 @@ message StreamFactsByTypeRequest {
   string store_name = 1;
   string type = 2; // matched exactly
   ReadDirection direction = 3;
-  optional int32 limit = 4; // absent = no limit
+  optional int32 limit = 4; // absent = no limit  // Continue after this fact, exclusive and in reading order: reading forward with the facts
+  // appended after it, reading backward with those appended before it. Any fact of the store may
+  // be named, including one this stream does not emit.
+  optional string continue_after_fact_id = 6;
 }
 
 message StreamFactsByTypeResponse {
   oneof message {
     FactBatch batch = 1;
     StoreNotFound store_not_found = 2;
+    ContinuationNotFound continuation_not_found = 3;
   }
 }
 
@@ -441,13 +458,17 @@ message StreamFactsByTagsRequest {
   string store_name = 1;
   map<string, string> tags = 2; // all tags must match (AND semantics); at least one
   ReadDirection direction = 3;
-  optional int32 limit = 4; // absent = no limit
+  optional int32 limit = 4; // absent = no limit  // Continue after this fact, exclusive and in reading order: reading forward with the facts
+  // appended after it, reading backward with those appended before it. Any fact of the store may
+  // be named, including one this stream does not emit.
+  optional string continue_after_fact_id = 6;
 }
 
 message StreamFactsByTagsResponse {
   oneof message {
     FactBatch batch = 1;
     StoreNotFound store_not_found = 2;
+    ContinuationNotFound continuation_not_found = 3;
   }
 }
 
@@ -470,13 +491,17 @@ message StreamFactsByQueryRequest {
   string store_name = 1;
   FactQuery query = 2;
   ReadDirection direction = 3;
-  optional int32 limit = 4; // absent = no limit; counted over the whole result
+  optional int32 limit = 4; // absent = no limit; counted over the whole result  // Continue after this fact, exclusive and in reading order: reading forward with the facts
+  // appended after it, reading backward with those appended before it. Any fact of the store may
+  // be named, including one this stream does not emit.
+  optional string continue_after_fact_id = 6;
 }
 
 message StreamFactsByQueryResponse {
   oneof message {
     FactBatch batch = 1;
     StoreNotFound store_not_found = 2;
+    ContinuationNotFound continuation_not_found = 3;
   }
 }
 

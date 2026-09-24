@@ -13,7 +13,7 @@ class FactStreamerRequestTest {
     @DisplayName("A tag stream requires at least one tag")
     fun tagsMustNotBeEmpty() {
         val ex = assertThrows<IllegalArgumentException> {
-            StreamFactsByTagsRequest(store, emptyMap(), ReadDirection.Forward, Limit.None)
+            StreamFactsByTagsRequest(store, emptyMap(), null, ReadDirection.Forward, Limit.None)
         }
 
         assertThat(ex.message).isEqualTo("Tags must be defined!")
@@ -25,7 +25,7 @@ class FactStreamerRequestTest {
         val tags = (1..FactInput.MAX_TAGS + 1).associate { TagKey("key$it") to TagValue("value") }
 
         val ex = assertThrows<IllegalArgumentException> {
-            StreamFactsByTagsRequest(store, tags, ReadDirection.Forward, Limit.None)
+            StreamFactsByTagsRequest(store, tags, null, ReadDirection.Forward, Limit.None)
         }
 
         assertThat(ex.message).contains("At most ${FactInput.MAX_TAGS} tags")
@@ -36,7 +36,7 @@ class FactStreamerRequestTest {
     fun maximumTagsAreAccepted() {
         val tags = (1..FactInput.MAX_TAGS).associate { TagKey("key$it") to TagValue("value") }
 
-        val request = StreamFactsByTagsRequest(store, tags, ReadDirection.Forward, Limit.None)
+        val request = StreamFactsByTagsRequest(store, tags, null, ReadDirection.Forward, Limit.None)
 
         assertThat(request.tags).hasSize(FactInput.MAX_TAGS)
     }

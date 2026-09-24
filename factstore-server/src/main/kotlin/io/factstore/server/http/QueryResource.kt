@@ -64,10 +64,11 @@ class QueryResource(
     suspend fun streamFactsBySubject(
         @PathParam("storeName") storeName: String,
         @PathParam("subject") subject: String,
+        @QueryParam("continueAfter") @Parameter(description = "Continue after this fact, exclusive and in reading order.", schema = Schema(type = SchemaType.STRING, format = "uuid")) continueAfter: String?,
         @QueryParam("direction") @Parameter(schema = Schema(enumeration = ["forward", "backward"], defaultValue = "forward")) direction: String?,
         @QueryParam("limit") @Parameter(schema = Schema(type = SchemaType.INTEGER, minimum = "1")) limit: String?,
     ): Flow<FactStreamLineHttp> =
-        streamFactsBySubjectRequest(storeName, subject, direction, limit).publishTo(store).toResponse()
+        streamFactsBySubjectRequest(storeName, subject, continueAfter, direction, limit).publishTo(store).toResponse()
 
     @GET
     @Produces(APPLICATION_NDJSON)
@@ -80,10 +81,11 @@ class QueryResource(
     suspend fun streamFactsByType(
         @PathParam("storeName") storeName: String,
         @PathParam("type") type: String,
+        @QueryParam("continueAfter") @Parameter(description = "Continue after this fact, exclusive and in reading order.", schema = Schema(type = SchemaType.STRING, format = "uuid")) continueAfter: String?,
         @QueryParam("direction") @Parameter(schema = Schema(enumeration = ["forward", "backward"], defaultValue = "forward")) direction: String?,
         @QueryParam("limit") @Parameter(schema = Schema(type = SchemaType.INTEGER, minimum = "1")) limit: String?,
     ): Flow<FactStreamLineHttp> =
-        streamFactsByTypeRequest(storeName, type, direction, limit).publishTo(store).toResponse()
+        streamFactsByTypeRequest(storeName, type, continueAfter, direction, limit).publishTo(store).toResponse()
 
     @GET
     @Produces(APPLICATION_NDJSON)
@@ -95,6 +97,7 @@ class QueryResource(
     )
     suspend fun streamFacts(
         @PathParam("storeName") storeName: String,
+        @QueryParam("continueAfter") @Parameter(description = "Continue after this fact, exclusive and in reading order.", schema = Schema(type = SchemaType.STRING, format = "uuid")) continueAfter: String?,
         @QueryParam("direction") @Parameter(schema = Schema(enumeration = ["forward", "backward"], defaultValue = "forward")) direction: String?,
         @QueryParam("limit") @Parameter(schema = Schema(type = SchemaType.INTEGER, minimum = "1")) limit: String?,
         @QueryParam("from") @Parameter(schema = Schema(type = SchemaType.STRING, format = "date-time")) from: String?,
@@ -103,13 +106,14 @@ class QueryResource(
     ): Flow<FactStreamLineHttp> =
         when {
             tags.isNotEmpty() ->
-                streamFactsByTagsRequest(storeName, tags, from, to, direction, limit).publishTo(store).toResponse()
+                streamFactsByTagsRequest(storeName, tags, from, to, continueAfter, direction, limit)
+                    .publishTo(store).toResponse()
 
             from != null || to != null ->
                 findInTimeRangeRequest(storeName, from, to, limit, direction).publishTo(store).toResponse()
 
             else ->
-                streamFactsRequest(storeName, direction, limit).publishTo(store).toResponse()
+                streamFactsRequest(storeName, continueAfter, direction, limit).publishTo(store).toResponse()
         }
 
     private companion object {

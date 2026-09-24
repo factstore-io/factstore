@@ -124,6 +124,7 @@ typealias GrpcStreamFactsRequest = FactStoreProto.StreamFactsRequest
 internal fun GrpcStreamFactsRequest.toDomainRequest(): StreamFactsRequest = parseRequest {
     StreamFactsRequest(
         storeName = storeName.asStoreName(),
+        continueAfter = if (hasContinueAfterFactId()) continueAfterFactId.asFactId() else null,
         direction = direction.toCore(),
         limit = if (hasLimit()) Limit.of(limit) else Limit.None,
     )
@@ -143,6 +144,7 @@ internal fun GrpcStreamFactsByQueryRequest.toDomainRequest(): StreamFactsByQuery
     StreamFactsByQueryRequest(
         storeName = storeName.asStoreName(),
         query = query.toDomain(),
+        continueAfter = if (hasContinueAfterFactId()) continueAfterFactId.asFactId() else null,
         direction = direction.toCore(),
         limit = if (hasLimit()) Limit.of(limit) else Limit.None,
     )
@@ -154,6 +156,7 @@ internal fun GrpcStreamFactsByTagsRequest.toDomainRequest(): StreamFactsByTagsRe
     StreamFactsByTagsRequest(
         storeName = storeName.asStoreName(),
         tags = tagsMap.asTags(),
+        continueAfter = if (hasContinueAfterFactId()) continueAfterFactId.asFactId() else null,
         direction = direction.toCore(),
         limit = if (hasLimit()) Limit.of(limit) else Limit.None,
     )
@@ -165,6 +168,7 @@ internal fun GrpcStreamFactsByTypeRequest.toDomainRequest(): StreamFactsByTypeRe
     StreamFactsByTypeRequest(
         storeName = storeName.asStoreName(),
         type = type.asFactType(),
+        continueAfter = if (hasContinueAfterFactId()) continueAfterFactId.asFactId() else null,
         direction = direction.toCore(),
         limit = if (hasLimit()) Limit.of(limit) else Limit.None,
     )
@@ -176,6 +180,7 @@ internal fun GrpcStreamFactsBySubjectRequest.toDomainRequest(): StreamFactsBySub
     StreamFactsBySubjectRequest(
         storeName = storeName.asStoreName(),
         subject = subject.asSubject(),
+        continueAfter = if (hasContinueAfterFactId()) continueAfterFactId.asFactId() else null,
         direction = direction.toCore(),
         limit = if (hasLimit()) Limit.of(limit) else Limit.None,
     )

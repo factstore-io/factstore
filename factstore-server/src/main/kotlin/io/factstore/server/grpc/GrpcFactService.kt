@@ -4,6 +4,7 @@ import io.factstore.core.*
 import io.factstore.server.publishTo
 import io.factstore.grpc.v1.FactServiceGrpcKt
 import io.factstore.grpc.v1.FactStoreProto.*
+import io.factstore.grpc.v1.continuationNotFound
 import io.factstore.grpc.v1.factNotFound
 import io.factstore.grpc.v1.storeNotFound
 import io.factstore.grpc.v1.replayFactsResponse
@@ -54,6 +55,10 @@ class GrpcFactService(
                     storeNotFound = storeNotFound { storeName = result.storeName.value }
                 })
 
+                is StreamFactsResult.ContinuationNotFound -> flowOf(streamFactsResponse {
+                    continuationNotFound = continuationNotFound { factId = result.factId.uuid.toString() }
+                })
+
                 is StreamFactsResult.FactStream -> result.facts.toProtoFactBatches().map { facts ->
                     streamFactsResponse { batch = facts }
                 }
@@ -66,6 +71,10 @@ class GrpcFactService(
             when (val result = request.toDomainRequest().publishTo(factStore)) {
                 is StreamFactsBySubjectResult.StoreNotFound -> flowOf(streamFactsBySubjectResponse {
                     storeNotFound = storeNotFound { storeName = result.storeName.value }
+                })
+
+                is StreamFactsBySubjectResult.ContinuationNotFound -> flowOf(streamFactsBySubjectResponse {
+                    continuationNotFound = continuationNotFound { factId = result.factId.uuid.toString() }
                 })
 
                 is StreamFactsBySubjectResult.FactStream -> result.facts.toProtoFactBatches().map { facts ->
@@ -82,6 +91,10 @@ class GrpcFactService(
                     storeNotFound = storeNotFound { storeName = result.storeName.value }
                 })
 
+                is StreamFactsByTypeResult.ContinuationNotFound -> flowOf(streamFactsByTypeResponse {
+                    continuationNotFound = continuationNotFound { factId = result.factId.uuid.toString() }
+                })
+
                 is StreamFactsByTypeResult.FactStream -> result.facts.toProtoFactBatches().map { facts ->
                     streamFactsByTypeResponse { batch = facts }
                 }
@@ -96,6 +109,10 @@ class GrpcFactService(
                     storeNotFound = storeNotFound { storeName = result.storeName.value }
                 })
 
+                is StreamFactsByTagsResult.ContinuationNotFound -> flowOf(streamFactsByTagsResponse {
+                    continuationNotFound = continuationNotFound { factId = result.factId.uuid.toString() }
+                })
+
                 is StreamFactsByTagsResult.FactStream -> result.facts.toProtoFactBatches().map { facts ->
                     streamFactsByTagsResponse { batch = facts }
                 }
@@ -108,6 +125,10 @@ class GrpcFactService(
             when (val result = request.toDomainRequest().publishTo(factStore)) {
                 is StreamFactsByQueryResult.StoreNotFound -> flowOf(streamFactsByQueryResponse {
                     storeNotFound = storeNotFound { storeName = result.storeName.value }
+                })
+
+                is StreamFactsByQueryResult.ContinuationNotFound -> flowOf(streamFactsByQueryResponse {
+                    continuationNotFound = continuationNotFound { factId = result.factId.uuid.toString() }
                 })
 
                 is StreamFactsByQueryResult.FactStream -> result.facts.toProtoFactBatches().map { facts ->

@@ -1060,7 +1060,7 @@ abstract class AbstractFactStoreTest {
             )
         )
 
-        val streamed = streamToList(StreamFactsRequest(testStore, ReadDirection.Forward, Limit.None))
+        val streamed = streamToList(StreamFactsRequest(testStore, null, ReadDirection.Forward, Limit.None))
 
         assertThat(streamed).containsExactlyElementsOf(facts)
     }
@@ -1075,7 +1075,7 @@ abstract class AbstractFactStoreTest {
             )
         )
 
-        val streamed = streamToList(StreamFactsRequest(testStore, ReadDirection.Backward, Limit.None))
+        val streamed = streamToList(StreamFactsRequest(testStore, null, ReadDirection.Backward, Limit.None))
 
         assertThat(streamed).containsExactlyElementsOf(facts.reversed())
     }
@@ -1091,11 +1091,11 @@ abstract class AbstractFactStoreTest {
         )
 
         // Forward + limit 2 → the two oldest facts
-        assertThat(streamToList(StreamFactsRequest(testStore, ReadDirection.Forward, Limit.of(2))))
+        assertThat(streamToList(StreamFactsRequest(testStore, null, ReadDirection.Forward, Limit.of(2))))
             .containsExactly(fact1, fact2)
 
         // Backward + limit 2 → the two newest facts, newest first
-        assertThat(streamToList(StreamFactsRequest(testStore, ReadDirection.Backward, Limit.of(2))))
+        assertThat(streamToList(StreamFactsRequest(testStore, null, ReadDirection.Backward, Limit.of(2))))
             .containsExactly(fact3, fact2)
     }
 
@@ -1108,21 +1108,21 @@ abstract class AbstractFactStoreTest {
             )
         )
 
-        val streamed = streamToList(StreamFactsRequest(testStore, ReadDirection.Forward, Limit.of(10)))
+        val streamed = streamToList(StreamFactsRequest(testStore, null, ReadDirection.Forward, Limit.of(10)))
 
         assertThat(streamed).containsExactlyElementsOf(facts)
     }
 
     @Test
     fun testStreamFactsOfEmptyStore(): Unit = runBlocking {
-        val streamed = streamToList(StreamFactsRequest(testStore, ReadDirection.Forward, Limit.None))
+        val streamed = streamToList(StreamFactsRequest(testStore, null, ReadDirection.Forward, Limit.None))
 
         assertThat(streamed).isEmpty()
     }
 
     @Test
     fun testStreamFactsOfNonExistingStore(): Unit = runBlocking {
-        val result = store.streamFacts(StreamFactsRequest(nonExistingStore, ReadDirection.Forward, Limit.None))
+        val result = store.streamFacts(StreamFactsRequest(nonExistingStore, null, ReadDirection.Forward, Limit.None))
 
         assertThat(result).isEqualTo(StreamFactsResult.StoreNotFound(nonExistingStore))
     }
@@ -1135,7 +1135,7 @@ abstract class AbstractFactStoreTest {
         val fact = appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload))
         appendStored(input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload), otherStore)
 
-        val streamed = streamToList(StreamFactsRequest(testStore, ReadDirection.Forward, Limit.None))
+        val streamed = streamToList(StreamFactsRequest(testStore, null, ReadDirection.Forward, Limit.None))
 
         assertThat(streamed).containsExactly(fact)
     }
@@ -1146,7 +1146,7 @@ abstract class AbstractFactStoreTest {
         val fact2 = appendStored(input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload))
 
         // The head is pinned when the stream is requested, not when it is collected.
-        val stream = (store.streamFacts(StreamFactsRequest(testStore, ReadDirection.Forward, Limit.None))
+        val stream = (store.streamFacts(StreamFactsRequest(testStore, null, ReadDirection.Forward, Limit.None))
                 as StreamFactsResult.FactStream).facts
 
         appendStored(input(CHARLIE_SUBJECT_VALUE, "USER_CREATED", charliePayload))
@@ -1160,7 +1160,7 @@ abstract class AbstractFactStoreTest {
         val fact2 = appendStored(input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload))
 
         // Reading backward starts at the pinned head, not at the newest fact at collection time.
-        val stream = (store.streamFacts(StreamFactsRequest(testStore, ReadDirection.Backward, Limit.None))
+        val stream = (store.streamFacts(StreamFactsRequest(testStore, null, ReadDirection.Backward, Limit.None))
                 as StreamFactsResult.FactStream).facts
 
         appendStored(input(CHARLIE_SUBJECT_VALUE, "USER_CREATED", charliePayload))
@@ -1177,7 +1177,7 @@ abstract class AbstractFactStoreTest {
             )
         )
 
-        val stream = (store.streamFacts(StreamFactsRequest(testStore, ReadDirection.Forward, Limit.None))
+        val stream = (store.streamFacts(StreamFactsRequest(testStore, null, ReadDirection.Forward, Limit.None))
                 as StreamFactsResult.FactStream).facts
 
         val first = withTimeout(10.seconds) { stream.toList() }
@@ -1192,14 +1192,171 @@ abstract class AbstractFactStoreTest {
     fun testStreamFactsOfLargeStore(): Unit = runBlocking {
         val facts = appendLargeHistory()
 
-        assertThat(streamToList(StreamFactsRequest(testStore, ReadDirection.Forward, Limit.None)))
+        assertThat(streamToList(StreamFactsRequest(testStore, null, ReadDirection.Forward, Limit.None)))
             .containsExactlyElementsOf(facts)
-        assertThat(streamToList(StreamFactsRequest(testStore, ReadDirection.Backward, Limit.None)))
+        assertThat(streamToList(StreamFactsRequest(testStore, null, ReadDirection.Backward, Limit.None)))
             .containsExactlyElementsOf(facts.reversed())
-        assertThat(streamToList(StreamFactsRequest(testStore, ReadDirection.Forward, Limit.of(777))))
+        assertThat(streamToList(StreamFactsRequest(testStore, null, ReadDirection.Forward, Limit.of(777))))
             .containsExactlyElementsOf(facts.take(777))
-        assertThat(streamToList(StreamFactsRequest(testStore, ReadDirection.Backward, Limit.of(777))))
+        assertThat(streamToList(StreamFactsRequest(testStore, null, ReadDirection.Backward, Limit.of(777))))
             .containsExactlyElementsOf(facts.reversed().take(777))
+    }
+
+    // ===== FactStreamer: continuing a stream =====
+
+    @Test
+    fun testStreamFactsContinuesAfterAFact(): Unit = runBlocking {
+        val (fact1, fact2, fact3) = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
+                input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload),
+                input(CHARLIE_SUBJECT_VALUE, "USER_CREATED", charliePayload),
+            )
+        )
+
+        assertThat(streamToList(StreamFactsRequest(testStore, fact1.id, ReadDirection.Forward, Limit.None)))
+            .containsExactly(fact2, fact3)
+        // Backward, continuing after a fact means the ones appended before it.
+        assertThat(streamToList(StreamFactsRequest(testStore, fact3.id, ReadDirection.Backward, Limit.None)))
+            .containsExactly(fact2, fact1)
+        // With a limit, counted from the continuation.
+        assertThat(streamToList(StreamFactsRequest(testStore, fact1.id, ReadDirection.Forward, Limit.of(1))))
+            .containsExactly(fact2)
+    }
+
+    @Test
+    fun testStreamFactsContinuedAfterTheNewestFactIsEmpty(): Unit = runBlocking {
+        val facts = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
+                input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload),
+            )
+        )
+
+        assertThat(streamToList(StreamFactsRequest(testStore, facts.last().id, ReadDirection.Forward, Limit.None)))
+            .isEmpty()
+        // Reading backward, the oldest fact is the end of the stream.
+        assertThat(streamToList(StreamFactsRequest(testStore, facts.first().id, ReadDirection.Backward, Limit.None)))
+            .isEmpty()
+    }
+
+    @Test
+    fun testStreamFactsContinuedAfterAnUnknownFact(): Unit = runBlocking {
+        appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload))
+        val unknown = FactId.generate()
+
+        val result = store.streamFacts(StreamFactsRequest(testStore, unknown, ReadDirection.Forward, Limit.None))
+
+        assertThat(result).isEqualTo(StreamFactsResult.ContinuationNotFound(unknown))
+    }
+
+    @Test
+    fun testStreamFactsBySubjectContinuesAfterAFactOfAnotherSubject(): Unit = runBlocking {
+        val (alice1, bob, alice2) = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
+                input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload),
+                input(ALICE_SUBJECT_VALUE, "USER_LOCKED", alicePayload),
+            )
+        )
+
+        // The continuation marks a position; it need not be a fact the stream itself emits.
+        assertThat(streamToList(subjectRequest(ALICE_SUBJECT_VALUE, ReadDirection.Forward, Limit.None, bob.id)))
+            .containsExactly(alice2)
+        assertThat(streamToList(subjectRequest(ALICE_SUBJECT_VALUE, ReadDirection.Forward, Limit.None, alice1.id)))
+            .containsExactly(alice2)
+    }
+
+    @Test
+    fun testStreamFactsByTypeContinuesAfterAFact(): Unit = runBlocking {
+        val (created1, locked, created2) = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
+                input(BOB_SUBJECT_VALUE, "USER_LOCKED", bobPayload),
+                input(CHARLIE_SUBJECT_VALUE, "USER_CREATED", charliePayload),
+            )
+        )
+
+        assertThat(streamToList(typeRequest("USER_CREATED", ReadDirection.Forward, Limit.None, locked.id)))
+            .containsExactly(created2)
+        assertThat(streamToList(typeRequest("USER_CREATED", ReadDirection.Backward, Limit.None, created2.id)))
+            .containsExactly(created1)
+    }
+
+    @Test
+    fun testStreamFactsByTagsContinuesAfterAFact(): Unit = runBlocking {
+        val (alice, bob, charlie) = appendStored(
+            listOf(
+                userInput("ALICE", "Alice", role = "admin", region = "eu"),
+                userInput("BOB", "Bob", role = "user", region = "eu"),
+                userInput("CHARLIE", "Charlie", role = "admin", region = "eu"),
+            )
+        )
+
+        // One tag, and several tags, both continue from the same marker.
+        assertThat(streamToList(tagsRequest(mapOf("role" to "admin"), ReadDirection.Forward, Limit.None, bob.id)))
+            .containsExactly(charlie)
+        assertThat(
+            streamToList(
+                tagsRequest(mapOf("role" to "admin", "region" to "eu"), ReadDirection.Forward, Limit.None, alice.id)
+            )
+        ).containsExactly(charlie)
+    }
+
+    @Test
+    fun testStreamFactsByQueryContinuesAfterAFact(): Unit = runBlocking {
+        val (alice, bob, charlie) = appendStored(
+            listOf(
+                userInput("ALICE", "Alice", role = "admin", region = "eu"),
+                userInput("BOB", "Bob", role = "user", region = "us"),
+                userInput("CHARLIE", "Charlie", role = "admin", region = "us"),
+            )
+        )
+
+        val query = query(
+            FactFilter(subjects = setOf(Subject(ALICE_SUBJECT_VALUE))),
+            FactFilter(tags = mapOf(TagKey("role") to TagValue("admin"))),
+        )
+
+        assertThat(streamToList(query, continueAfter = bob.id)).containsExactly(charlie)
+        assertThat(streamToList(query, continueAfter = alice.id)).containsExactly(charlie)
+        assertThat(streamToList(query, ReadDirection.Backward, continueAfter = charlie.id))
+            .containsExactly(alice)
+    }
+
+    @Test
+    fun testContinuingAStreamCoversEveryFactExactlyOnce(): Unit = runBlocking {
+        // Read a long history in pages, the way a resuming consumer does, and check that the pages
+        // join up without a gap or a repetition, including across the backends' read batches.
+        val facts = appendLargeHistory()
+
+        val pages = mutableListOf<Fact>()
+        var continueAfter: FactId? = null
+        do {
+            val page = streamToList(StreamFactsRequest(testStore, continueAfter, ReadDirection.Forward, Limit.of(300)))
+            pages += page
+            continueAfter = page.lastOrNull()?.id
+        } while (page.isNotEmpty())
+
+        assertThat(pages).containsExactlyElementsOf(facts)
+    }
+
+    @Test
+    fun testStreamFactsByQueryContinuedAfterAnUnknownFact(): Unit = runBlocking {
+        appendStored(userInput("ALICE", "Alice", role = "admin", region = "eu"))
+        val unknown = FactId.generate()
+
+        val result = store.streamFactsByQuery(
+            StreamFactsByQueryRequest(
+                testStore,
+                FactQuery(listOf(FactFilter(tags = mapOf(TagKey("role") to TagValue("admin"))))),
+                unknown,
+                ReadDirection.Forward,
+                Limit.None,
+            )
+        )
+
+        assertThat(result).isEqualTo(StreamFactsByQueryResult.ContinuationNotFound(unknown))
     }
 
     // ===== FactStreamer: streamFactsBySubject =====
@@ -1279,7 +1436,7 @@ abstract class AbstractFactStoreTest {
     @Test
     fun testStreamFactsBySubjectOfNonExistingStore(): Unit = runBlocking {
         val result = store.streamFactsBySubject(
-            StreamFactsBySubjectRequest(nonExistingStore, Subject(ALICE_SUBJECT_VALUE), ReadDirection.Forward, Limit.None)
+            StreamFactsBySubjectRequest(nonExistingStore, Subject(ALICE_SUBJECT_VALUE), null, ReadDirection.Forward, Limit.None)
         )
 
         assertThat(result).isEqualTo(StreamFactsBySubjectResult.StoreNotFound(nonExistingStore))
@@ -1428,7 +1585,7 @@ abstract class AbstractFactStoreTest {
     @Test
     fun testStreamFactsByTypeOfNonExistingStore(): Unit = runBlocking {
         val result = store.streamFactsByType(
-            StreamFactsByTypeRequest(nonExistingStore, FactType("USER_CREATED"), ReadDirection.Forward, Limit.None)
+            StreamFactsByTypeRequest(nonExistingStore, FactType("USER_CREATED"), null, ReadDirection.Forward, Limit.None)
         )
 
         assertThat(result).isEqualTo(StreamFactsByTypeResult.StoreNotFound(nonExistingStore))
@@ -1595,6 +1752,7 @@ abstract class AbstractFactStoreTest {
             StreamFactsByTagsRequest(
                 nonExistingStore,
                 mapOf(TagKey("role") to TagValue("admin")),
+                null,
                 ReadDirection.Forward,
                 Limit.None,
             )
@@ -1624,6 +1782,22 @@ abstract class AbstractFactStoreTest {
 
         val first = withTimeout(10.seconds) { stream.toList() }
         appendStored(userInput("CHARLIE", "Charlie", role = "admin", region = "eu"))
+        val second = withTimeout(10.seconds) { stream.toList() }
+
+        assertThat(first).containsExactly(alice)
+        assertThat(second).isEqualTo(first)
+    }
+
+    @Test
+    fun testStreamFactsBySeveralTagsIsRepeatable(): Unit = runBlocking {
+        val alice = appendStored(userInput("ALICE", "Alice", role = "admin", region = "eu"))
+        appendStored(userInput("BOB", "Bob", role = "user", region = "eu"))
+
+        val stream = (store.streamFactsByTags(
+            tagsRequest(mapOf("role" to "admin", "region" to "eu"), ReadDirection.Forward, Limit.None)
+        ) as StreamFactsByTagsResult.FactStream).facts
+
+        val first = withTimeout(10.seconds) { stream.toList() }
         val second = withTimeout(10.seconds) { stream.toList() }
 
         assertThat(first).containsExactly(alice)
@@ -1833,6 +2007,7 @@ abstract class AbstractFactStoreTest {
             StreamFactsByQueryRequest(
                 nonExistingStore,
                 FactQuery(listOf(FactFilter(types = setOf(FactType("USER_CREATED"))))),
+                null,
                 ReadDirection.Forward,
                 Limit.None,
             )
@@ -1849,6 +2024,7 @@ abstract class AbstractFactStoreTest {
             StreamFactsByQueryRequest(
                 testStore,
                 FactQuery(listOf(FactFilter(types = setOf(FactType("USER_CREATED"))))),
+                null,
                 ReadDirection.Forward,
                 Limit.None,
             )
@@ -1857,6 +2033,38 @@ abstract class AbstractFactStoreTest {
         appendStored(userInput("BOB", "Bob", role = "user", region = "us"))
 
         assertThat(withTimeout(10.seconds) { stream.toList() }).containsExactly(alice)
+    }
+
+    @Test
+    fun testStreamFactsByQueryIsRepeatable(): Unit = runBlocking {
+        val (alice, _, charlie) = appendStored(
+            listOf(
+                userInput("ALICE", "Alice", role = "admin", region = "eu"),
+                userInput("BOB", "Bob", role = "user", region = "us"),
+                input(CHARLIE_SUBJECT_VALUE, "USER_LOCKED", charliePayload, tags = adminInEu),
+            )
+        )
+
+        val stream = (store.streamFactsByQuery(
+            StreamFactsByQueryRequest(
+                testStore,
+                FactQuery(
+                    listOf(
+                        FactFilter(subjects = setOf(Subject(ALICE_SUBJECT_VALUE))),
+                        FactFilter(types = setOf(FactType("USER_LOCKED")), tags = adminInEu),
+                    )
+                ),
+                null,
+                ReadDirection.Forward,
+                Limit.None,
+            )
+        ) as StreamFactsByQueryResult.FactStream).facts
+
+        val first = withTimeout(10.seconds) { stream.toList() }
+        val second = withTimeout(10.seconds) { stream.toList() }
+
+        assertThat(first).containsExactly(alice, charlie)
+        assertThat(second).isEqualTo(first)
     }
 
     @Test
@@ -1896,35 +2104,49 @@ abstract class AbstractFactStoreTest {
         query: FactQuery,
         direction: ReadDirection = ReadDirection.Forward,
         limit: Limit = Limit.None,
+        continueAfter: FactId? = null,
     ): List<Fact> {
-        val request = StreamFactsByQueryRequest(testStore, query, direction, limit)
+        val request = StreamFactsByQueryRequest(testStore, query, continueAfter, direction, limit)
         val stream = (store.streamFactsByQuery(request) as StreamFactsByQueryResult.FactStream).facts
         return withTimeout(10.seconds) { stream.toList() }
     }
 
-    private fun tagsRequest(tags: Map<String, String>, direction: ReadDirection, limit: Limit) =
-        StreamFactsByTagsRequest(
-            storeName = testStore,
-            tags = tags.entries.associate { TagKey(it.key) to TagValue(it.value) },
-            direction = direction,
-            limit = limit,
-        )
+    private fun tagsRequest(
+        tags: Map<String, String>,
+        direction: ReadDirection,
+        limit: Limit,
+        continueAfter: FactId? = null,
+    ) = StreamFactsByTagsRequest(
+        storeName = testStore,
+        tags = tags.entries.associate { TagKey(it.key) to TagValue(it.value) },
+        continueAfter = continueAfter,
+        direction = direction,
+        limit = limit,
+    )
 
     private suspend fun streamToList(request: StreamFactsByTagsRequest): List<Fact> {
         val stream = (store.streamFactsByTags(request) as StreamFactsByTagsResult.FactStream).facts
         return withTimeout(10.seconds) { stream.toList() }
     }
 
-    private fun typeRequest(type: String, direction: ReadDirection, limit: Limit) =
-        StreamFactsByTypeRequest(testStore, FactType(type), direction, limit)
+    private fun typeRequest(
+        type: String,
+        direction: ReadDirection,
+        limit: Limit,
+        continueAfter: FactId? = null,
+    ) = StreamFactsByTypeRequest(testStore, FactType(type), continueAfter, direction, limit)
 
     private suspend fun streamToList(request: StreamFactsByTypeRequest): List<Fact> {
         val stream = (store.streamFactsByType(request) as StreamFactsByTypeResult.FactStream).facts
         return withTimeout(10.seconds) { stream.toList() }
     }
 
-    private fun subjectRequest(subject: String, direction: ReadDirection, limit: Limit) =
-        StreamFactsBySubjectRequest(testStore, Subject(subject), direction, limit)
+    private fun subjectRequest(
+        subject: String,
+        direction: ReadDirection,
+        limit: Limit,
+        continueAfter: FactId? = null,
+    ) = StreamFactsBySubjectRequest(testStore, Subject(subject), continueAfter, direction, limit)
 
     private suspend fun streamToList(request: StreamFactsRequest): List<Fact> {
         val stream = (store.streamFacts(request) as StreamFactsResult.FactStream).facts

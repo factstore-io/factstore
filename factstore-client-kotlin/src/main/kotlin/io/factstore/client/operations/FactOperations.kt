@@ -1,6 +1,7 @@
 package io.factstore.client.operations
 
 import io.factstore.client.exceptions.AppendConditionViolatedException
+import io.factstore.client.exceptions.ContinuationNotFoundException
 import io.factstore.client.exceptions.FactNotFoundException
 import io.factstore.client.exceptions.StoreNotFoundException
 import io.factstore.client.internal.grpcCall
@@ -118,14 +119,17 @@ class FactOperations internal constructor(
         storeName: String,
         direction: ReadDirection,
         limit: Int? = null,
+        continueAfter: String? = null,
     ): Flow<Fact> = stub.streamFacts(streamFactsRequest {
         this.storeName = storeName
         this.direction = direction.toProto()
         limit?.let { this.limit = it }
+        continueAfter?.let { this.continueAfterFactId = it }
     }).toFactFlow { response ->
         when {
             response.hasBatch() -> response.batch.factsList.forEach { emit(it.toDomain()) }
             response.hasStoreNotFound() -> throw StoreNotFoundException(storeName)
+            response.hasContinuationNotFound() -> throw ContinuationNotFoundException(response.continuationNotFound.factId)
             else -> error("Unexpected stream message: $response")
         }
     }
@@ -142,15 +146,18 @@ class FactOperations internal constructor(
         subject: String,
         direction: ReadDirection,
         limit: Int? = null,
+        continueAfter: String? = null,
     ): Flow<Fact> = stub.streamFactsBySubject(streamFactsBySubjectRequest {
         this.storeName = storeName
         this.subject = subject
         this.direction = direction.toProto()
         limit?.let { this.limit = it }
+        continueAfter?.let { this.continueAfterFactId = it }
     }).toFactFlow { response ->
         when {
             response.hasBatch() -> response.batch.factsList.forEach { emit(it.toDomain()) }
             response.hasStoreNotFound() -> throw StoreNotFoundException(storeName)
+            response.hasContinuationNotFound() -> throw ContinuationNotFoundException(response.continuationNotFound.factId)
             else -> error("Unexpected stream message: $response")
         }
     }
@@ -220,15 +227,18 @@ class FactOperations internal constructor(
         type: String,
         direction: ReadDirection,
         limit: Int? = null,
+        continueAfter: String? = null,
     ): Flow<Fact> = stub.streamFactsByType(streamFactsByTypeRequest {
         this.storeName = storeName
         this.type = type
         this.direction = direction.toProto()
         limit?.let { this.limit = it }
+        continueAfter?.let { this.continueAfterFactId = it }
     }).toFactFlow { response ->
         when {
             response.hasBatch() -> response.batch.factsList.forEach { emit(it.toDomain()) }
             response.hasStoreNotFound() -> throw StoreNotFoundException(storeName)
+            response.hasContinuationNotFound() -> throw ContinuationNotFoundException(response.continuationNotFound.factId)
             else -> error("Unexpected stream message: $response")
         }
     }
@@ -247,15 +257,18 @@ class FactOperations internal constructor(
         tags: Map<String, String>,
         direction: ReadDirection,
         limit: Int? = null,
+        continueAfter: String? = null,
     ): Flow<Fact> = stub.streamFactsByTags(streamFactsByTagsRequest {
         this.storeName = storeName
         this.tags.putAll(tags)
         this.direction = direction.toProto()
         limit?.let { this.limit = it }
+        continueAfter?.let { this.continueAfterFactId = it }
     }).toFactFlow { response ->
         when {
             response.hasBatch() -> response.batch.factsList.forEach { emit(it.toDomain()) }
             response.hasStoreNotFound() -> throw StoreNotFoundException(storeName)
+            response.hasContinuationNotFound() -> throw ContinuationNotFoundException(response.continuationNotFound.factId)
             else -> error("Unexpected stream message: $response")
         }
     }
@@ -274,15 +287,18 @@ class FactOperations internal constructor(
         filters: List<FactFilter>,
         direction: ReadDirection,
         limit: Int? = null,
+        continueAfter: String? = null,
     ): Flow<Fact> = stub.streamFactsByQuery(streamFactsByQueryRequest {
         this.storeName = storeName
         this.query = factQuery { this.filters += filters.map { it.toProto() } }
         this.direction = direction.toProto()
         limit?.let { this.limit = it }
+        continueAfter?.let { this.continueAfterFactId = it }
     }).toFactFlow { response ->
         when {
             response.hasBatch() -> response.batch.factsList.forEach { emit(it.toDomain()) }
             response.hasStoreNotFound() -> throw StoreNotFoundException(storeName)
+            response.hasContinuationNotFound() -> throw ContinuationNotFoundException(response.continuationNotFound.factId)
             else -> error("Unexpected stream message: $response")
         }
     }

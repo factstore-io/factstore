@@ -18,6 +18,9 @@ import kotlinx.coroutines.flow.Flow
  *   size limits of a storage transaction, however slowly it is collected.
  *   Cancelling the collection stops the reading.
  *
+ * A stream starts where its [ReadDirection] begins, unless it is given a fact to continue after.
+ * `continueAfter` is exclusive and follows the reading order: read forward it continues with the
+ * facts appended after that one, read backward with those appended before it.
  *
  * For an unbounded stream that follows newly appended facts, see [FactSubscriber].
  *
@@ -77,11 +80,14 @@ interface FactStreamer {
  * Requests all facts of a store.
  *
  * @property storeName the store to stream from
+ * @property continueAfter the fact to continue after, exclusive and in reading order; `null` to
+ *         start where the direction begins
  * @property direction the order in which facts are emitted
  * @property limit the maximum number of facts to emit
  */
 data class StreamFactsRequest(
     val storeName: StoreName,
+    val continueAfter: FactId?,
     val direction: ReadDirection,
     val limit: Limit,
 )
@@ -96,6 +102,9 @@ sealed interface StreamFactsResult {
 
     /** The requested store does not exist. */
     data class StoreNotFound(val storeName: StoreName) : StreamFactsResult
+
+    /** The store holds no fact with the id the stream was to continue after. */
+    data class ContinuationNotFound(val factId: FactId) : StreamFactsResult
 }
 
 /**
@@ -103,12 +112,15 @@ sealed interface StreamFactsResult {
  *
  * @property storeName the store to stream from
  * @property subject the subject whose facts are emitted
+ * @property continueAfter the fact to continue after, exclusive and in reading order; `null` to
+ *         start where the direction begins
  * @property direction the order in which facts are emitted
  * @property limit the maximum number of facts to emit
  */
 data class StreamFactsBySubjectRequest(
     val storeName: StoreName,
     val subject: Subject,
+    val continueAfter: FactId?,
     val direction: ReadDirection,
     val limit: Limit,
 )
@@ -123,6 +135,9 @@ sealed interface StreamFactsBySubjectResult {
 
     /** The requested store does not exist. */
     data class StoreNotFound(val storeName: StoreName) : StreamFactsBySubjectResult
+
+    /** The store holds no fact with the id the stream was to continue after. */
+    data class ContinuationNotFound(val factId: FactId) : StreamFactsBySubjectResult
 }
 
 
@@ -131,12 +146,15 @@ sealed interface StreamFactsBySubjectResult {
  *
  * @property storeName the store to stream from
  * @property type the type whose facts are emitted, matched exactly
+ * @property continueAfter the fact to continue after, exclusive and in reading order; `null` to
+ *         start where the direction begins
  * @property direction the order in which facts are emitted
  * @property limit the maximum number of facts to emit
  */
 data class StreamFactsByTypeRequest(
     val storeName: StoreName,
     val type: FactType,
+    val continueAfter: FactId?,
     val direction: ReadDirection,
     val limit: Limit,
 )
@@ -151,6 +169,9 @@ sealed interface StreamFactsByTypeResult {
 
     /** The requested store does not exist. */
     data class StoreNotFound(val storeName: StoreName) : StreamFactsByTypeResult
+
+    /** The store holds no fact with the id the stream was to continue after. */
+    data class ContinuationNotFound(val factId: FactId) : StreamFactsByTypeResult
 }
 
 /**
@@ -159,6 +180,8 @@ sealed interface StreamFactsByTypeResult {
  * @property storeName the store to stream from
  * @property tags the tags a fact must carry, all of them; at least one, and at most
  *         [FactInput.MAX_TAGS], since no fact carries more
+ * @property continueAfter the fact to continue after, exclusive and in reading order; `null` to
+ *         start where the direction begins
  * @property direction the order in which facts are emitted
  * @property limit the maximum number of facts to emit
  *
@@ -167,6 +190,7 @@ sealed interface StreamFactsByTypeResult {
 data class StreamFactsByTagsRequest(
     val storeName: StoreName,
     val tags: Map<TagKey, TagValue>,
+    val continueAfter: FactId?,
     val direction: ReadDirection,
     val limit: Limit,
 ) {
@@ -186,6 +210,9 @@ sealed interface StreamFactsByTagsResult {
 
     /** The requested store does not exist. */
     data class StoreNotFound(val storeName: StoreName) : StreamFactsByTagsResult
+
+    /** The store holds no fact with the id the stream was to continue after. */
+    data class ContinuationNotFound(val factId: FactId) : StreamFactsByTagsResult
 }
 
 /**
@@ -193,12 +220,15 @@ sealed interface StreamFactsByTagsResult {
  *
  * @property storeName the store to stream from
  * @property query the query a fact must match
+ * @property continueAfter the fact to continue after, exclusive and in reading order; `null` to
+ *         start where the direction begins
  * @property direction the order in which facts are emitted
  * @property limit the maximum number of facts to emit, counted over the whole result
  */
 data class StreamFactsByQueryRequest(
     val storeName: StoreName,
     val query: FactQuery,
+    val continueAfter: FactId?,
     val direction: ReadDirection,
     val limit: Limit,
 )
@@ -213,4 +243,7 @@ sealed interface StreamFactsByQueryResult {
 
     /** The requested store does not exist. */
     data class StoreNotFound(val storeName: StoreName) : StreamFactsByQueryResult
+
+    /** The store holds no fact with the id the stream was to continue after. */
+    data class ContinuationNotFound(val factId: FactId) : StreamFactsByQueryResult
 }

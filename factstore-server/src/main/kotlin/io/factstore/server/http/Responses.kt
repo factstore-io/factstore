@@ -63,26 +63,31 @@ internal fun List<StoreMetadata>.toResponse(): Response = Response.ok(map { it.t
 
 internal fun StreamFactsResult.toResponse(): Flow<FactStreamLineHttp> = when (this) {
     is StreamFactsResult.StoreNotFound -> throw StreamApiException.StoreNotFoundException(storeName)
+    is StreamFactsResult.ContinuationNotFound -> throw StreamApiException.ContinuationNotFoundException(factId)
     is StreamFactsResult.FactStream -> facts.toFactStreamLines()
 }
 
 internal fun StreamFactsBySubjectResult.toResponse(): Flow<FactStreamLineHttp> = when (this) {
     is StreamFactsBySubjectResult.StoreNotFound -> throw StreamApiException.StoreNotFoundException(storeName)
+    is StreamFactsBySubjectResult.ContinuationNotFound -> throw StreamApiException.ContinuationNotFoundException(factId)
     is StreamFactsBySubjectResult.FactStream -> facts.toFactStreamLines()
 }
 
 internal fun StreamFactsByTypeResult.toResponse(): Flow<FactStreamLineHttp> = when (this) {
     is StreamFactsByTypeResult.StoreNotFound -> throw StreamApiException.StoreNotFoundException(storeName)
+    is StreamFactsByTypeResult.ContinuationNotFound -> throw StreamApiException.ContinuationNotFoundException(factId)
     is StreamFactsByTypeResult.FactStream -> facts.toFactStreamLines()
 }
 
 internal fun StreamFactsByQueryResult.toResponse(): Flow<FactStreamLineHttp> = when (this) {
     is StreamFactsByQueryResult.StoreNotFound -> throw StreamApiException.StoreNotFoundException(storeName)
+    is StreamFactsByQueryResult.ContinuationNotFound -> throw StreamApiException.ContinuationNotFoundException(factId)
     is StreamFactsByQueryResult.FactStream -> facts.toFactStreamLines()
 }
 
 internal fun StreamFactsByTagsResult.toResponse(): Flow<FactStreamLineHttp> = when (this) {
     is StreamFactsByTagsResult.StoreNotFound -> throw StreamApiException.StoreNotFoundException(storeName)
+    is StreamFactsByTagsResult.ContinuationNotFound -> throw StreamApiException.ContinuationNotFoundException(factId)
     is StreamFactsByTagsResult.FactStream -> facts.toFactStreamLines()
 }
 
@@ -131,6 +136,7 @@ internal fun ReplayResult.toResponse(): Flow<FactHttp> = when (this) {
 sealed class StreamApiException : RuntimeException() {
     data class FactNotFoundException(val factId: FactId) : StreamApiException()
     data class StoreNotFoundException(val storeName: StoreName) : StreamApiException()
+    data class ContinuationNotFoundException(val factId: FactId) : StreamApiException()
 }
 
 // ─── Facts and stores in their HTTP shape ─────────────────────────────────────

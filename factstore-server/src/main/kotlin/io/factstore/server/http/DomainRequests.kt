@@ -46,11 +46,13 @@ internal fun findByIdRequest(storeName: String, factId: String): FindByIdRequest
 
 internal fun streamFactsRequest(
     storeName: String,
+    continueAfter: String?,
     direction: String?,
     limit: String?,
 ): StreamFactsRequest = parseInput {
     StreamFactsRequest(
         storeName = storeName.asStoreName(),
+        continueAfter = continueAfter.asFactIdOrNull(),
         direction = direction.asReadDirection(),
         limit = limit.asLimit(),
     )
@@ -60,6 +62,7 @@ internal fun StreamFactsByQueryHttpRequest.toDomainRequest(storeName: String): S
     StreamFactsByQueryRequest(
         storeName = storeName.asStoreName(),
         query = FactQuery(filters.map { it.toFactFilter() }),
+        continueAfter = continueAfter?.let { FactId(it) },
         direction = direction.asReadDirection(),
         limit = limit.asLimit(),
     )
@@ -76,6 +79,7 @@ internal fun streamFactsByTagsRequest(
     tags: List<String>,
     from: String?,
     to: String?,
+    continueAfter: String?,
     direction: String?,
     limit: String?,
 ): StreamFactsByTagsRequest = parseInput {
@@ -83,6 +87,7 @@ internal fun streamFactsByTagsRequest(
     StreamFactsByTagsRequest(
         storeName = storeName.asStoreName(),
         tags = tags.asTagFilter(),
+        continueAfter = continueAfter.asFactIdOrNull(),
         direction = direction.asReadDirection(),
         limit = limit.asLimit(),
     )
@@ -91,12 +96,14 @@ internal fun streamFactsByTagsRequest(
 internal fun streamFactsByTypeRequest(
     storeName: String,
     type: String,
+    continueAfter: String?,
     direction: String?,
     limit: String?,
 ): StreamFactsByTypeRequest = parseInput {
     StreamFactsByTypeRequest(
         storeName = storeName.asStoreName(),
         type = type.asFactType(),
+        continueAfter = continueAfter.asFactIdOrNull(),
         direction = direction.asReadDirection(),
         limit = limit.asLimit(),
     )
@@ -105,12 +112,14 @@ internal fun streamFactsByTypeRequest(
 internal fun streamFactsBySubjectRequest(
     storeName: String,
     subject: String,
+    continueAfter: String?,
     direction: String?,
     limit: String?,
 ): StreamFactsBySubjectRequest = parseInput {
     StreamFactsBySubjectRequest(
         storeName = storeName.asStoreName(),
         subject = subject.asSubject(),
+        continueAfter = continueAfter.asFactIdOrNull(),
         direction = direction.asReadDirection(),
         limit = limit.asLimit(),
     )

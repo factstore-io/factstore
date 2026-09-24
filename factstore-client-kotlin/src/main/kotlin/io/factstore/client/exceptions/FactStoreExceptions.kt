@@ -13,6 +13,10 @@ class StoreNameAlreadyExistsException(val storeName: String) :
 class FactNotFoundException(val factId: String) :
     FactStoreException("Fact '$factId' not found")
 
+/** The store holds no fact with the id a stream was to continue after. */
+class ContinuationNotFoundException(val factId: String) :
+    FactStoreException("The fact '$factId' to continue after does not exist")
+
 class AppendConditionViolatedException :
     FactStoreException("Append condition was violated")
 
