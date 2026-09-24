@@ -117,13 +117,26 @@ Response (example):
 }
 ```
 
-### 3. Stream Facts by Subject
+### 3. Stream Facts of a Store
 
-Stream all facts of a specific subject.
+Stream all facts of a store, or those matching a subject, a type or tags.
 
 ```bash
-curl "http://localhost:8080/api/v1/stores/default/subjects/user:123/facts"
+# every fact, newest first
+curl "http://localhost:8080/api/v1/stores/default/facts?direction=backward&limit=10"
+
+# one subject, one type, or facts carrying tags
+curl "http://localhost:8080/api/v1/stores/default/facts?subject=user:123"
+curl "http://localhost:8080/api/v1/stores/default/facts?type=UserRegistered"
+curl "http://localhost:8080/api/v1/stores/default/facts?tag=role%3Duser&tag=region%3Deu"
+
+# combined: one filter, and repeated values match any of them
+curl "http://localhost:8080/api/v1/stores/default/facts?type=UserRegistered&type=UserLocked&tag=role%3Duser"
 ```
+
+`subject` and `type` match **any** of their values, while **all** tags must be carried, so the
+parameters together describe one filter. A query of several filters needs a body, and is
+`POST /facts:query` below.
 
 Reads of several facts respond with NDJSON (`application/x-ndjson`): one JSON object per line,
 each with exactly one property.
@@ -152,8 +165,8 @@ is how a projection resumes after a restart, and how a client reads a long resul
 
 ```bash
 # The first page, and then the next one, continuing after the last fact of the first
-curl "http://localhost:8080/api/v1/stores/default/subjects/user:123/facts?limit=100"
-curl "http://localhost:8080/api/v1/stores/default/subjects/user:123/facts?limit=100&continueAfter=2f4d6f2c-6a3e-4a77-8c6b-0c3f6c2e5e11"
+curl "http://localhost:8080/api/v1/stores/default/facts?subject=user:123&limit=100"
+curl "http://localhost:8080/api/v1/stores/default/facts?subject=user:123&limit=100&continueAfter=2f4d6f2c-6a3e-4a77-8c6b-0c3f6c2e5e11"
 ```
 
 - It is **exclusive**: the named fact is not streamed again.
@@ -163,24 +176,12 @@ curl "http://localhost:8080/api/v1/stores/default/subjects/user:123/facts?limit=
   which is what lets a filtered stream resume from a checkpoint.
 - A fact the store does not hold is answered with `404` and an `ApiError`, before the stream starts.
 
-It works on every read: all facts, by subject, by type, by tags, and in the body of a query.
+### 4. Stream Facts by Query
 
-### 3b. Stream Facts by Type
-
-Stream all facts of one type. The type is matched exactly, so `com.acme.OrderPlaced` is not
-matched by `com.acme`.
-
-```bash
-curl "http://localhost:8080/api/v1/stores/default/types/UserRegistered/facts"
-```
-
-The response is an NDJSON fact stream, as for a subject.
-
-### 3c. Stream Facts by Query
-
-Stream the facts matching a query. A fact matches when it matches **any** of the filters; within a
-filter, the properties that are set must **all** hold, and a property with several values matches
-any of them. A fact matching several filters is streamed once.
+A query matches facts against several filters: a fact matches when it matches **any** of them, and
+a fact matching several is streamed once. Within a filter, the properties that are set must **all**
+hold, and a property with several values matches any of them — the same meaning the parameters of
+`GET /facts` have, which is why one filter needs no body and several do.
 
 ```bash
 curl -X POST "http://localhost:8080/api/v1/stores/default/facts:query" \
@@ -196,21 +197,12 @@ curl -X POST "http://localhost:8080/api/v1/stores/default/facts:query" \
       }'
 ```
 
-The whole request lives in the body, including `direction`, `limit` and `continueAfter`. The colon separates the
-operation from the resource it acts on, so it cannot be mistaken for a sub-resource. The response
-is an NDJSON fact stream, as for a subject.
+The whole request lives in the body, including `direction`, `limit` and `continueAfter`. The colon
+separates the operation from the resource it acts on, so it cannot be mistaken for a sub-resource;
+it is part of the path and must not be percent-encoded. The response is an NDJSON fact stream, as
+above.
 
-### 4. Stream Facts of a Store
-
-Stream all facts of a store, or those carrying the given tags.
-
-```bash
-curl "http://localhost:8080/api/v1/stores/default/facts?direction=backward&limit=10"
-curl "http://localhost:8080/api/v1/stores/default/facts?tag=role%3Duser&tag=region%3Deu"
-```
-
-The response is an NDJSON fact stream, as for a subject. A fact must carry **all** of the given
-tags, so repeating `tag` narrows the result.
+A query holds at most 10 filters, and a filter at most 10 subjects, 10 types and 5 tags.
 
 ### 5. Subscribe to Facts (Server-Sent Events)
 

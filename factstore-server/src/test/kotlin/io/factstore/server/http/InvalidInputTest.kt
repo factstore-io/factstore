@@ -76,7 +76,7 @@ class InvalidInputTest {
 
             case("find a fact by an id that is not a UUID") { given().get("$FACTS/not-a-uuid") },
             case("stream the facts of an invalid subject") {
-                forward().get("$STORES/unknown-store/subjects/order 1/facts")
+                forward().queryParam("subject", "order 1").get(FACTS)
             },
             case("query facts without filters") {
                 jsonToOperation(mapOf("filters" to emptyList<Any>())).post("$FACTS:query")
@@ -95,7 +95,7 @@ class InvalidInputTest {
                 jsonToOperation(mapOf("filters" to listOf(mapOf("types" to listOf("T"))), "limit" to 0)).post("$FACTS:query")
             },
             case("stream the facts of an invalid type") {
-                forward().get("$STORES/unknown-store/types/order created/facts")
+                forward().queryParam("type", "order created").get(FACTS)
             },
             case("stream facts with limit 0") { forward().queryParam("limit", 0).get(FACTS) },
             case("stream facts continued after an id that is not a UUID") {

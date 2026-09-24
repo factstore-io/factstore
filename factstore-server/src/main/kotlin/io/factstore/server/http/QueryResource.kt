@@ -43,59 +43,47 @@ class QueryResource(
     ): Flow<FactStreamLineHttp> =
         request.toDomainRequest(storeName).publishTo(store).toResponse()
 
-    @GET
-    @Produces(APPLICATION_NDJSON)
-    @RestStreamElementType(APPLICATION_JSON)
-    @Path("/subjects/{subject}/facts")
-    @Operation(
-        summary = "Stream the facts of a subject",
-        description = FACT_STREAM_DESCRIPTION,
-    )
-    suspend fun streamFactsBySubject(
-        @PathParam("storeName") storeName: String,
-        @PathParam("subject") subject: String,
-        @QueryParam("continueAfter") @Parameter(description = "Continue after this fact, exclusive and in reading order.", schema = Schema(type = SchemaType.STRING, format = "uuid")) continueAfter: String?,
-        @QueryParam("direction") @Parameter(schema = Schema(enumeration = ["forward", "backward"], defaultValue = "forward")) direction: String?,
-        @QueryParam("limit") @Parameter(schema = Schema(type = SchemaType.INTEGER, minimum = "1")) limit: String?,
-    ): Flow<FactStreamLineHttp> =
-        streamFactsBySubjectRequest(storeName, subject, continueAfter, direction, limit).publishTo(store).toResponse()
 
-    @GET
-    @Produces(APPLICATION_NDJSON)
-    @RestStreamElementType(APPLICATION_JSON)
-    @Path("/types/{type}/facts")
-    @Operation(
-        summary = "Stream the facts of one type, matched exactly",
-        description = FACT_STREAM_DESCRIPTION,
-    )
-    suspend fun streamFactsByType(
-        @PathParam("storeName") storeName: String,
-        @PathParam("type") type: String,
-        @QueryParam("continueAfter") @Parameter(description = "Continue after this fact, exclusive and in reading order.", schema = Schema(type = SchemaType.STRING, format = "uuid")) continueAfter: String?,
-        @QueryParam("direction") @Parameter(schema = Schema(enumeration = ["forward", "backward"], defaultValue = "forward")) direction: String?,
-        @QueryParam("limit") @Parameter(schema = Schema(type = SchemaType.INTEGER, minimum = "1")) limit: String?,
-    ): Flow<FactStreamLineHttp> =
-        streamFactsByTypeRequest(storeName, type, continueAfter, direction, limit).publishTo(store).toResponse()
 
     @GET
     @Produces(APPLICATION_NDJSON)
     @RestStreamElementType(APPLICATION_JSON)
     @Path("/facts")
     @Operation(
-        summary = "Stream the facts of a store, optionally filtered by tags",
+        summary = "Stream the facts of a store, optionally filtered by subject, type and tags",
         description = FACT_STREAM_DESCRIPTION,
     )
     suspend fun streamFacts(
         @PathParam("storeName") storeName: String,
+        @QueryParam("subject") @Parameter(description = "A subject to match. Repeatable: a fact matches any of them.") subjects: List<String> = emptyList(),
+        @QueryParam("type") @Parameter(description = "A type to match, exactly. Repeatable: a fact matches any of them.") types: List<String> = emptyList(),
+        @QueryParam("tag") @Parameter(description = "A tag the facts must carry, as key=value. Repeatable: a fact must carry all of them.") tags: List<String> = emptyList(),
         @QueryParam("continueAfter") @Parameter(description = "Continue after this fact, exclusive and in reading order.", schema = Schema(type = SchemaType.STRING, format = "uuid")) continueAfter: String?,
         @QueryParam("direction") @Parameter(schema = Schema(enumeration = ["forward", "backward"], defaultValue = "forward")) direction: String?,
         @QueryParam("limit") @Parameter(schema = Schema(type = SchemaType.INTEGER, minimum = "1")) limit: String?,
-        @QueryParam("tag") @Parameter(description = "A tag the facts must carry, as key=value. Repeatable.") tags: List<String> = emptyList(),
     ): Flow<FactStreamLineHttp> =
-        if (tags.isEmpty()) {
-            streamFactsRequest(storeName, continueAfter, direction, limit).publishTo(store).toResponse()
-        } else {
-            streamFactsByTagsRequest(storeName, tags, continueAfter, direction, limit).publishTo(store).toResponse()
+        // The parameters describe one filter, and the cheapest read that can serve it is chosen:
+        // a single subject, a single type or tags alone each have an index of their own, while
+        // anything combined is a query of one filter.
+        when {
+            subjects.isEmpty() && types.isEmpty() && tags.isEmpty() ->
+                streamFactsRequest(storeName, continueAfter, direction, limit).publishTo(store).toResponse()
+
+            subjects.size == 1 && types.isEmpty() && tags.isEmpty() ->
+                streamFactsBySubjectRequest(storeName, subjects.single(), continueAfter, direction, limit)
+                    .publishTo(store).toResponse()
+
+            types.size == 1 && subjects.isEmpty() && tags.isEmpty() ->
+                streamFactsByTypeRequest(storeName, types.single(), continueAfter, direction, limit)
+                    .publishTo(store).toResponse()
+
+            subjects.isEmpty() && types.isEmpty() ->
+                streamFactsByTagsRequest(storeName, tags, continueAfter, direction, limit)
+                    .publishTo(store).toResponse()
+
+            else ->
+                streamFactsByFilterRequest(storeName, subjects, types, tags, continueAfter, direction, limit)
+                    .publishTo(store).toResponse()
         }
 
     private companion object {

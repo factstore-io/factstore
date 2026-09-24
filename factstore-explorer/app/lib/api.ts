@@ -113,13 +113,8 @@ export async function queryFacts(storeName: string, opts: QueryOptions): Promise
   if (opts.limit && opts.limit > 0) params.set("limit", String(opts.limit))
   if (opts.direction) params.set("direction", opts.direction)
 
-  if (opts.mode === "subject" && opts.subject) {
-    return fetchFactStream(`${BASE_URL}/v1/stores/${encodeURIComponent(storeName)}/subjects/${encodeURIComponent(opts.subject)}/facts?${params}`)
-  }
-
-  if (opts.mode === "type" && opts.type) {
-    return fetchFactStream(`${BASE_URL}/v1/stores/${encodeURIComponent(storeName)}/types/${encodeURIComponent(opts.type)}/facts?${params}`)
-  }
+  if (opts.mode === "subject" && opts.subject) params.set("subject", opts.subject)
+  if (opts.mode === "type" && opts.type) params.set("type", opts.type)
 
   return fetchFactStream(`${BASE_URL}/v1/stores/${encodeURIComponent(storeName)}/facts?${params}`)
 }

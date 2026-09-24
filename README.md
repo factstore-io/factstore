@@ -49,8 +49,8 @@ That returns the id of the fact you just appended:
 Now read it back — either by its subject, or by any tag it carries:
 
 ```bash
-# By subject. Subjects usually contain slashes, so URL-encode them ("/" -> %2F)
-curl "http://localhost:8080/api/v1/stores/orders/subjects/order%2F12345/facts"
+# By subject
+curl "http://localhost:8080/api/v1/stores/orders/facts?subject=order/12345"
 
 # By tag, in key=value form ("=" -> %3D)
 curl "http://localhost:8080/api/v1/stores/orders/facts?tag=region%3Deu"

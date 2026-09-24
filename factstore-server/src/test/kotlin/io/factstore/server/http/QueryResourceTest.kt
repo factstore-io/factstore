@@ -46,15 +46,15 @@ class QueryResourceTest {
 
     @Test
     @Order(2)
-    @DisplayName("GET /v1/stores/{name}/subjects/{subject}/facts - Should stream the subject's facts as NDJSON")
+    @DisplayName("GET /v1/stores/{name}/facts?subject - Should stream the subject's facts as NDJSON")
     fun streamFactsBySubject() {
         val body = given()
             .pathParam("storeName", storeName)
-            .pathParam("subject", subject)
+            .queryParam("subject", subject)
             .queryParam("limit", 10)
             .queryParam("direction", "forward")
             .`when`()
-            .get("/api/v1/stores/{storeName}/subjects/{subject}/facts")
+            .get("/api/v1/stores/{storeName}/facts")
             .then()
             .statusCode(200)
             .contentType(NDJSON)
@@ -68,13 +68,13 @@ class QueryResourceTest {
 
     @Test
     @Order(2)
-    @DisplayName("GET /v1/stores/{name}/subjects/{subject}/facts - Should return 404 ApiError when the store does not exist")
+    @DisplayName("GET /v1/stores/{name}/facts?subject - Should return 404 ApiError when the store does not exist")
     fun streamFactsBySubjectOfMissingStore() {
         val error = given()
-            .pathParam("subject", subject)
+            .queryParam("subject", subject)
             .queryParam("direction", "forward")
             .`when`()
-            .get("/api/v1/stores/missing-store/subjects/{subject}/facts")
+            .get("/api/v1/stores/missing-store/facts")
             .then()
             .statusCode(404)
             .contentType(JSON)
@@ -85,14 +85,14 @@ class QueryResourceTest {
 
     @Test
     @Order(2)
-    @DisplayName("GET /v1/stores/{name}/types/{type}/facts - Should stream the type's facts as NDJSON")
+    @DisplayName("GET /v1/stores/{name}/facts?type - Should stream the type's facts as NDJSON")
     fun streamFactsByType() {
         val body = given()
             .pathParam("storeName", storeName)
-            .pathParam("type", "test.type")
+            .queryParam("type", "test.type")
             .queryParam("direction", "forward")
             .`when`()
-            .get("/api/v1/stores/{storeName}/types/{type}/facts")
+            .get("/api/v1/stores/{storeName}/facts")
             .then()
             .statusCode(200)
             .contentType(NDJSON)
@@ -195,6 +195,24 @@ class QueryResourceTest {
 
         assertThat(error.reason).isEqualTo(Reason.NotFound)
         assertThat(error.details).containsEntry("id", unknown.toString())
+    }
+
+    @Test
+    @Order(4)
+    @DisplayName("GET /v1/stores/{name}/facts - Should combine subject, type and tags into one filter")
+    fun streamFactsByFilter() {
+        val store = "filter-test-store"
+        seedFact("sub-1", tags = mapOf("region" to "eu"), store = store)
+        seedFact("sub-2", tags = mapOf("region" to "eu"), store = store)
+
+        // Subject AND type AND tag: only the first fact satisfies all three.
+        val lines = streamFacts(
+            store,
+            mapOf("subject" to "sub-1", "type" to "test.type", "tag" to "region=eu"),
+        )
+
+        assertThat(lines.dropLast(1)).hasSize(1)
+        assertThat(lines[0]["fact"]["subject"].asText()).isEqualTo("sub-1")
     }
 
     private fun streamFacts(store: String, params: Map<String, String>): List<JsonNode> {

@@ -86,6 +86,38 @@ internal fun streamFactsByTagsRequest(
     )
 }
 
+/**
+ * Requests the facts matching one filter, given as repeated query parameters.
+ *
+ * Several subjects or types match any of them, while every tag must be carried — the meaning of a
+ * single [FactFilter]. A query of several filters needs a body, and is `POST /facts:query`.
+ */
+internal fun streamFactsByFilterRequest(
+    storeName: String,
+    subjects: List<String>,
+    types: List<String>,
+    tags: List<String>,
+    continueAfter: String?,
+    direction: String?,
+    limit: String?,
+): StreamFactsByQueryRequest = parseInput {
+    StreamFactsByQueryRequest(
+        storeName = storeName.asStoreName(),
+        query = FactQuery(
+            listOf(
+                FactFilter(
+                    subjects = subjects.map { it.asSubject() }.toSet(),
+                    types = types.map { it.asFactType() }.toSet(),
+                    tags = tags.asTagFilter(),
+                )
+            )
+        ),
+        continueAfter = continueAfter.asFactIdOrNull(),
+        direction = direction.asReadDirection(),
+        limit = limit.asLimit(),
+    )
+}
+
 internal fun streamFactsByTypeRequest(
     storeName: String,
     type: String,
