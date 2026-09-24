@@ -145,6 +145,26 @@ each with exactly one property.
 The facts are those stored when the request is made: facts appended while the stream is
 being read are not included.
 
+#### Continuing a stream
+
+`continueAfter` names the last fact a consumer processed, and the stream continues after it. This
+is how a projection resumes after a restart, and how a client reads a long result page by page:
+
+```bash
+# The first page, and then the next one, continuing after the last fact of the first
+curl "http://localhost:8080/api/v1/stores/default/subjects/user:123/facts?limit=100"
+curl "http://localhost:8080/api/v1/stores/default/subjects/user:123/facts?limit=100&continueAfter=2f4d6f2c-6a3e-4a77-8c6b-0c3f6c2e5e11"
+```
+
+- It is **exclusive**: the named fact is not streamed again.
+- It follows the **reading order**: forward it continues with the facts appended after it, backward
+  with those appended before it.
+- **Any fact of the store** may be named, even one the stream does not emit — it marks a position,
+  which is what lets a filtered stream resume from a checkpoint.
+- A fact the store does not hold is answered with `404` and an `ApiError`, before the stream starts.
+
+It works on every read: all facts, by subject, by type, by tags, and in the body of a query.
+
 ### 3b. Stream Facts by Type
 
 Stream all facts of one type. The type is matched exactly, so `com.acme.OrderPlaced` is not
@@ -171,11 +191,12 @@ curl -X POST "http://localhost:8080/api/v1/stores/default/facts:query" \
           { "types": ["UserRegistered", "UserLocked"], "tags": { "role": "user" } }
         ],
         "direction": "backward",
-        "limit": 100
+        "limit": 100,
+        "continueAfter": "2f4d6f2c-6a3e-4a77-8c6b-0c3f6c2e5e11"
       }'
 ```
 
-The whole request lives in the body, including `direction` and `limit`. The colon separates the
+The whole request lives in the body, including `direction`, `limit` and `continueAfter`. The colon separates the
 operation from the resource it acts on, so it cannot be mistaken for a sub-resource. The response
 is an NDJSON fact stream, as for a subject.
 
@@ -473,6 +494,10 @@ was sent, and with an error status if it fails part way.
 
 `direction` is required on every read: `READ_DIRECTION_FORWARD` (oldest first) or
 `READ_DIRECTION_BACKWARD` (newest first). `limit` is optional and must be positive.
+
+`continue_after_fact_id` continues a stream after a fact that was already processed: exclusive, in
+reading order, and any fact of the store may be named. A fact the store does not hold is reported
+as a single `continuation_not_found` message.
 
 #### FindFactsByTags
 

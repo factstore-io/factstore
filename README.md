@@ -65,6 +65,13 @@ is complete:
 {"end":{"count":1}}
 ```
 
+A stream can also continue after a fact that was already processed, which is how a projection
+resumes after a restart:
+
+```bash
+curl "http://localhost:8080/api/v1/stores/orders/facts?continueAfter=5dd94f99-e094-449b-b957-69a8354ee9a1"
+```
+
 Reading by *subject* is classic stream-per-entity event sourcing; reading by *tag* cuts
 across subjects. Being able to do both against the same facts is the point of FactStore —
 see [Why FactStore?](#-why-factstore) below.

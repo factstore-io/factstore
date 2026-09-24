@@ -249,6 +249,33 @@ class GrpcFactServiceTest {
         assertThat(responses).isEmpty()
     }
 
+    @Test
+    @Order(13)
+    @DisplayName("StreamFactsBySubject - should continue after a fact, and report an unknown one")
+    fun streamFactsBySubjectContinued(): Unit = runBlocking {
+        // Continuing after the only fact of the subject leaves nothing to stream.
+        val responses = factService.streamFactsBySubject(streamFactsBySubjectRequest {
+            storeName = STORE
+            subject = SUBJECT
+            direction = ReadDirection.READ_DIRECTION_FORWARD
+            continueAfterFactId = seedFactId
+        }).toList()
+
+        assertThat(responses.flatMap { it.batch.factsList }).isEmpty()
+
+        val unknown = UUID.randomUUID().toString()
+        val missing = factService.streamFactsBySubject(streamFactsBySubjectRequest {
+            storeName = STORE
+            subject = SUBJECT
+            direction = ReadDirection.READ_DIRECTION_FORWARD
+            continueAfterFactId = unknown
+        }).toList()
+
+        assertThat(missing).hasSize(1)
+        assertThat(missing.single().hasContinuationNotFound()).isTrue()
+        assertThat(missing.single().continuationNotFound.factId).isEqualTo(unknown)
+    }
+
     // ─── StreamFactsByType ────────────────────────────────────────────────────
 
     @Test

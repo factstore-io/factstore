@@ -113,6 +113,11 @@ class GrpcInvalidInputTest {
         case("stream the facts of a type without a direction") {
             facts.streamFactsByType(streamFactsByTypeRequest { storeName = STORE; type = "T" }).first()
         },
+        case("stream facts continued after an id that is not a UUID") {
+            facts.streamFacts(streamFactsRequest {
+                storeName = STORE; direction = FORWARD; continueAfterFactId = "nope"
+            }).first()
+        },
         case("stream facts without a direction") {
             facts.streamFacts(streamFactsRequest { storeName = STORE }).first()
         },

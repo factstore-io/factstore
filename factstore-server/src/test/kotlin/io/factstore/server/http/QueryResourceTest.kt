@@ -153,6 +153,64 @@ class QueryResourceTest {
     }
 
     @Test
+    @DisplayName("GET /v1/stores/{name}/facts - Should continue after a fact, in both directions")
+    fun streamFactsContinued() {
+        // Its own store: the ordered tests above assert on the contents of theirs.
+        val store = "continuation-test-store"
+        val first = seedFact("sub-1", store = store)
+        val second = seedFact("sub-2", store = store)
+
+        // Continuing after the newest fact leaves nothing to stream.
+        val afterNewest = streamFacts(store, mapOf("continueAfter" to second.toString()))
+        assertThat(afterNewest).hasSize(1)
+        assertThat(afterNewest.single()["end"]["count"].asLong()).isZero()
+
+        // Forward from the first fact: the second one follows it.
+        val forward = streamFacts(store, mapOf("continueAfter" to first.toString()))
+        assertThat(forward.dropLast(1).map { it["fact"]["id"].asText() }).containsExactly(second.toString())
+
+        // Backward from the second: the first one comes before it.
+        val backward = streamFacts(
+            store,
+            mapOf("continueAfter" to second.toString(), "direction" to "backward"),
+        )
+        assertThat(backward.dropLast(1).map { it["fact"]["id"].asText() }).containsExactly(first.toString())
+    }
+
+    @Test
+    @DisplayName("GET /v1/stores/{name}/facts - Should return 404 ApiError when the continuation does not exist")
+    fun streamFactsContinuedAfterUnknownFact() {
+        val store = "continuation-test-store"
+        seedFact("sub-1", store = store)
+        val unknown = UUID.randomUUID()
+
+        val error = given()
+            .queryParam("continueAfter", unknown.toString())
+            .`when`()
+            .get("/api/v1/stores/$store/facts")
+            .then()
+            .statusCode(404)
+            .contentType(JSON)
+            .extract().`as`(ApiError::class.java)
+
+        assertThat(error.reason).isEqualTo(Reason.NotFound)
+        assertThat(error.details).containsEntry("id", unknown.toString())
+    }
+
+    private fun streamFacts(store: String, params: Map<String, String>): List<JsonNode> {
+        val request = given()
+        params.forEach { (name, value) -> request.queryParam(name, value) }
+        return ndjsonLines(
+            request.`when`()
+                .get("/api/v1/stores/$store/facts")
+                .then()
+                .statusCode(200)
+                .contentType(NDJSON)
+                .extract().asString()
+        )
+    }
+
+    @Test
     @Order(3)
     @DisplayName("GET /v1/stores/{name}/facts - Should return 400 ApiError when tags and time range are combined")
     fun findFactsConflict() {
@@ -260,9 +318,9 @@ class QueryResourceTest {
 
     // Helper to seed data via the already tested Store and Append APIs.
     // Returns the server-assigned fact id.
-    private fun seedFact(sub: String, tags: Map<String, String> = emptyMap()): UUID {
+    private fun seedFact(sub: String, tags: Map<String, String> = emptyMap(), store: String = storeName): UUID {
         // Ensure store exists
-        given().contentType(JSON).body(mapOf("name" to storeName)).post("/api/v1/stores")
+        given().contentType(JSON).body(mapOf("name" to store)).post("/api/v1/stores")
 
         val base64Data = Base64.getEncoder().encodeToString("test-payload".toByteArray())
         val appendRequest = mapOf(
@@ -276,10 +334,9 @@ class QueryResourceTest {
             )
         )
         val appended = given()
-            .pathParam("storeName", storeName)
             .contentType(JSON)
             .body(appendRequest)
-            .post("/api/v1/stores/{storeName}/facts")
+            .post("/api/v1/stores/$store/facts")
             .then().statusCode(200)
             .extract().`as`(AppendedHttp::class.java)
         return appended.factIds.single()

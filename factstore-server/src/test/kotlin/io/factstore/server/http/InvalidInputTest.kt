@@ -99,6 +99,17 @@ class InvalidInputTest {
                 forward().get("$STORES/unknown-store/types/order created/facts")
             },
             case("stream facts with limit 0") { forward().queryParam("limit", 0).get(FACTS) },
+            case("stream facts continued after an id that is not a UUID") {
+                forward().queryParam("continueAfter", "not-a-uuid").get(FACTS)
+            },
+            case("query facts continued after an id that is not a UUID") {
+                jsonToOperation(
+                    mapOf(
+                        "filters" to listOf(mapOf("types" to listOf("T"))),
+                        "continueAfter" to "not-a-uuid",
+                    )
+                ).post("$FACTS:query")
+            },
             case("stream facts in an unknown direction") { given().queryParam("direction", "sideways").get(FACTS) },
             case("stream facts from an unparseable instant") { forward().queryParam("from", "yesterday").get(FACTS) },
             case("stream facts by a tag without '='") { forward().queryParam("tag", "abc").get(FACTS) },
