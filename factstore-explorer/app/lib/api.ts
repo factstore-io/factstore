@@ -78,9 +78,7 @@ export interface FactFilter {
 }
 
 export interface QueryOptions {
-  mode: "timeRange" | "tags" | "subject" | "type" | "query"
-  from?: string
-  to?: string
+  mode: "all" | "tags" | "subject" | "type" | "query"
   tags?: string[]
   subject?: string
   type?: string
@@ -108,10 +106,7 @@ export async function queryFacts(storeName: string, opts: QueryOptions): Promise
 
   const params = new URLSearchParams()
 
-  if (opts.mode === "timeRange") {
-    if (opts.from) params.set("from", opts.from)
-    if (opts.to) params.set("to", opts.to)
-  } else if (opts.mode === "tags" && opts.tags) {
+  if (opts.mode === "tags" && opts.tags) {
     for (const tag of opts.tags) params.append("tag", tag)
   }
 

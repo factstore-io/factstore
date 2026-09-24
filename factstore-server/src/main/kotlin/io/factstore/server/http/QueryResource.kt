@@ -82,7 +82,7 @@ class QueryResource(
     @RestStreamElementType(APPLICATION_JSON)
     @Path("/facts")
     @Operation(
-        summary = "Stream the facts of a store, optionally filtered by tags or a time range",
+        summary = "Stream the facts of a store, optionally filtered by tags",
         description = FACT_STREAM_DESCRIPTION,
     )
     suspend fun streamFacts(
@@ -90,20 +90,12 @@ class QueryResource(
         @QueryParam("continueAfter") @Parameter(description = "Continue after this fact, exclusive and in reading order.", schema = Schema(type = SchemaType.STRING, format = "uuid")) continueAfter: String?,
         @QueryParam("direction") @Parameter(schema = Schema(enumeration = ["forward", "backward"], defaultValue = "forward")) direction: String?,
         @QueryParam("limit") @Parameter(schema = Schema(type = SchemaType.INTEGER, minimum = "1")) limit: String?,
-        @QueryParam("from") @Parameter(schema = Schema(type = SchemaType.STRING, format = "date-time")) from: String?,
-        @QueryParam("to") @Parameter(schema = Schema(type = SchemaType.STRING, format = "date-time")) to: String?,
         @QueryParam("tag") @Parameter(description = "A tag the facts must carry, as key=value. Repeatable.") tags: List<String> = emptyList(),
     ): Flow<FactStreamLineHttp> =
-        when {
-            tags.isNotEmpty() ->
-                streamFactsByTagsRequest(storeName, tags, from, to, continueAfter, direction, limit)
-                    .publishTo(store).toResponse()
-
-            from != null || to != null ->
-                findInTimeRangeRequest(storeName, from, to, limit, direction).publishTo(store).toResponse()
-
-            else ->
-                streamFactsRequest(storeName, continueAfter, direction, limit).publishTo(store).toResponse()
+        if (tags.isEmpty()) {
+            streamFactsRequest(storeName, continueAfter, direction, limit).publishTo(store).toResponse()
+        } else {
+            streamFactsByTagsRequest(storeName, tags, continueAfter, direction, limit).publishTo(store).toResponse()
         }
 
     private companion object {

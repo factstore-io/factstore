@@ -25,11 +25,4 @@ interface FactFinder {
      * @return [ExistsByIdResult.Exists], [ExistsByIdResult.DoesNotExist], or [ExistsByIdResult.StoreNotFound]
      */
     suspend fun existsById(request: ExistsByIdRequest): ExistsByIdResult
-
-    /**
-     * Retrieves facts appended within a specific time window.
-     *
-     * @return [FindInTimeRangeResult.Found] or [FindInTimeRangeResult.StoreNotFound]
-     */
-    suspend fun findInTimeRange(request: FindInTimeRangeRequest): FindInTimeRangeResult
 }

@@ -30,9 +30,6 @@ internal suspend fun StreamFactsByTagsRequest.publishTo(factStore: FactStore): S
 internal suspend fun StreamFactsByQueryRequest.publishTo(factStore: FactStore): StreamFactsByQueryResult =
     factStore.streamFactsByQuery(this)
 
-internal suspend fun FindInTimeRangeRequest.publishTo(factStore: FactStore): FindInTimeRangeResult =
-    factStore.findInTimeRange(this)
-
 internal suspend fun SubscribeRequest.publishTo(factStore: FactStore): SubscribeResult =
     factStore.subscribe(this)
 

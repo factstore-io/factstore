@@ -211,25 +211,6 @@ class QueryResourceTest {
     }
 
     @Test
-    @Order(3)
-    @DisplayName("GET /v1/stores/{name}/facts - Should return 400 ApiError when tags and time range are combined")
-    fun findFactsConflict() {
-        val error = given()
-            .pathParam("storeName", storeName)
-            .queryParam("tag", "category=books")
-            .queryParam("from", "2024-01-01T00:00:00Z")
-            .queryParam("direction", "forward")
-            .`when`()
-            .get("/api/v1/stores/{storeName}/facts")
-            .then()
-            .statusCode(400)
-            .extract().`as`(ApiError::class.java)
-
-        assertThat(error.reason).isEqualTo(Reason.InvalidInput)
-        assertThat(error.message).contains("Combining tag filters with time range is not yet supported")
-    }
-
-    @Test
     @Order(4)
     @DisplayName("GET /v1/stores/{name}/facts - Should stream facts filtered by tags as NDJSON")
     fun streamFactsByTags() {

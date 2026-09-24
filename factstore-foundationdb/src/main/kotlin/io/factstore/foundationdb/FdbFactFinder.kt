@@ -11,8 +11,6 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
 
     private val factPositionSubspace = fdbFactStore.context.factPositionIndexSubspace
 
-    private val createdAtIndexSubspace = fdbFactStore.context.createdAtIndexSubspace
-
     override suspend fun findById(request: FindByIdRequest): FindByIdResult =
         db.readAsync { tr ->
             with(tr) {
@@ -42,38 +40,6 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
                 }
             }
         }.await()
-
-    override suspend fun findInTimeRange(request: FindInTimeRangeRequest): FindInTimeRangeResult {
-        val start = request.timeRange.start
-        val end = request.timeRange.end
-
-        return db.readAsync { tr ->
-            with(tr) {
-                fdbFactStore.context.lookUpStoreIdByName(request.storeName).thenCompose { storeId ->
-                    if (storeId == null) {
-                        CompletableFuture.completedFuture(FindInTimeRangeResult.StoreNotFound(request.storeName))
-                    } else {
-                        val storeRange = createdAtIndexSubspace.range(storeId)
-                        val begin = start?.let { createdAtIndexSubspace.getKey(storeId, it) } ?: storeRange.begin
-                        val endKey = end?.let { createdAtIndexSubspace.getKey(storeId, it) } ?: storeRange.end
-
-                        tr.getRange(begin, endKey, request.limit.toFdbLimit(), request.direction.isReverse())
-                            .asList().thenCompose { kvs ->
-                                val factFutures: List<CompletableFuture<FdbFact?>> = kvs.map { kv ->
-                                    val factPosition = createdAtIndexSubspace.unpackPosition(kv.key)
-                                    tr.run { factPosition.lookupFact(storeId) }
-                                }
-
-                                CompletableFuture.allOf(*factFutures.toTypedArray()).thenApply {
-                                    val facts = factFutures.mapNotNull { it.resultNow()?.fact }
-                                    FindInTimeRangeResult.Found(facts)
-                                }
-                            }
-                    }
-                }
-            }
-        }.await()
-    }
 
 
 

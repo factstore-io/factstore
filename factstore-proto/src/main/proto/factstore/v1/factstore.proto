@@ -235,9 +235,6 @@ service FactService {
   // semantics mirror StreamFacts.
   rpc StreamFactsByQuery(StreamFactsByQueryRequest) returns (stream StreamFactsByQueryResponse);
 
-  // Find facts within a half-open time range [from, to).
-  rpc FindFactsInTimeRange(FindFactsInTimeRangeRequest) returns (FindFactsInTimeRangeResponse);
-
   // Open a live subscription: emit existing facts from the start position and then
   // continue emitting new facts as they are appended. The stream never completes on
   // its own. Facts are delivered in batches for higher throughput. Pre-stream errors
@@ -324,23 +321,6 @@ message FactExistsResponse {
 }
 
 message FactPresent {}
-
-// -- FindFactsInTimeRange --
-
-message FindFactsInTimeRangeRequest {
-  string store_name = 1;
-  optional google.protobuf.Timestamp from = 2; // inclusive; absent = no lower bound
-  optional google.protobuf.Timestamp to = 3;   // exclusive; absent = no upper bound
-  optional int32 limit = 4;
-  ReadDirection direction = 5;
-}
-
-message FindFactsInTimeRangeResponse {
-  oneof outcome {
-    FactsFound found = 1;
-    StoreNotFound store_not_found = 2;
-  }
-}
 
 // -- Streams --
 

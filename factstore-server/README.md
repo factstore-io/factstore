@@ -202,17 +202,15 @@ is an NDJSON fact stream, as for a subject.
 
 ### 4. Stream Facts of a Store
 
-Stream all facts of a store, or those carrying the given tags, or those appended in a time range.
+Stream all facts of a store, or those carrying the given tags.
 
 ```bash
 curl "http://localhost:8080/api/v1/stores/default/facts?direction=backward&limit=10"
 curl "http://localhost:8080/api/v1/stores/default/facts?tag=role%3Duser&tag=region%3Deu"
-curl "http://localhost:8080/api/v1/stores/default/facts?from=2026-01-01T00:00:00Z&to=2026-02-01T00:00:00Z"
 ```
 
 The response is an NDJSON fact stream, as for a subject. A fact must carry **all** of the given
-tags, so repeating `tag` narrows the result. In a time range, `from` is inclusive and `to`
-exclusive; either may be omitted. Tags and a time range cannot be combined yet.
+tags, so repeating `tag` narrows the result.
 
 ### 5. Subscribe to Facts (Server-Sent Events)
 
@@ -528,21 +526,6 @@ grpcurl -plaintext \
 ```
 
 Outcomes: `found` · `store_not_found`
-
-#### FindFactsInTimeRange
-
-```bash
-grpcurl -plaintext \
-  -d '{
-    "store_name": "orders",
-    "from": "2026-01-01T00:00:00Z",
-    "to":   "2026-02-01T00:00:00Z",
-    "direction": "READ_DIRECTION_FORWARD"
-  }' \
-  localhost:8080 io.factstore.server.grpc.FactService/FindFactsInTimeRange
-```
-
-Both `from` (inclusive) and `to` (exclusive) are optional. Omitting both returns all facts. Outcomes: `found` · `store_not_found`
 
 #### SubscribeFacts
 

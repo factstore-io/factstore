@@ -86,11 +86,6 @@ internal fun StreamFactsByTagsResult.toResponse(): Flow<FactStreamLineHttp> = wh
     is StreamFactsByTagsResult.FactStream -> facts.toFactStreamLines()
 }
 
-internal fun FindInTimeRangeResult.toResponse(): Flow<FactStreamLineHttp> = when (this) {
-    is FindInTimeRangeResult.StoreNotFound -> throw StreamApiException.StoreNotFoundException(storeName)
-    is FindInTimeRangeResult.Found -> facts.asFlow().toFactStreamLines()
-}
-
 /**
  * Renders facts as the lines of an NDJSON fact stream: a `fact` line per fact, then an `end`
  * line, or an `error` line in place of the `end` line if reading the facts fails.

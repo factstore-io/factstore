@@ -73,13 +73,10 @@ internal fun FactFilterHttp.toFactFilter(): FactFilter = FactFilter(
 internal fun streamFactsByTagsRequest(
     storeName: String,
     tags: List<String>,
-    from: String?,
-    to: String?,
     continueAfter: String?,
     direction: String?,
     limit: String?,
 ): StreamFactsByTagsRequest = parseInput {
-    require(from == null && to == null) { "Combining tag filters with time range is not yet supported." }
     StreamFactsByTagsRequest(
         storeName = storeName.asStoreName(),
         tags = tags.asTagFilter(),
@@ -118,21 +115,6 @@ internal fun streamFactsBySubjectRequest(
         continueAfter = continueAfter.asFactIdOrNull(),
         direction = direction.asReadDirection(),
         limit = limit.asLimit(),
-    )
-}
-
-internal fun findInTimeRangeRequest(
-    storeName: String,
-    from: String?,
-    to: String?,
-    limit: String?,
-    direction: String?,
-): FindInTimeRangeRequest = parseInput {
-    FindInTimeRangeRequest(
-        storeName = storeName.asStoreName(),
-        timeRange = TimeRange(start = from.asInstant(), end = to.asInstant()),
-        limit = limit.asLimit(),
-        direction = direction.asReadDirection(),
     )
 }
 

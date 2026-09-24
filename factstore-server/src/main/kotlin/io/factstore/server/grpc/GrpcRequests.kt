@@ -186,20 +186,6 @@ internal fun GrpcStreamFactsBySubjectRequest.toDomainRequest(): StreamFactsBySub
     )
 }
 
-typealias GrpcFindInTimeRangeRequest = FactStoreProto.FindFactsInTimeRangeRequest
-
-internal fun GrpcFindInTimeRangeRequest.toDomainRequest(): FindInTimeRangeRequest = parseRequest {
-    FindInTimeRangeRequest(
-        storeName = storeName.asStoreName(),
-        timeRange = TimeRange(
-            start = if (hasFrom()) from.toInstant() else null,
-            end = if (hasTo()) to.toInstant() else null,
-        ),
-        limit = if (hasLimit()) Limit.of(limit) else Limit.None,
-        direction = direction.toCore(),
-    )
-}
-
 typealias GrpcSubscribeFactsRequest = FactStoreProto.SubscribeFactsRequest
 
 internal fun GrpcSubscribeFactsRequest.toDomainRequest(): SubscribeRequest = parseRequest {

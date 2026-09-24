@@ -110,11 +110,7 @@ class InvalidInputTest {
                 ).post("$FACTS:query")
             },
             case("stream facts in an unknown direction") { given().queryParam("direction", "sideways").get(FACTS) },
-            case("stream facts from an unparseable instant") { forward().queryParam("from", "yesterday").get(FACTS) },
             case("stream facts by a tag without '='") { forward().queryParam("tag", "abc").get(FACTS) },
-            case("stream facts by tags within a time range") {
-                forward().queryParam("tag", "a=1").queryParam("from", "2026-01-01T00:00:00Z").get(FACTS)
-            },
 
             case("subscribe after an id that is not a UUID") { given().queryParam("after", "nope").get("$FACTS/subscribe") },
             case("subscribe from an unknown position") { given().queryParam("from", "middle").get("$FACTS/subscribe") },

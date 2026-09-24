@@ -22,7 +22,6 @@ import io.factstore.client.model.SubscribeStartPosition
 import io.factstore.grpc.v1.FactServiceGrpcKt.FactServiceCoroutineStub
 import io.factstore.grpc.v1.appendFactsRequest
 import io.factstore.grpc.v1.factExistsRequest
-import io.factstore.grpc.v1.findFactsInTimeRangeRequest
 import io.factstore.grpc.v1.fromBeginning
 import io.factstore.grpc.v1.fromEnd
 import io.factstore.grpc.v1.getFactRequest
@@ -156,27 +155,6 @@ class FactOperations internal constructor(
             response.hasStoreNotFound() -> throw StoreNotFoundException(storeName)
             response.hasContinuationNotFound() -> throw ContinuationNotFoundException(response.continuationNotFound.factId)
             else -> error("Unexpected stream message: $response")
-        }
-    }
-
-    suspend fun findInTimeRange(
-        storeName: String,
-        from: Instant? = null,
-        to: Instant? = null,
-        limit: Int? = null,
-        direction: ReadDirection = ReadDirection.FORWARD,
-    ): List<Fact> = grpcCall {
-        val response = timedStub().findFactsInTimeRange(findFactsInTimeRangeRequest {
-            this.storeName = storeName
-            from?.let { this.from = it.toProtoTimestamp() }
-            to?.let { this.to = it.toProtoTimestamp() }
-            limit?.let { this.limit = it }
-            this.direction = direction.toProto()
-        })
-        when {
-            response.hasFound() -> response.found.factsList.map { it.toDomain() }
-            response.hasStoreNotFound() -> throw StoreNotFoundException(storeName)
-            else -> error("Unexpected response: $response")
         }
     }
 

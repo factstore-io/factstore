@@ -13,7 +13,6 @@ import java.time.Instant
 import java.util.concurrent.CompletableFuture
 
 const val HEAD_INDEX = 100
-const val CREATED_AT_INDEX = 101
 const val EVENT_TYPE_INDEX = 102
 const val SUBJECT_INDEX = 103
 const val TAGS_INDEX = 105
@@ -38,7 +37,6 @@ const val FACT_POSITIONS = 2
  *  /fact-store/head = {vs}
  *  /fact-store/fact-position-index/{factId} = fact position tuple (versionstamp)
  *  /fact-store/type-index/{type}/{versionstamp} = (factId)
- *  /fact-store/created-at-index/{epochSecond}/{nano}/{versionstamp} = (factId)
  *  /fact-store/subject-index/{subjectType}/{subjectId}/{versionstamp} = (factId)
  *  /fact-store/tags-index/{key}/{value}/{versionstamp} = (factId)
  *  /fact-store/tags-type-index/{type}/{key}/{value}/{versionstamp} = (factId)
@@ -81,7 +79,6 @@ data class FdbFactStore(
 
         context.headSubspace.save(storeId, incompleteVersionstamp)
         context.eventTypeIndexSubspace.save(storeId, id, type, incompleteVersionstamp)
-        context.createdAtIndexSubspace.save(storeId, id, appendedAt, incompleteVersionstamp)
         context.subjectIndexSubspace.save(storeId, id, subject, incompleteVersionstamp)
         context.tagsIndexSubspace.save(storeId, id, tags, incompleteVersionstamp)
         context.tagsTypeIndexSubspace.save(storeId, id, type, tags, incompleteVersionstamp)

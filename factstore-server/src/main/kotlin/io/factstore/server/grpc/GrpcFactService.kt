@@ -36,9 +36,6 @@ class GrpcFactService(
         request.toDomainRequest().publishTo(factStore).toGrpcResponse()
 
 
-    override suspend fun findFactsInTimeRange(request: FindFactsInTimeRangeRequest): FindFactsInTimeRangeResponse =
-        request.toDomainRequest().publishTo(factStore).toGrpcResponse()
-
     // Parsing and the store lookup must happen per call rather than when the Flow is built,
     // so the bodies of the streaming RPCs are wrapped in `flow { }` and only run on collection.
 

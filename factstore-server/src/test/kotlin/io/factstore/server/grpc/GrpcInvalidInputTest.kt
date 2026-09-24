@@ -127,12 +127,6 @@ class GrpcInvalidInputTest {
         case("stream facts with limit 0") {
             facts.streamFacts(streamFactsRequest { storeName = STORE; direction = FORWARD; limit = 0 }).first()
         },
-        case("find facts with limit 0") {
-            facts.findFactsInTimeRange(findFactsInTimeRangeRequest { storeName = STORE; direction = FORWARD; limit = 0 })
-        },
-        case("find facts in a time range without a direction") {
-            facts.findFactsInTimeRange(findFactsInTimeRangeRequest { storeName = STORE })
-        },
 
         case("subscribe to a store with an invalid name") {
             facts.subscribeFacts(subscribeFactsRequest { storeName = "1 bad" }).first()

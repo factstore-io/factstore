@@ -20,39 +20,13 @@ export function meta({ params }: Route.MetaArgs) {
   return [{ title: `Facts — ${params.storeName} — FactStore Explorer` }]
 }
 
-type QueryMode = "timeRange" | "tags" | "subject" | "type" | "query"
+type QueryMode = "all" | "tags" | "subject" | "type" | "query"
 
-type TimePreset = "5m" | "15m" | "1h" | "6h" | "24h" | "custom"
-
-const PRESET_LABELS: Record<TimePreset, string> = {
-  "5m": "Last 5 min",
-  "15m": "Last 15 min",
-  "1h": "Last 1h",
-  "6h": "Last 6h",
-  "24h": "Last 24h",
-  "custom": "Custom",
-}
-
-function resolvePreset(preset: TimePreset): { from: string; to: string } | null {
-  if (preset === "custom") return null
-  const now = new Date()
-  const ms: Record<string, number> = {
-    "5m": 5 * 60_000,
-    "15m": 15 * 60_000,
-    "1h": 60 * 60_000,
-    "6h": 6 * 60 * 60_000,
-    "24h": 24 * 60 * 60_000,
-  }
-  return {
-    from: new Date(now.getTime() - ms[preset]).toISOString(),
-    to: now.toISOString(),
-  }
-}
 
 type QueryFilterInput = { id: number; subjects: string; types: string; tags: string }
 
 const MODE_LABELS: Record<QueryMode, string> = {
-  timeRange: "Time Range",
+  all: "All Facts",
   tags: "Tags",
   subject: "Subject",
   type: "Type",
@@ -81,12 +55,7 @@ function toFactFilter(input: QueryFilterInput): FactFilter {
 export default function FactsPage() {
   const { storeName } = useParams<{ storeName: string }>()
 
-  const [mode, setMode] = useState<QueryMode>("timeRange")
-
-  // time range
-  const [preset, setPreset] = useState<TimePreset>("1h")
-  const [customFrom, setCustomFrom] = useState("")
-  const [customTo, setCustomTo] = useState("")
+  const [mode, setMode] = useState<QueryMode>("all")
 
   // tags
   const tagIdRef = useRef(1)
@@ -123,12 +92,9 @@ export default function FactsPage() {
     setError(null)
     try {
       let result: Fact[]
-      if (mode === "timeRange") {
-        const range = preset !== "custom" ? resolvePreset(preset) : null
+      if (mode === "all") {
         result = await queryFacts(storeName, {
-          mode: "timeRange",
-          from: range?.from ?? (customFrom ? new Date(customFrom).toISOString() : undefined),
-          to: range?.to ?? (customTo ? new Date(customTo).toISOString() : undefined),
+          mode: "all",
           limit: Number(limit) || 0,
           direction,
         })
@@ -182,7 +148,7 @@ export default function FactsPage() {
     } finally {
       setLoading(false)
     }
-  }, [storeName, mode, preset, customFrom, customTo, tagInputs, subject, type, queryFilters, limit, direction])
+  }, [storeName, mode, tagInputs, subject, type, queryFilters, limit, direction])
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 space-y-6">
@@ -193,7 +159,7 @@ export default function FactsPage() {
           <div className="flex items-center gap-2 flex-wrap">
             {/* Mode selector */}
             <div className="flex rounded-lg border border-border overflow-hidden text-xs">
-              {(["timeRange", "tags", "subject", "type", "query"] as QueryMode[]).map((m) => (
+              {(["all", "tags", "subject", "type", "query"] as QueryMode[]).map((m) => (
                 <button
                   key={m}
                   className={`px-3 py-1.5 font-medium transition-colors ${
@@ -210,48 +176,6 @@ export default function FactsPage() {
           </div>
         </div>
 
-        {/* Time range controls */}
-        {mode === "timeRange" && (
-          <div className="space-y-3">
-            <div className="flex flex-wrap gap-1.5">
-              {(["5m", "15m", "1h", "6h", "24h", "custom"] as TimePreset[]).map((p) => (
-                <button
-                  key={p}
-                  onClick={() => setPreset(p)}
-                  className={`rounded-md border px-3 py-1 text-xs font-medium transition-colors ${
-                    preset === p
-                      ? "border-foreground bg-foreground text-background"
-                      : "border-border text-muted-foreground hover:border-foreground hover:text-foreground"
-                  }`}
-                >
-                  {PRESET_LABELS[p]}
-                </button>
-              ))}
-            </div>
-            {preset === "custom" && (
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <Label className="text-xs">From</Label>
-                  <Input
-                    type="datetime-local"
-                    value={customFrom}
-                    onChange={(e) => setCustomFrom(e.target.value)}
-                    className="text-xs h-8"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">To</Label>
-                  <Input
-                    type="datetime-local"
-                    value={customTo}
-                    onChange={(e) => setCustomTo(e.target.value)}
-                    className="text-xs h-8"
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-        )}
 
         {/* Tags controls */}
         {mode === "tags" && (

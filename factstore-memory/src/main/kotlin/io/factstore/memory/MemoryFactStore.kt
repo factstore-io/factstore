@@ -131,18 +131,6 @@ class MemoryFactStore : FactStore {
         if (exists) ExistsByIdResult.Exists else ExistsByIdResult.DoesNotExist
     }
 
-    override suspend fun findInTimeRange(request: FindInTimeRangeRequest): FindInTimeRangeResult = lock.withLock {
-        val internalId = resolveId(request.storeName) ?: return FindInTimeRangeResult.StoreNotFound(request.storeName)
-        val start = request.timeRange.start
-        val end = request.timeRange.end
-        val foundFacts = facts[internalId]
-            ?.filter { (start == null || it.appendedAt >= start) && (end == null || it.appendedAt < end) }
-            ?.applyDirection(request.direction)
-            ?.applyLimit(request.limit)
-            ?: emptyList()
-        FindInTimeRangeResult.Found(foundFacts)
-    }
-
 
 
 

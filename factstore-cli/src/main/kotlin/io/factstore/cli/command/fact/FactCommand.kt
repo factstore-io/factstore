@@ -14,7 +14,6 @@ import picocli.CommandLine.Command
         FindByTypeCommand::class,
         FindByTagsCommand::class,
         QueryFactsCommand::class,
-        FindInTimeRangeCommand::class,
         FindByIdCommand::class,
     ]
 )

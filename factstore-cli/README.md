@@ -135,22 +135,6 @@ factstore fact find-by-tags --store orders --tag region=eu
 factstore fact find-by-tags --store orders --tag region=eu --tag env=prod
 ```
 
-#### Find in time range
-
-At least one of `--since` or `--until` is required:
-
-```bash
-# Facts in the last 5 minutes
-factstore fact find-in-time-range --store orders --since 5m
-
-# Facts in the last 2 hours, newest first
-factstore fact find-in-time-range --store orders --since 2h --direction backward
-
-# Absolute time range
-factstore fact find-in-time-range --store orders \
-  --since 2024-01-01T00:00:00Z \
-  --until 2024-01-02T00:00:00Z
-```
 
 #### Time expressions
 
@@ -206,20 +190,22 @@ left off.
 
 ---
 
-### Output Formats (TODO)
+### Output Formats
 
-All query and find commands support `--output` for machine-readable output:
+Every command that prints facts supports `--output` (`-o`):
 
 ```bash
 # Default: human-readable table
-factstore fact find-in-time-range --store orders --since 1h
+factstore fact find-by-type OrderPlaced --store orders
 
-# JSON output (pipe-friendly)
-factstore fact find-in-time-range --store orders --since 1h --output json
+# One pretty-printed JSON array
+factstore fact find-by-type OrderPlaced --store orders --output json
 
-# Pipe to jq
-factstore fact find-in-time-range --store orders --since 1h --output json | jq '.[] | .type'
+# One compact fact per line, as the HTTP API streams them — best for pipelines
+factstore fact find-by-type OrderPlaced --store orders --output ndjson | jq 'select(.subject == "order/42")'
 ```
+
+Both JSON formats are written as the facts arrive, so they suit long results.
 
 ---
 
@@ -237,7 +223,7 @@ export FACTSTORE_URL=http://localhost:8080
 export FACTSTORE_STORE=orders
 
 # --store is no longer needed
-factstore fact find-in-time-range --since 5m
+factstore fact find-by-type OrderPlaced
 factstore fact subscribe
 ```
 

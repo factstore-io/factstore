@@ -401,34 +401,6 @@ class GrpcFactServiceTest {
         assertThat(responses.single().hasStoreNotFound()).isTrue()
     }
 
-    // ─── FindFactsInTimeRange ─────────────────────────────────────────────────
-
-    @Test
-    @Order(20)
-    @DisplayName("FindFactsInTimeRange - should return FactsFound for an unbounded time range")
-    fun findFactsInTimeRange(): Unit = runBlocking {
-        val response = factService.findFactsInTimeRange(findFactsInTimeRangeRequest {
-            storeName = STORE
-            direction = ReadDirection.READ_DIRECTION_FORWARD
-            // no from/to — unbounded range matches all facts in the store
-        })
-
-        assertThat(response.hasFound()).isTrue()
-        assertThat(response.found.factsList).isNotEmpty()
-    }
-
-    @Test
-    @Order(21)
-    @DisplayName("FindFactsInTimeRange - should return StoreNotFound when store does not exist")
-    fun findFactsInTimeRangeStoreNotFound(): Unit = runBlocking {
-        val response = factService.findFactsInTimeRange(findFactsInTimeRangeRequest {
-            storeName = "ghost-store"
-            direction = ReadDirection.READ_DIRECTION_FORWARD
-        })
-
-        assertThat(response.hasStoreNotFound()).isTrue()
-    }
-
     // ─── SubscribeFacts ─────────────────────────────────────────────────────────
 
     @Test
