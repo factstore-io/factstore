@@ -58,9 +58,9 @@ class QueryResource(
         @QueryParam("subject") @Parameter(description = "A subject to match. Repeatable: a fact matches any of them.") subjects: List<String> = emptyList(),
         @QueryParam("type") @Parameter(description = "A type to match, exactly. Repeatable: a fact matches any of them.") types: List<String> = emptyList(),
         @QueryParam("tag") @Parameter(description = "A tag the facts must carry, as key=value. Repeatable: a fact must carry all of them.") tags: List<String> = emptyList(),
-        @QueryParam("continueAfter") @Parameter(description = "Continue after this fact, exclusive and in reading order.", schema = Schema(type = SchemaType.STRING, format = "uuid")) continueAfter: String?,
-        @QueryParam("direction") @Parameter(schema = Schema(enumeration = ["forward", "backward"], defaultValue = "forward")) direction: String?,
-        @QueryParam("limit") @Parameter(schema = Schema(type = SchemaType.INTEGER, minimum = "1")) limit: String?,
+        @QueryParam("continueAfter") @Parameter(description = "Continue after this fact, exclusive and in reading order.", schema = Schema(type = SchemaType.STRING, format = "uuid")) continueAfter: String? = null,
+        @QueryParam("direction") @Parameter(schema = Schema(enumeration = ["forward", "backward"], defaultValue = "forward")) direction: String? = null,
+        @QueryParam("limit") @Parameter(schema = Schema(type = SchemaType.INTEGER, minimum = "1")) limit: String? = null,
     ): Flow<FactStreamLineHttp> =
         // The parameters describe one filter, and the cheapest read that can serve it is chosen:
         // a single subject, a single type or tags alone each have an index of their own, while
