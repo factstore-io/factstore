@@ -9,7 +9,6 @@ import io.factstore.client.internal.toDomain
 import io.factstore.client.internal.toFactStoreException
 import io.factstore.client.internal.toInstant
 import io.factstore.client.internal.toProto
-import io.factstore.client.internal.toProtoTimestamp
 import io.factstore.client.model.AppendCondition
 import io.factstore.client.model.AppendFactsBuilder
 import io.factstore.client.model.AppendOutcome
@@ -36,7 +35,6 @@ import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.transform
 import java.time.Duration
-import java.time.Instant
 import java.util.concurrent.TimeUnit
 
 class FactOperations internal constructor(

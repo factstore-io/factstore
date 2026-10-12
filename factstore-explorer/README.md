@@ -6,7 +6,7 @@ A web UI for inspecting, querying, and streaming facts across FactStore stores. 
 
 - Browse and manage stores (create, delete)
 - Query facts by time range, tags, or subject
-- Stream facts in real time via Server-Sent Events (SSE)
+- Stream facts in real time over NDJSON
 - Light and dark mode with system preference detection
 
 ---
@@ -66,7 +66,7 @@ The output in `build/client/` is static HTML, JS, and CSS. Quinoa copies it into
 | Styling | Tailwind CSS v4 | `@theme inline` with CSS custom properties |
 | UI components | shadcn/ui (radix-nova style) | Radix UI primitives + `cn()` utility |
 | Icons | lucide-react | |
-| Streaming | Native `EventSource` | No extra library required |
+| Streaming | `fetch` reading NDJSON | No extra library required |
 
 ### Project layout
 
@@ -87,7 +87,7 @@ app/
     stores.$storeName.tsx              # /stores/:storeName — tab layout
     stores.$storeName._index.tsx       # /stores/:storeName — overview + danger zone
     stores.$storeName.facts.tsx        # /stores/:storeName/facts — fact query browser
-    stores.$storeName.stream.tsx       # /stores/:storeName/stream — live SSE stream
+    stores.$storeName.stream.tsx       # /stores/:storeName/stream — live NDJSON stream
 ```
 
 ### SPA mode and data loading
@@ -130,16 +130,16 @@ Page-level manual refreshes use **`useRevalidator`** to re-run the loader on dem
 
 All HTTP calls live in a single file. The base URL is `/api` (relative), which Quarkus resolves to its REST layer. Sharing an origin means no CORS configuration is needed in any environment.
 
-The file exports typed async functions for every server endpoint (`listStores`, `createStore`, `deleteStore`, `queryFacts`, `createFactStream`) and two pure helpers:
+The file exports typed async functions for every server endpoint (`listStores`, `createStore`, `deleteStore`, `queryFacts`, `subscribeToFacts`) and two pure helpers:
 
 - `decodePayload(data)` — base64-decodes the binary fact payload
 - `relativeTime(isoString)` — formats a timestamp as a human-readable relative string (`"3m ago"`, `"just now"`, …)
 
 ### Live streaming
 
-The stream page (`stores.$storeName.stream.tsx`) opens an `EventSource` to the SSE endpoint. `createFactStream()` in `api.ts` wraps the `EventSource` construction, wires `onmessage`/`onerror`, and returns the handle so the component can close it on unmount or reconnect.
+The stream page (`stores.$storeName.stream.tsx`) subscribes to the store's facts over NDJSON: `subscribeToFacts()` in `api.ts` reads `GET /facts:subscribe` with `fetch`, one line per fact, with heartbeat lines while nothing is appended. It hands each fact to a callback and returns a handle so the component can close the subscription on unmount or restart. A dropped connection is re-opened automatically, continuing after the last fact that arrived; a failure that reconnecting cannot fix, such as an unknown store, ends the subscription and is reported.
 
-The page implements a **freeze/resume** buffer: when frozen, incoming facts accumulate in a ref (`pendingRef`) rather than updating the display. On resume, the buffer flushes into the visible list. A `frozenRef` is kept in sync with the `frozen` state via `useEffect` — this avoids a stale closure inside the `EventSource` callback where reading `frozen` directly would always see the value captured at stream-start time.
+The page implements a **freeze/resume** buffer: when frozen, incoming facts accumulate in a ref (`pendingRef`) rather than updating the display. On resume, the buffer flushes into the visible list. A `frozenRef` is kept in sync with the `frozen` state via `useEffect` — this avoids a stale closure inside the subscription callback where reading `frozen` directly would always see the value captured at stream-start time.
 
 ### Key UI decisions
 

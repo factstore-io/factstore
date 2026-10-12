@@ -2,7 +2,9 @@ package io.factstore.cli.command.fact
 
 import io.factstore.cli.command.OutputFormat
 import io.factstore.cli.command.print
+import io.factstore.cli.command.requirePositiveLimit
 import io.factstore.cli.exception.CliUsageException
+import io.factstore.cli.config.FactStoreConfigResolver
 import io.factstore.client.FactStoreClient
 import io.factstore.client.model.FactFilter
 import io.factstore.client.model.ReadDirection
@@ -29,12 +31,14 @@ class QueryFactsCommand : Callable<Int> {
     @Inject
     lateinit var client: FactStoreClient
 
+    @Inject
+    lateinit var configResolver: FactStoreConfigResolver
+
     @Option(
         names = ["--store", "-s"],
-        required = true,
         description = ["The name of the store to query (env: FACTSTORE_STORE, config: store)"],
     )
-    lateinit var storeName: String
+    var storeName: String? = null
 
     @Option(
         names = ["--filter"],
@@ -57,10 +61,9 @@ class QueryFactsCommand : Callable<Int> {
 
     @Option(
         names = ["--limit"],
-        description = ["Maximum number of facts to return (default: \${DEFAULT-VALUE})"],
-        defaultValue = "100",
+        description = ["Maximum number of facts to return, a positive number (default: all facts)"],
     )
-    var limit: Int = 100
+    var limit: Int? = null
 
     @Option(
         names = ["--direction"],
@@ -77,6 +80,8 @@ class QueryFactsCommand : Callable<Int> {
     var outputFormat: OutputFormat = OutputFormat.Table
 
     override fun call(): Int = runBlocking {
+        requirePositiveLimit(limit)
+        val storeName = configResolver.resolveStore(storeName)
         val filters = collectFilters()
         if (filters.isEmpty()) {
             throw CliUsageException("A query needs at least one filter: use --filter or --query-file.")

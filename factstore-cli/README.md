@@ -78,8 +78,12 @@ factstore fact append '{"orderId": "12345", "amount": 100.0}' \
 ### Reading Facts
 
 `fact get` reads a single fact; `fact stream` and `fact query` stream many, exactly as the
-HTTP API does. Both streaming commands support `--limit` (default: 100), `--direction`
+HTTP API does. Both streaming commands support `--limit`, `--direction`
 (`forward` / `backward`, default: `forward`), `--continue-after` and `--output`.
+
+Without `--limit` every matching fact is streamed; with it, at most that many, and the number
+must be positive. All output formats print the facts as they arrive. The table has fixed
+column widths and cuts longer values, so use `json` or `ndjson` to see a fact in full.
 
 #### Get a fact by ID
 

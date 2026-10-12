@@ -180,7 +180,7 @@ class QueryResourceTest {
     @Test
     @DisplayName("GET /v1/stores/{name}/facts - Should return 404 ApiError when the continuation does not exist")
     fun streamFactsContinuedAfterUnknownFact() {
-        val store = "continuation-test-store"
+        val store = "unknown-continuation-test-store"
         seedFact("sub-1", store = store)
         val unknown = UUID.randomUUID()
 

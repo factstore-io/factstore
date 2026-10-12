@@ -41,12 +41,6 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
             }
         }.await()
 
-
-
-
-
-
-
     context(transaction: ReadTransaction)
     private fun FactId.loadFact(storeId: StoreId): CompletableFuture<Fact?> {
         return with(fdbFactStore) {
@@ -57,13 +51,6 @@ class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
     context(transaction: ReadTransaction)
     private fun FactId.existsById(storeId: StoreId): CompletableFuture<Boolean> {
         return factPositionSubspace.exists(storeId, this)
-    }
-
-    context(tr: ReadTransaction)
-    private fun FactPosition.lookupFact(storeId: StoreId): CompletableFuture<FdbFact?> {
-        return with(fdbFactStore) {
-            storeId.run { this@lookupFact.loadFactByPosition() }
-        }
     }
 
 }

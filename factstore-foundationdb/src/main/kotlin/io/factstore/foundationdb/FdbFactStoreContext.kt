@@ -19,7 +19,6 @@ import io.factstore.core.TagKey
 import io.factstore.core.TagValue
 import kotlinx.serialization.decodeFromByteArray
 import kotlinx.serialization.encodeToByteArray
-import java.time.Instant
 import java.util.concurrent.CompletableFuture
 
 data class FdbFactStoreContext(
@@ -169,7 +168,7 @@ value class FactSubspace(val subspace: Subspace) {
 
     context(tr: Transaction)
     fun clearRange(storeId: StoreId) {
-        tr.clear(subspace.pack(Tuple.from(storeId.uuid)))
+        tr.clear(subspace.range(Tuple.from(storeId.uuid)))
     }
 
 }

@@ -2,8 +2,20 @@ package io.factstore.foundationdb
 
 import com.apple.foundationdb.Database
 import com.apple.foundationdb.FDB
+import com.apple.foundationdb.tuple.ByteArrayUtil
 import earth.adi.testcontainers.containers.FoundationDBContainer
+import io.factstore.core.AppendResult
+import io.factstore.core.CreateStoreRequest
+import io.factstore.core.FactInput
 import io.factstore.core.FactStore
+import io.factstore.core.FactType
+import io.factstore.core.RemoveStoreRequest
+import io.factstore.core.RemoveStoreResult
+import io.factstore.core.StoreName
+import io.factstore.core.Subject
+import io.factstore.core.TagKey
+import io.factstore.core.TagValue
+import io.factstore.core.toFactPayload
 import io.factstore.testing.AbstractFactStoreTest
 import kotlinx.coroutines.runBlocking
 import org.assertj.core.api.Assertions.assertThat
@@ -51,6 +63,31 @@ class FactStoreTest : AbstractFactStoreTest() {
     }
 
     override fun initializeFactStore(): FactStore = store
+
+    @Test
+    fun testRemovingStoreLeavesNoKeysBehind(): Unit = runBlocking {
+        val before = allKeys()
+        val storeName = StoreName("store-to-remove-completely")
+        store.create(CreateStoreRequest(storeName))
+        val fact = FactInput(
+            type = FactType("TEST_FACT_TYPE"),
+            subject = Subject("TEST_SUBJECT"),
+            payload = "DATA".toFactPayload(),
+            metadata = emptyMap(),
+            tags = mapOf(TagKey("region") to TagValue("eu")),
+        )
+        assertThat(store.append(storeName, listOf(fact, fact))).isInstanceOf(AppendResult.Appended::class.java)
+        assertThat(allKeys()).hasSizeGreaterThan(before.size)
+
+        assertThat(store.remove(RemoveStoreRequest(storeName))).isInstanceOf(RemoveStoreResult.StoreRemoved::class.java)
+
+        // Facts included: a removed store is unreachable, so anything left behind would stay for good.
+        assertThat(allKeys()).isEqualTo(before)
+    }
+
+    private fun allKeys(): List<String> = db.read { tr ->
+        tr.getRange(ByteArray(0), byteArrayOf(0xff.toByte())).asList().join().map { ByteArrayUtil.printable(it.key) }
+    }
 
     @Test
     fun testMetadataRoundTripsWithNanos() {

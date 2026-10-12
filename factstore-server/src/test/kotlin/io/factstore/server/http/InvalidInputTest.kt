@@ -77,6 +77,14 @@ class InvalidInputTest {
                 json(mapOf("idempotencyKey" to "nope", "facts" to listOf(validFact))).post(FACTS)
             },
 
+            case("append a null fact") { json("""{"facts":[null]}""").post(FACTS) },
+            case("append a fact with a null tag value") {
+                json("""{"facts":[{"type":"T","subject":"s","payload":{"data":"e30="},"tags":{"region":null}}]}""").post(FACTS)
+            },
+            case("append a fact with a null metadata value") {
+                json("""{"facts":[{"type":"T","subject":"s","payload":{"data":"e30="},"metadata":{"source":null}}]}""").post(FACTS)
+            },
+
             case("find a fact by an id that is not a UUID") { given().get("$FACTS/not-a-uuid") },
             case("stream the facts of an invalid subject") {
                 forward().queryParam("subject", "order 1").get(FACTS)
@@ -86,6 +94,16 @@ class InvalidInputTest {
             },
             case("query facts with a filter without predicates") {
                 jsonToOperation(mapOf("filters" to listOf(emptyMap<String, Any>()))).post("$FACTS:query")
+            },
+            case("query facts with a null filter") { jsonToOperation("""{"filters":[null]}""").post("$FACTS:query") },
+            case("query facts with a null subject") {
+                jsonToOperation("""{"filters":[{"subjects":[null]}]}""").post("$FACTS:query")
+            },
+            case("query facts with a null type") {
+                jsonToOperation("""{"filters":[{"types":[null]}]}""").post("$FACTS:query")
+            },
+            case("query facts with a null tag value") {
+                jsonToOperation("""{"filters":[{"tags":{"region":null}}]}""").post("$FACTS:query")
             },
             case("query facts with an invalid type") {
                 jsonToOperation(mapOf("filters" to listOf(mapOf("types" to listOf("order created"))))).post("$FACTS:query")
@@ -103,6 +121,9 @@ class InvalidInputTest {
             case("stream facts with limit 0") { forward().queryParam("limit", 0).get(FACTS) },
             case("stream facts continued after an id that is not a UUID") {
                 forward().queryParam("continueAfter", "not-a-uuid").get(FACTS)
+            },
+            case("stream facts continued after a blank id") {
+                forward().queryParam("continueAfter", " ").get(FACTS)
             },
             case("query facts continued after an id that is not a UUID") {
                 jsonToOperation(

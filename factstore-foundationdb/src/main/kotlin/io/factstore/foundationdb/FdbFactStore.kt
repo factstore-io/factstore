@@ -84,20 +84,6 @@ data class FdbFactStore(
         context.tagsTypeIndexSubspace.save(storeId, id, type, tags, incompleteVersionstamp)
     }
 
-    context(transaction: ReadTransaction, storeId: StoreId)
-    fun FactPosition.loadFactByPosition(): CompletableFuture<FdbFact?> {
-        return context.factSubspace.findFact(storeId, this).thenApply { factBytes ->
-            if (factBytes == null) {
-                return@thenApply null
-            }
-
-            val fact = factBytes.toSerializableFdbFact().toFact()
-            FdbFact(
-                fact = fact,
-                factPosition = this
-            )
-        }
-    }
 
     context(transaction: ReadTransaction, storeId: StoreId)
     fun FactId.loadFactById(): CompletableFuture<FdbFact?> {

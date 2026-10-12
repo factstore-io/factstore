@@ -2,6 +2,7 @@ package io.factstore.cli.command.fact
 
 import io.factstore.cli.command.OutputFormat
 import io.factstore.cli.command.printSingle
+import io.factstore.cli.config.FactStoreConfigResolver
 import io.factstore.client.FactStoreClient
 import jakarta.inject.Inject
 import kotlinx.coroutines.runBlocking
@@ -21,6 +22,9 @@ class GetFactCommand : Callable<Int> {
     @Inject
     lateinit var client: FactStoreClient
 
+    @Inject
+    lateinit var configResolver: FactStoreConfigResolver
+
     @Parameters(
         index = "0",
         arity = "1",
@@ -31,10 +35,9 @@ class GetFactCommand : Callable<Int> {
 
     @Option(
         names = ["--store", "-s"],
-        required = true,
         description = ["The name of the store to query (env: FACTSTORE_STORE, config: store)"],
     )
-    lateinit var storeName: String
+    var storeName: String? = null
 
     @Option(
         names = ["--output", "-o"],
@@ -44,6 +47,7 @@ class GetFactCommand : Callable<Int> {
     var outputFormat: OutputFormat = OutputFormat.Table
 
     override fun call(): Int = runBlocking {
+        val storeName = configResolver.resolveStore(storeName)
         val fact = client.facts.get(
             storeName = storeName,
             factId = factId.toString()

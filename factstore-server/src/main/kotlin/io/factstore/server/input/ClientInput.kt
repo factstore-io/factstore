@@ -53,7 +53,7 @@ internal fun String.asUuid(): UUID =
 internal fun String.asFactId(): FactId = FactId(asUuid())
 
 /** Absent means no fact; anything else must be a UUID. */
-internal fun String?.asFactIdOrNull(): FactId? = this?.trim()?.ifEmpty { null }?.asFactId()
+internal fun String?.asFactIdOrNull(): FactId? = this?.asFactId()
 
 /** Absent means no limit; anything but a positive integer is rejected. */
 internal fun String?.asLimit(): Limit {

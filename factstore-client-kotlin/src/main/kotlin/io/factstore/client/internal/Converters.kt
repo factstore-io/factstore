@@ -1,7 +1,6 @@
 package io.factstore.client.internal
 
 import com.google.protobuf.ByteString
-import com.google.protobuf.timestamp
 import io.factstore.client.model.AppendCondition
 import io.factstore.client.model.Fact
 import io.factstore.client.model.FactFilter
@@ -58,11 +57,6 @@ internal fun com.google.protobuf.Timestamp.toInstant(): Instant =
     Instant.ofEpochSecond(seconds, nanos.toLong())
 
 // ─── Domain → Proto ───────────────────────────────────────────────────────────
-
-internal fun Instant.toProtoTimestamp(): com.google.protobuf.Timestamp = timestamp {
-    seconds = epochSecond
-    nanos = nano
-}
 
 internal fun FactInput.toProto(): FactStoreProto.FactInput = factInput {
     type = this@toProto.type

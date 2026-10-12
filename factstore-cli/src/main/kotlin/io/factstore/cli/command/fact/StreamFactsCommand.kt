@@ -2,7 +2,10 @@ package io.factstore.cli.command.fact
 
 import io.factstore.cli.command.OutputFormat
 import io.factstore.cli.command.print
+import io.factstore.cli.command.requirePositiveLimit
 import io.factstore.cli.converter.TagConverter
+import io.factstore.cli.converter.toTagFilter
+import io.factstore.cli.config.FactStoreConfigResolver
 import io.factstore.client.FactStoreClient
 import io.factstore.client.model.Fact
 import io.factstore.client.model.FactFilter
@@ -29,12 +32,14 @@ class StreamFactsCommand : Callable<Int> {
     @Inject
     lateinit var client: FactStoreClient
 
+    @Inject
+    lateinit var configResolver: FactStoreConfigResolver
+
     @Option(
         names = ["--store", "-s"],
-        required = true,
         description = ["The name of the store to read from (env: FACTSTORE_STORE, config: store)"],
     )
-    lateinit var storeName: String
+    var storeName: String? = null
 
     @Option(
         names = ["--subject"],
@@ -65,10 +70,9 @@ class StreamFactsCommand : Callable<Int> {
 
     @Option(
         names = ["--limit"],
-        description = ["Maximum number of facts to return (default: \${DEFAULT-VALUE})"],
-        defaultValue = "100",
+        description = ["Maximum number of facts to return, a positive number (default: all facts)"],
     )
-    var limit: Int = 100
+    var limit: Int? = null
 
     @Option(
         names = ["--direction"],
@@ -93,6 +97,8 @@ class StreamFactsCommand : Callable<Int> {
     // subject, a single type and tags alone each have an index of their own, while anything
     // combined is a query of one filter.
     private fun facts(): Flow<Fact> {
+        requirePositiveLimit(limit)
+        val storeName = configResolver.resolveStore(storeName)
         val after = continueAfter?.toString()
         return when {
             subjects.isEmpty() && types.isEmpty() && tags.isEmpty() ->
@@ -105,11 +111,11 @@ class StreamFactsCommand : Callable<Int> {
                 client.facts.streamFactsByType(storeName, types.single(), direction, limit, after)
 
             subjects.isEmpty() && types.isEmpty() ->
-                client.facts.streamFactsByTags(storeName, tags.toMap(), direction, limit, after)
+                client.facts.streamFactsByTags(storeName, tags.toTagFilter(), direction, limit, after)
 
             else -> client.facts.streamFactsByQuery(
                 storeName = storeName,
-                filters = listOf(FactFilter(subjects = subjects, types = types, tags = tags.toMap())),
+                filters = listOf(FactFilter(subjects = subjects, types = types, tags = tags.toTagFilter())),
                 direction = direction,
                 limit = limit,
                 continueAfter = after,

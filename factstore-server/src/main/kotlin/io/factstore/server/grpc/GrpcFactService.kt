@@ -5,7 +5,6 @@ import io.factstore.server.publishTo
 import io.factstore.grpc.v1.FactServiceGrpcKt
 import io.factstore.grpc.v1.FactStoreProto.*
 import io.factstore.grpc.v1.continuationNotFound
-import io.factstore.grpc.v1.factNotFound
 import io.factstore.grpc.v1.storeNotFound
 import io.factstore.grpc.v1.streamFactsBySubjectResponse
 import io.factstore.grpc.v1.streamFactsByQueryResponse
