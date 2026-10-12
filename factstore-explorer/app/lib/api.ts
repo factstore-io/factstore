@@ -23,6 +23,28 @@ export interface ApiError {
   message: string
 }
 
+/**
+ * A failure the server reported, as an HTTP error response or as the `error` line of a stream,
+ * which has no status of its own.
+ */
+export class ApiRequestError extends Error {
+  readonly reason?: string
+  readonly status?: number
+
+  constructor(message: string, reason?: string, status?: number) {
+    super(message)
+    this.name = "ApiRequestError"
+    this.reason = reason
+    this.status = status
+  }
+
+  /** Whether repeating the request unchanged is bound to fail again. */
+  get permanent(): boolean {
+    if (this.reason) return this.reason !== "InternalError"
+    return this.status !== undefined && this.status >= 400 && this.status < 500
+  }
+}
+
 // ─── Server info ─────────────────────────────────────────────────────────────
 
 export interface ServerInfo {
@@ -203,9 +225,13 @@ const RECONNECT_DELAY_MS = 1000
  * Subscribes to a store's facts over NDJSON: the facts it already holds, then the facts
  * appended next, until `close()` is called.
  *
- * A connection that drops is re-opened automatically and continues after the last fact that
- * arrived, so no fact is seen twice and none is skipped. `onError` is called once reconnecting
- * has failed [RECONNECT_ATTEMPTS] times in a row, after which the subscription is over.
+ * A connection that drops is re-opened automatically. Once a fact has arrived, it continues
+ * after the last one, so no fact is seen twice and none is skipped. Until then it starts from
+ * the requested position again: from `end`, the facts appended while disconnected are not seen.
+ *
+ * `onError` is called, and the subscription is over, once the server reports a failure that
+ * reconnecting cannot fix, such as an unknown store, or once [RECONNECT_ATTEMPTS] attempts in
+ * a row have failed. An attempt has succeeded as soon as it receives a line.
  */
 export function subscribeToFacts(
   storeName: string,
@@ -230,16 +256,24 @@ export function subscribeToFacts(
     let attempt = 0
     while (!closed) {
       try {
-        await readSubscription(url(), controller.signal, (fact) => {
-          attempt = 0
-          lastFactId = fact.id
-          onFact(fact)
-        })
+        await readSubscription(
+          url(),
+          controller.signal,
+          (fact) => {
+            lastFactId = fact.id
+            onFact(fact)
+          },
+          // A heartbeat proves the connection as much as a fact does.
+          () => {
+            attempt = 0
+          },
+        )
         // The response ended although a subscription does not: reconnect.
       } catch (err) {
         if (closed) return
         attempt += 1
-        if (attempt >= RECONNECT_ATTEMPTS) {
+        const permanent = err instanceof ApiRequestError && err.permanent
+        if (permanent || attempt >= RECONNECT_ATTEMPTS) {
           onError(err instanceof Error ? err : new Error(String(err)))
           return
         }
@@ -259,11 +293,15 @@ export function subscribeToFacts(
   }
 }
 
-/** Reads one subscription response, handing every `fact` line to [onFact]. */
+/**
+ * Reads one subscription response, handing every `fact` line to [onFact]. [onLine] is told of
+ * every line that shows the subscription being served: a fact or a heartbeat.
+ */
 async function readSubscription(
   url: string,
   signal: AbortSignal,
   onFact: (fact: Fact) => void,
+  onLine: () => void,
 ): Promise<void> {
   const res = await fetch(url, { headers: { Accept: "application/x-ndjson" }, signal })
   if (!res.ok) throw await toApiError(res)
@@ -280,8 +318,9 @@ async function readSubscription(
     for (const line of lines) {
       if (!line.trim()) continue
       const parsed = parseFactStreamLine(line)
+      if ("error" in parsed) throw new ApiRequestError(parsed.error.message, parsed.error.reason)
+      onLine()
       if ("fact" in parsed) onFact(parsed.fact)
-      else if ("error" in parsed) throw new Error(parsed.error.message)
       // A heartbeat only says the subscription is still being served.
     }
     if (done) return
@@ -293,9 +332,9 @@ async function readSubscription(
 async function toApiError(res: Response): Promise<Error> {
   try {
     const body = (await res.json()) as ApiError
-    return new Error(body.message ?? `HTTP ${res.status}`)
+    return new ApiRequestError(body.message ?? `HTTP ${res.status}`, body.reason, res.status)
   } catch {
-    return new Error(`HTTP ${res.status} ${res.statusText}`)
+    return new ApiRequestError(`HTTP ${res.status} ${res.statusText}`, undefined, res.status)
   }
 }
 

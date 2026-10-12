@@ -1,12 +1,13 @@
 package io.factstore.foundationdb
 
 import com.apple.foundationdb.Database
-import com.apple.foundationdb.KeyValue
 import com.apple.foundationdb.StreamingMode
 import io.factstore.core.ReadDirection
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.future.await
+import kotlinx.coroutines.launch
 
 /**
  * Walks the positions behind the keys of one pinned index range, one position at a time.
@@ -26,7 +27,8 @@ internal class PositionCursor(
     private val keyOf: (FactPosition) -> ByteArray,
 ) : PositionSource {
 
-    private var batch: List<KeyValue> = emptyList()
+    /** The positions of the batch at hand, read out of its keys once. */
+    private var batch: List<FactPosition> = emptyList()
     private var next = 0
 
     /** The key the next batch continues after; `null` before the first batch. */
@@ -37,13 +39,16 @@ internal class PositionCursor(
 
     private var exhausted = false
 
+    override val needsRead: Boolean
+        get() = next >= batch.size && !exhausted
+
     /** The position the cursor points at, or `null` once the range is exhausted. */
     override suspend fun peek(): FactPosition? {
         while (next >= batch.size) {
             if (exhausted) return null
             readNextBatch()
         }
-        return positionOf(batch[next].key)
+        return batch[next]
     }
 
     /** Moves to the next position. */
@@ -61,7 +66,7 @@ internal class PositionCursor(
         val order = keys.readingOrder
         // The wanted position may still be inside the batch at hand.
         while (next < batch.size) {
-            if (order.compare(positionOf(batch[next].key), position) >= 0) return
+            if (order.compare(batch[next], position) >= 0) return
             next++
         }
         // Nothing left on this page: continue from the wanted position, unless the range is
@@ -79,7 +84,7 @@ internal class PositionCursor(
             tr.getRange(begin, end, batchSize, keys.reverse, StreamingMode.WANT_ALL).asList()
         }.await()
 
-        batch = read
+        batch = read.map { positionOf(it.key) }
         next = 0
         after = read.lastOrNull()?.key ?: after
         // A batch smaller than requested means the range up to the pinned key is exhausted.
@@ -105,6 +110,23 @@ internal interface PositionSource {
 
     /** Moves to the first position at or after [position] in reading order. */
     fun seekTo(position: FactPosition)
+
+    /** Whether the next [peek] has to read from the database before it can answer. */
+    val needsRead: Boolean
+}
+
+/**
+ * Lets the sources that need a read do it at the same time.
+ *
+ * Their reads are independent, so together they cost the latency of one round trip rather than
+ * one each. Every source is read by a coroutine of its own and by no other, and nothing runs
+ * when fewer than two sources need a read, which is the case for most positions.
+ */
+private suspend fun List<PositionSource>.readTogether() {
+    if (count { it.needsRead } < 2) return
+    coroutineScope {
+        forEach { source -> if (source.needsRead) launch { source.peek() } }
+    }
 }
 
 /**
@@ -121,8 +143,10 @@ internal class AnyOf(private val sources: List<PositionSource>, direction: ReadD
     private val order = direction.toComparator()
 
     /** The next position of whichever source is furthest behind: the first one in reading order. */
-    override suspend fun peek(): FactPosition? =
-        sources.mapNotNull { it.peek() }.minWithOrNull(order)
+    override suspend fun peek(): FactPosition? {
+        sources.readTogether()
+        return sources.mapNotNull { it.peek() }.minWithOrNull(order)
+    }
 
     override suspend fun advance() {
         // Every source sitting on this position moves on, so a fact several sources hold is
@@ -132,6 +156,9 @@ internal class AnyOf(private val sources: List<PositionSource>, direction: ReadD
     }
 
     override fun seekTo(position: FactPosition) = sources.forEach { it.seekTo(position) }
+
+    override val needsRead: Boolean
+        get() = sources.any { it.needsRead }
 }
 
 /**
@@ -149,10 +176,13 @@ internal class AllOf(private val sources: List<PositionSource>, direction: ReadD
 
     private val order = direction.toComparator()
 
+    /** Set once a source has run out: sources only move on, so nothing can match after that. */
+    private var exhausted = false
+
     override suspend fun peek(): FactPosition? {
-        while (true) {
-            // A source without a position means nothing can match from here on.
-            val positions = sources.map { it.peek() ?: return null }
+        while (!exhausted) {
+            sources.readTogether()
+            val positions = sources.map { it.peek() ?: return null.also { exhausted = true } }
 
             val furthest = positions.reduce { left, right -> if (order.compare(left, right) >= 0) left else right }
             if (positions.all { it == furthest }) return furthest
@@ -161,6 +191,7 @@ internal class AllOf(private val sources: List<PositionSource>, direction: ReadD
                 if (positions[index] != furthest) source.seekTo(furthest)
             }
         }
+        return null
     }
 
     override suspend fun advance() {
@@ -169,6 +200,9 @@ internal class AllOf(private val sources: List<PositionSource>, direction: ReadD
     }
 
     override fun seekTo(position: FactPosition) = sources.forEach { it.seekTo(position) }
+
+    override val needsRead: Boolean
+        get() = !exhausted && sources.any { it.needsRead }
 }
 
 /** Drains the source into a flow of positions, in reading order. */

@@ -231,10 +231,8 @@ class FdbFactStreamer(
 
     private fun subjectCursor(storeId: StoreId, subject: Subject, head: FactPosition, direction: ReadDirection) =
         store.context.subjectIndexSubspace.let { index ->
-            PositionCursor(
-                db = store.db,
+            cursor(
                 keys = index.pinnedKeys(storeId, subject, head, direction),
-                batchSize = streamBatchSize,
                 positionOf = { key -> index.unpackPosition(key) },
                 keyOf = { position -> index.getKey(storeId, subject, position) },
             )
@@ -242,10 +240,8 @@ class FdbFactStreamer(
 
     private fun typeCursor(storeId: StoreId, type: FactType, head: FactPosition, direction: ReadDirection) =
         store.context.eventTypeIndexSubspace.let { index ->
-            PositionCursor(
-                db = store.db,
+            cursor(
                 keys = index.pinnedKeys(storeId, type, head, direction),
-                batchSize = streamBatchSize,
                 positionOf = { key -> index.unpackPosition(key) },
                 keyOf = { position -> index.getKey(storeId, type, position) },
             )
@@ -258,10 +254,8 @@ class FdbFactStreamer(
         head: FactPosition,
         direction: ReadDirection,
     ) = store.context.tagsTypeIndexSubspace.let { index ->
-        PositionCursor(
-            db = store.db,
+        cursor(
             keys = index.pinnedKeys(storeId, type, tag, head, direction),
-            batchSize = streamBatchSize,
             positionOf = { key -> index.unpackPosition(key) },
             keyOf = { position -> index.getKey(storeId, type, tag, position) },
         )
@@ -269,14 +263,19 @@ class FdbFactStreamer(
 
     private fun tagCursor(storeId: StoreId, tag: Pair<TagKey, TagValue>, head: FactPosition, direction: ReadDirection) =
         store.context.tagsIndexSubspace.let { index ->
-            PositionCursor(
-                db = store.db,
+            cursor(
                 keys = index.pinnedKeys(storeId, tag, head, direction),
-                batchSize = streamBatchSize,
                 positionOf = { key -> index.unpackPosition(key) },
                 keyOf = { position -> index.getKey(storeId, tag, position) },
             )
         }
+
+    /** A cursor over the [keys] of one index, which says how its keys and positions map to each other. */
+    private fun cursor(
+        keys: PinnedKeys,
+        positionOf: (ByteArray) -> FactPosition,
+        keyOf: (FactPosition) -> ByteArray,
+    ) = PositionCursor(store.db, keys, streamBatchSize, positionOf, keyOf)
 
     /**
      * What a stream needs before it can read: the store, the head it stops at, and the position it
@@ -329,9 +328,6 @@ class FdbFactStreamer(
     /**
      * Streams the facts behind [keys], at most [limit] of them.
      *
-     * The batches are read in their own coroutine, up to [STREAM_PREFETCH_BATCHES] ahead of the
-     * consumer, so reading the next batches overlaps with processing the current one.
-     *
      * [load] turns the entries of a batch into serialized facts, within the batch's transaction.
      */
     private fun scanPinned(
@@ -340,14 +336,7 @@ class FdbFactStreamer(
         limit: Limit,
         load: BatchLoader,
     ): Flow<Fact> =
-        readPinnedBatches(keys, continueAfterKey, limit, load)
-            .buffer(capacity = STREAM_PREFETCH_BATCHES, onBufferOverflow = SUSPEND)
-            .map { serializedFacts ->
-                withContext(deserializationDispatcher) {
-                    serializedFacts.map { it.toSerializableFdbFact().toFact() }
-                }
-            }
-            .transform { facts -> facts.forEach { emit(it) } }
+        readPinnedBatches(keys, continueAfterKey, limit, load).toFacts(readAhead = STREAM_PREFETCH_BATCHES)
 
     /**
      * Reads the serialized facts behind [keys], at most [limit] of them, and emits them batch by batch.
@@ -392,15 +381,26 @@ class FdbFactStreamer(
      * Loads the facts at the positions, at most [limit] of them.
      *
      * Positions are collected into batches, and each batch is loaded in one transaction, so that
-     * matching a sparse intersection does not cost one read round trip per fact. As in
-     * [scanPinned], reading runs ahead of the consumer.
+     * matching a sparse intersection does not cost one read round trip per fact.
      */
     @OptIn(ExperimentalCoroutinesApi::class)
     private fun Flow<FactPosition>.loadFacts(storeId: StoreId, limit: Limit): Flow<Fact> =
         (limit.value?.let { take(it) } ?: this)
             .chunked(streamBatchSize)
             .map { positions -> read { tr -> loadFacts(tr, storeId, positions) } }
-            .buffer(capacity = STREAM_PREFETCH_BATCHES, onBufferOverflow = SUSPEND)
+            .toFacts(readAhead = STREAM_PREFETCH_BATCHES)
+
+    /**
+     * Turns batches of serialized facts into facts.
+     *
+     * The batches are read in their own coroutine, up to [readAhead] of them ahead of the
+     * consumer, so reading the next batches overlaps with processing the current one.
+     *
+     * Batches are how a store is read, not how its facts are consumed: each fact is emitted on
+     * its own, and batching is left to whoever transports it.
+     */
+    private fun Flow<List<ByteArray>>.toFacts(readAhead: Int): Flow<Fact> =
+        buffer(capacity = readAhead, onBufferOverflow = SUSPEND)
             .map { serializedFacts ->
                 withContext(deserializationDispatcher) {
                     serializedFacts.map { it.toSerializableFdbFact().toFact() }
@@ -460,18 +460,8 @@ class FdbFactStreamer(
         beginCursor: ByteArray?,
     ): Flow<Fact> =
         readBatches(storeId, beginCursor)
-            .buffer(
-                capacity = RAW_CHANNEL_CAPACITY,
-                onBufferOverflow = SUSPEND
-            )
-            .map { keyValues ->
-                withContext(deserializationDispatcher) {
-                    keyValues.map { it.value.toSerializableFdbFact().toFact() }
-                }
-            }
-            // Batches are how the store is read, not how a subscription is consumed: each fact is
-            // emitted on its own, and batching is left to whoever transports it.
-            .transform { facts -> facts.forEach { emit(it) } }
+            .map { keyValues -> keyValues.map { it.value } }
+            .toFacts(readAhead = RAW_CHANNEL_CAPACITY)
 
     private fun readBatches(
         storeId: StoreId,
