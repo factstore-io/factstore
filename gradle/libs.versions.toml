@@ -1,12 +1,12 @@
 
 [versions]
-kotlin = "2.4.20"
+kotlin = "2.4.21"
 junit = "6.1.3"
 assertj = "3.27.7"
 kotlinx-coroutines-core = "1.11.0"
 fdb-java = "7.3.67"
 json-serialization = "1.11.0"
-avro4k = "2.12.0"
+avro4k = "2.13.0"
 testcontainers-junit-jupiter = "1.21.4"
 testcontainers-foundationdb = "1.1.0"
 fmodel = "3.7.0"
