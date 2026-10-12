@@ -260,8 +260,7 @@ class FactOperations internal constructor(
         when {
             response.hasBatch() -> response.batch.factsList.forEach { emit(it.toDomain()) }
             response.hasStoreNotFound() -> throw StoreNotFoundException(storeName)
-            response.hasContinuationNotFound() ->
-                throw FactNotFoundException(response.continuationNotFound.factId)
+            response.hasContinuationNotFound() -> throw ContinuationNotFoundException(response.continuationNotFound.factId)
             else -> error("Unexpected stream message: $response")
         }
     }

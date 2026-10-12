@@ -1,7 +1,5 @@
 package io.factstore.server.input
 
-import java.time.format.DateTimeParseException
-
 /**
  * Client input could not be turned into a valid request.
  *
@@ -22,6 +20,4 @@ internal inline fun <T> parseInput(parse: () -> T): T =
         parse()
     } catch (e: IllegalArgumentException) {
         throw InvalidInputException(e.message ?: "The request is invalid.", e)
-    } catch (e: DateTimeParseException) {
-        throw InvalidInputException("'${e.parsedString}' is not an ISO-8601 instant.", e)
     }

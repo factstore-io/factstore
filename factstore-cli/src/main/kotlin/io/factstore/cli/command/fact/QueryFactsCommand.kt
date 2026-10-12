@@ -10,10 +10,6 @@ import jakarta.inject.Inject
 import io.factstore.client.model.Fact
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.jsonArray
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import picocli.CommandLine
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
@@ -99,29 +95,6 @@ class QueryFactsCommand : Callable<Int> {
         CommandLine.ExitCode.OK
     }
 
-    private fun collectFilters(): List<FactFilter> = buildList {
-        filters.forEach { add(it.toFactFilter()) }
-        queryFile?.let { file ->
-            val query = json.parseToJsonElement(file.readText()).jsonObject
-            val filters = query["filters"] ?: throw CliUsageException("The query file has no 'filters'.")
-            filters.jsonArray.forEach { add(it.toString().toFactFilter()) }
-        }
-    }
-
-    private fun String.toFactFilter(): FactFilter {
-        val filter = try {
-            json.parseToJsonElement(this).jsonObject
-        } catch (e: Exception) {
-            throw CliUsageException("A filter must be a JSON object, but was '$this': ${e.message}")
-        }
-        return FactFilter(
-            subjects = filter["subjects"]?.jsonArray?.map { it.jsonPrimitive.content } ?: emptyList(),
-            types = filter["types"]?.jsonArray?.map { it.jsonPrimitive.content } ?: emptyList(),
-            tags = filter["tags"]?.jsonObject?.mapValues { it.value.jsonPrimitive.content } ?: emptyMap(),
-        )
-    }
-
-    private companion object {
-        val json = Json { ignoreUnknownKeys = true }
-    }
+    private fun collectFilters(): List<FactFilter> =
+        filters.map(::parseFilter) + queryFile?.let(::readQueryFile).orEmpty()
 }

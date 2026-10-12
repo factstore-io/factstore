@@ -1,6 +1,7 @@
 package io.factstore.cli.exception
 
 import io.factstore.client.exceptions.AppendConditionViolatedException
+import io.factstore.client.exceptions.ContinuationNotFoundException
 import io.factstore.client.exceptions.FactNotFoundException
 import io.factstore.client.exceptions.FactStoreInvalidRequestException
 import io.factstore.client.exceptions.FactStoreRpcException
@@ -35,6 +36,7 @@ private fun Exception.toCliMessage(): String = when (this) {
     is StoreNotFoundException -> "❌ Store not found: '${this.storeName}'"
     is StoreNameAlreadyExistsException -> "❌ A store named '${this.storeName}' already exists"
     is FactNotFoundException -> "❌ Fact not found: '${this.factId}'"
+    is ContinuationNotFoundException -> "❌ Cannot continue after fact '${this.factId}': the store holds no such fact"
     is AppendConditionViolatedException -> "❌ Append condition violated: a concurrent write changed the store state. Retry with an updated condition."
     is FactStoreInvalidRequestException -> "❌ Invalid request: ${this.reason}"
     is FactStoreUnavailableException -> "❌ Cannot reach the FactStore server. Is it running, and is --url correct?"

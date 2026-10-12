@@ -44,12 +44,30 @@ function toFactFilter(input: QueryFilterInput): FactFilter {
   const types = values(input.types)
   if (types.length > 0) filter.types = types
 
-  const tags = values(input.tags)
-    .map((tag) => tag.split("=", 2))
-    .filter((parts) => parts.length === 2 && parts[0] && parts[1])
-  if (tags.length > 0) filter.tags = Object.fromEntries(tags)
+  const tags = values(input.tags).map(toTag)
+  if (tags.length > 0) {
+    const keys = new Set<string>()
+    for (const [key] of tags) {
+      if (keys.has(key)) {
+        throw new Error(`Tag '${key}' is given more than once. To match any of several values, add a filter.`)
+      }
+      keys.add(key)
+    }
+    filter.tags = Object.fromEntries(tags)
+  }
 
   return filter
+}
+
+/** Splits `key=value` at the first `=`, so that the value may contain one itself. */
+function toTag(tag: string): [string, string] {
+  const separator = tag.indexOf("=")
+  const key = tag.slice(0, separator).trim()
+  const value = tag.slice(separator + 1).trim()
+  if (separator < 0 || !key || !value) {
+    throw new Error(`A tag must have the form key=value, but was '${tag}'.`)
+  }
+  return [key, value]
 }
 
 export default function FactsPage() {
@@ -114,6 +132,11 @@ export default function FactsPage() {
           direction,
         })
       } else if (mode === "subject") {
+        if (!subject.trim()) {
+          setError("Enter a subject before running a subject query.")
+          setLoading(false)
+          return
+        }
         result = await queryFacts(storeName, {
           mode: "subject",
           subject: subject.trim(),
@@ -121,6 +144,11 @@ export default function FactsPage() {
           direction,
         })
       } else if (mode === "type") {
+        if (!type.trim()) {
+          setError("Enter a type before running a type query.")
+          setLoading(false)
+          return
+        }
         result = await queryFacts(storeName, {
           mode: "type",
           type: type.trim(),

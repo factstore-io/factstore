@@ -77,26 +77,29 @@ export interface FactFilter {
   tags?: Record<string, string>
 }
 
-export interface QueryOptions {
-  mode: "all" | "tags" | "subject" | "type" | "query"
-  tags?: string[]
-  subject?: string
-  type?: string
-  filters?: FactFilter[]
+/** What to read: each mode names the one thing it filters by, so none can be left out. */
+export type QueryOptions = {
   limit?: number
   direction?: "forward" | "backward"
-}
+} & (
+  | { mode: "all" }
+  | { mode: "tags"; tags: string[] }
+  | { mode: "subject"; subject: string }
+  | { mode: "type"; type: string }
+  | { mode: "query"; filters: FactFilter[] }
+)
 
 export async function queryFacts(storeName: string, opts: QueryOptions): Promise<Fact[]> {
   // A query carries everything in its body, and is posted to an operation on the facts.
   if (opts.mode === "query") {
+    if (opts.filters.length === 0) throw new Error("A query needs at least one filter.")
     return fetchFactStream(
       `${BASE_URL}/v1/stores/${encodeURIComponent(storeName)}/facts:query`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          filters: opts.filters ?? [],
+          filters: opts.filters,
           direction: opts.direction,
           ...(opts.limit && opts.limit > 0 ? { limit: opts.limit } : {}),
         }),
@@ -106,15 +109,22 @@ export async function queryFacts(storeName: string, opts: QueryOptions): Promise
 
   const params = new URLSearchParams()
 
-  if (opts.mode === "tags" && opts.tags) {
+  // An empty filter must not be dropped: without it the request would read every fact.
+  if (opts.mode === "tags") {
+    if (opts.tags.length === 0) throw new Error("A tag query needs at least one tag.")
     for (const tag of opts.tags) params.append("tag", tag)
+  }
+  if (opts.mode === "subject") {
+    if (!opts.subject) throw new Error("A subject query needs a subject.")
+    params.set("subject", opts.subject)
+  }
+  if (opts.mode === "type") {
+    if (!opts.type) throw new Error("A type query needs a type.")
+    params.set("type", opts.type)
   }
 
   if (opts.limit && opts.limit > 0) params.set("limit", String(opts.limit))
   if (opts.direction) params.set("direction", opts.direction)
-
-  if (opts.mode === "subject" && opts.subject) params.set("subject", opts.subject)
-  if (opts.mode === "type" && opts.type) params.set("type", opts.type)
 
   return fetchFactStream(`${BASE_URL}/v1/stores/${encodeURIComponent(storeName)}/facts?${params}`)
 }

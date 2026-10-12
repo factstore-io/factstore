@@ -114,6 +114,12 @@ class InvalidInputTest {
             },
             case("stream facts in an unknown direction") { given().queryParam("direction", "sideways").get(FACTS) },
             case("stream facts by a tag without '='") { forward().queryParam("tag", "abc").get(FACTS) },
+            case("stream facts by a tag key given twice with different values") {
+                forward().queryParam("tag", "region=eu", "region=us").get(FACTS)
+            },
+            case("stream facts by a tag key given twice with the same value") {
+                forward().queryParam("tag", "region=eu", "region=eu").get(FACTS)
+            },
 
             case("subscribe continued after an id that is not a UUID") {
                 toOperation().queryParam("continueAfter", "nope").get("$FACTS:subscribe")
