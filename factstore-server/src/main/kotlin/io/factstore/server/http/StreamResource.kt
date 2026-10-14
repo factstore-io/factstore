@@ -4,7 +4,7 @@ import io.factstore.core.*
 import io.factstore.server.publishTo
 import jakarta.ws.rs.*
 import jakarta.ws.rs.core.MediaType.APPLICATION_JSON
-import kotlinx.coroutines.flow.Flow
+import io.smallrye.mutiny.Multi
 import org.eclipse.microprofile.openapi.annotations.Operation
 import org.eclipse.microprofile.openapi.annotations.enums.SchemaType
 import org.eclipse.microprofile.openapi.annotations.media.Schema
@@ -25,12 +25,12 @@ class StreamResource(
         summary = "Subscribe to the facts of a store",
         description = SUBSCRIPTION_DESCRIPTION,
     )
-    suspend fun subscribeFacts(
+    fun subscribeFacts(
         @PathParam("storeName") storeName: String,
         @QueryParam("from") @Parameter(description = "Where to start: the store's beginning, or its end to receive only what is appended next.", schema = Schema(enumeration = ["beginning", "end"], defaultValue = "beginning")) from: String? = null,
         @QueryParam("continueAfter") @Parameter(description = "Continue after this fact, exclusive. Cannot be combined with 'from'. An empty value counts as not given.", schema = Schema(type = SchemaType.STRING, format = "uuid")) continueAfter: String? = null,
-    ): Flow<FactStreamLineHttp> =
-        subscribeRequest(storeName, from, continueAfter).publishTo(factStore).toResponse()
+    ): Multi<FactStreamLineHttp> =
+        streamOfLines { subscribeRequest(storeName, from, continueAfter).publishTo(factStore).toResponse() }
 
     private companion object {
         const val SUBSCRIPTION_DESCRIPTION =

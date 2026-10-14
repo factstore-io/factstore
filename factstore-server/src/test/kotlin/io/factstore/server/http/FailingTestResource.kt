@@ -9,7 +9,7 @@ import jakarta.ws.rs.GET
 import jakarta.ws.rs.Path
 import jakarta.ws.rs.Produces
 import jakarta.ws.rs.core.MediaType.APPLICATION_JSON
-import kotlinx.coroutines.flow.Flow
+import io.smallrye.mutiny.Multi
 import kotlinx.coroutines.flow.flow
 import org.jboss.resteasy.reactive.RestStreamElementType
 import org.jboss.resteasy.reactive.common.util.RestMediaType.APPLICATION_NDJSON
@@ -33,11 +33,11 @@ class FailingTestResource {
     @Path("fact-stream")
     @Produces(APPLICATION_NDJSON)
     @RestStreamElementType(APPLICATION_JSON)
-    fun failingFactStream(): Flow<FactStreamLineHttp> =
+    fun failingFactStream(): Multi<FactStreamLineHttp> =
         flow {
             emit(Fact(FactId.generate(), "T".toFactType(), "{}".toFactPayload(), "s".toSubject(), Instant.now()))
             throw IllegalStateException(SECRET)
-        }.toFactStreamLines()
+        }.toFactStreamLines().toMulti()
 
     companion object {
         const val SECRET = "internal detail that must not leak"

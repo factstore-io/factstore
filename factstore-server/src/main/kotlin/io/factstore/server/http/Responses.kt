@@ -1,6 +1,7 @@
 package io.factstore.server.http
 
 import io.factstore.core.*
+import io.smallrye.mutiny.Multi
 import jakarta.ws.rs.core.Response
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.coroutineScope
@@ -11,6 +12,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.produceIn
+import kotlinx.coroutines.jdk9.asPublisher
 import kotlinx.coroutines.selects.onTimeout
 import kotlinx.coroutines.selects.select
 import java.time.Instant
@@ -61,6 +63,27 @@ internal fun RemoveStoreResult.toResponse(): Response = when (this) {
 internal fun List<StoreMetadata>.toResponse(): Response = Response.ok(map { it.toHttp() }).build()
 
 // ─── NDJSON fact streams ──────────────────────────────────────────────────────
+
+/**
+ * Converts the flow into a [Multi] that collects it only as far as its subscriber has requested.
+ *
+ * Unlike Mutiny's own `asMulti()`, which collects the whole flow into an unbounded queue whatever
+ * was requested, this keeps backpressure: returned to Quarkus, a response is read only as fast as
+ * the client reads it, so a slow client holds back the read rather than piling it up in memory.
+ */
+internal fun <T : Any> Flow<T>.toMulti(): Multi<T> =
+    Multi.createFrom().publisher(asPublisher())
+
+/**
+ * A stream of lines whose request is made once the response is read.
+ *
+ * Resources return it from a plain function: Quarkus streams a [Multi] only when the method's
+ * declared return type is one, which a suspending function's is not. A failure before the first
+ * line, such as a missing store or invalid input, still becomes an error response.
+ */
+internal fun streamOfLines(lines: suspend () -> Flow<FactStreamLineHttp>): Multi<FactStreamLineHttp> =
+    flow { emitAll(lines()) }.toMulti()
+
 
 internal fun StreamFactsResult.toResponse(): Flow<FactStreamLineHttp> = when (this) {
     is StreamFactsResult.StoreNotFound -> throw StreamApiException.StoreNotFoundException(storeName)

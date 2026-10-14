@@ -5,7 +5,7 @@ import io.factstore.server.publishTo
 import jakarta.ws.rs.*
 import jakarta.ws.rs.core.MediaType.APPLICATION_JSON
 import jakarta.ws.rs.core.Response
-import kotlinx.coroutines.flow.Flow
+import io.smallrye.mutiny.Multi
 import org.eclipse.microprofile.openapi.annotations.Operation
 import org.eclipse.microprofile.openapi.annotations.enums.SchemaType
 import org.eclipse.microprofile.openapi.annotations.media.Schema
@@ -37,11 +37,11 @@ class QueryResource(
         description = "A fact matches when it matches any of the query's filters, and a fact matching " +
             "several of them is streamed once. " + FACT_STREAM_DESCRIPTION,
     )
-    suspend fun streamFactsByQuery(
+    fun streamFactsByQuery(
         @PathParam("storeName") storeName: String,
         request: StreamFactsByQueryHttpRequest,
-    ): Flow<FactStreamLineHttp> =
-        request.toDomainRequest(storeName).publishTo(store).toResponse()
+    ): Multi<FactStreamLineHttp> =
+        streamOfLines { request.toDomainRequest(storeName).publishTo(store).toResponse() }
 
 
 
@@ -53,7 +53,7 @@ class QueryResource(
         summary = "Stream the facts of a store, optionally filtered by subject, type and tags",
         description = FACT_STREAM_DESCRIPTION,
     )
-    suspend fun streamFacts(
+    fun streamFacts(
         @PathParam("storeName") storeName: String,
         @QueryParam("subject") @Parameter(description = "A subject to match. Repeatable: a fact matches any of them.") subjects: List<String> = emptyList(),
         @QueryParam("type") @Parameter(description = "A type to match, exactly. Repeatable: a fact matches any of them.") types: List<String> = emptyList(),
@@ -61,7 +61,7 @@ class QueryResource(
         @QueryParam("continueAfter") @Parameter(description = "Continue after this fact, exclusive and in reading order. An empty value counts as not given, and reads from the start.", schema = Schema(type = SchemaType.STRING, format = "uuid")) continueAfter: String? = null,
         @QueryParam("direction") @Parameter(schema = Schema(enumeration = ["forward", "backward"], defaultValue = "forward")) direction: String? = null,
         @QueryParam("limit") @Parameter(schema = Schema(type = SchemaType.INTEGER, minimum = "1")) limit: String? = null,
-    ): Flow<FactStreamLineHttp> =
+    ): Multi<FactStreamLineHttp> = streamOfLines {
         // Without criteria the whole store is read. Any criteria form one filter, and the store
         // chooses the cheapest read for it.
         if (subjects.isEmpty() && types.isEmpty() && tags.isEmpty()) {
@@ -70,6 +70,7 @@ class QueryResource(
             streamFactsByFilterRequest(storeName, subjects, types, tags, continueAfter, direction, limit)
                 .publishTo(store).toResponse()
         }
+    }
 
     private companion object {
         const val FACT_STREAM_DESCRIPTION =

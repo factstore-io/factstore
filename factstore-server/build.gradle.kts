@@ -22,6 +22,7 @@ dependencies {
     implementation("io.quarkus:quarkus-container-image-docker")
     implementation(libs.quarkus.quinoa)
     implementation("com.google.protobuf:protobuf-kotlin")
+    implementation(libs.coroutines.jdk)
 
 
     // factstore libs
