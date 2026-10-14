@@ -70,22 +70,6 @@ internal fun FactFilterHttp.toFactFilter(): FactFilter = FactFilter(
     tags = tags?.asTags() ?: emptyMap(),
 )
 
-internal fun streamFactsByTagsRequest(
-    storeName: String,
-    tags: List<String>,
-    continueAfter: String?,
-    direction: String?,
-    limit: String?,
-): StreamFactsByTagsRequest = parseInput {
-    StreamFactsByTagsRequest(
-        storeName = storeName.asStoreName(),
-        tags = tags.asTagFilter(),
-        continueAfter = continueAfter.asFactIdOrNull(),
-        direction = direction.asReadDirection(),
-        limit = limit.asLimit(),
-    )
-}
-
 /**
  * Requests the facts matching one filter, given as repeated query parameters.
  *
@@ -112,38 +96,6 @@ internal fun streamFactsByFilterRequest(
                 )
             )
         ),
-        continueAfter = continueAfter.asFactIdOrNull(),
-        direction = direction.asReadDirection(),
-        limit = limit.asLimit(),
-    )
-}
-
-internal fun streamFactsByTypeRequest(
-    storeName: String,
-    type: String,
-    continueAfter: String?,
-    direction: String?,
-    limit: String?,
-): StreamFactsByTypeRequest = parseInput {
-    StreamFactsByTypeRequest(
-        storeName = storeName.asStoreName(),
-        type = type.asFactType(),
-        continueAfter = continueAfter.asFactIdOrNull(),
-        direction = direction.asReadDirection(),
-        limit = limit.asLimit(),
-    )
-}
-
-internal fun streamFactsBySubjectRequest(
-    storeName: String,
-    subject: String,
-    continueAfter: String?,
-    direction: String?,
-    limit: String?,
-): StreamFactsBySubjectRequest = parseInput {
-    StreamFactsBySubjectRequest(
-        storeName = storeName.asStoreName(),
-        subject = subject.asSubject(),
         continueAfter = continueAfter.asFactIdOrNull(),
         direction = direction.asReadDirection(),
         limit = limit.asLimit(),

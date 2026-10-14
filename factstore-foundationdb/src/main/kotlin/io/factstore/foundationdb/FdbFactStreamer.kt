@@ -168,16 +168,32 @@ class FdbFactStreamer(
         }
         val head = pinned.head ?: return StreamFactsByQueryResult.FactStream(emptyFlow())
 
-        // A filter is an intersection of its predicates, and the query the union of its filters.
-        val matches = positionsOf {
-            val filters = request.query.filters.map { filter ->
-                filter.toSource(pinned.storeId, head, request.direction)
-            }
-            anyOf(filters, request.direction).continuingAfter(pinned.continueAfter)
+        val source = { request.query.toSource(pinned.storeId, head, request.direction) }
+
+        // A query that comes down to a single index range needs nothing combined: the range is
+        // scanned as for a single subject, type or tag, reading index entries and facts together.
+        val range = source() as? PositionCursor
+        val facts = if (range != null) {
+            scanPinned(
+                keys = range.keys,
+                continueAfterKey = pinned.continueAfter?.let(range.keyOf),
+                limit = request.limit,
+            ) { tr, entries -> loadFacts(tr, pinned.storeId, entries.map { range.positionOf(it.key) }) }
+        } else {
+            positionsOf { source().continuingAfter(pinned.continueAfter) }.loadFacts(pinned.storeId, request.limit)
         }
 
-        return StreamFactsByQueryResult.FactStream(matches.loadFacts(pinned.storeId, request.limit))
+        return StreamFactsByQueryResult.FactStream(facts)
     }
+
+    /**
+     * The positions of the facts this query matches: a filter is an intersection of its
+     * predicates, and the query the union of its filters.
+     *
+     * Building the sources reads nothing, so a query can be inspected before it is read.
+     */
+    internal fun FactQuery.toSource(storeId: StoreId, head: FactPosition, direction: ReadDirection): PositionSource =
+        anyOf(filters.map { it.toSource(storeId, head, direction) }, direction)
 
     /**
      * The positions of the facts this filter matches: every predicate it sets must hold, while a

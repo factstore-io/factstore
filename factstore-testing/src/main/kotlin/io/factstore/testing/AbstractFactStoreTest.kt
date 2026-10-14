@@ -1585,6 +1585,46 @@ abstract class AbstractFactStoreTest {
             .containsExactlyElementsOf(expected.take(17))
     }
 
+    @Test
+    fun testStreamFactsByQueryOfOneIndexRange(): Unit = runBlocking {
+        // A filter of a single subject, type or tag, or one type and one tag, may be read
+        // differently from a query that combines several. 600 facts, so that the larger results
+        // span more than one read of a backend.
+        val admin = mapOf(TagKey("role") to TagValue("admin"))
+        val inputs = (0 until 600).map { i ->
+            val subject = if (i % 2 == 0) ALICE_SUBJECT_VALUE else BOB_SUBJECT_VALUE
+            val type = if (i % 3 == 0) EVEN_FACT_TYPE else ODD_FACT_TYPE
+            input(subject, type, alicePayload, tags = if (i % 4 == 0) admin else emptyMap())
+        }
+        val facts = inputs.chunked(AppendRequest.MAX_FACTS).flatMap { appendStored(it) }
+
+        val cases = mapOf(
+            FactFilter(subjects = setOf(Subject(ALICE_SUBJECT_VALUE))) to { i: Int -> i % 2 == 0 },
+            FactFilter(types = setOf(FactType(EVEN_FACT_TYPE))) to { i: Int -> i % 3 == 0 },
+            FactFilter(tags = admin) to { i: Int -> i % 4 == 0 },
+            FactFilter(types = setOf(FactType(EVEN_FACT_TYPE)), tags = admin) to { i: Int -> i % 12 == 0 },
+        )
+        for ((filter, matches) in cases) {
+            val query = query(filter)
+            val expected = facts.filterIndexed { i, _ -> matches(i) }
+
+            assertThat(streamToList(query)).containsExactlyElementsOf(expected)
+            assertThat(streamToList(query, ReadDirection.Backward)).containsExactlyElementsOf(expected.reversed())
+            assertThat(streamToList(query, ReadDirection.Forward, Limit.of(17)))
+                .containsExactlyElementsOf(expected.take(17))
+
+            // Continuing after a fact the query matches, and after one it does not.
+            val middle = expected.size / 2
+            assertThat(streamToList(query, continueAfter = expected[middle].id))
+                .containsExactlyElementsOf(expected.drop(middle + 1))
+            assertThat(streamToList(query, ReadDirection.Backward, continueAfter = expected[middle].id))
+                .containsExactlyElementsOf(expected.take(middle).reversed())
+            val outsider = facts.indices.first { it > 300 && !matches(it) }
+            assertThat(streamToList(query, continueAfter = facts[outsider].id))
+                .containsExactlyElementsOf(facts.filterIndexed { i, _ -> i > outsider && matches(i) })
+        }
+    }
+
     private val adminInEu = mapOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("eu"))
 
     private fun query(vararg filters: FactFilter) = FactQuery(filters.toList())

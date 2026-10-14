@@ -3,6 +3,17 @@ package io.factstore.foundationdb
 import com.apple.foundationdb.Database
 import com.apple.foundationdb.FDB
 import com.apple.foundationdb.tuple.ByteArrayUtil
+import com.apple.foundationdb.subspace.Subspace
+import com.apple.foundationdb.tuple.Tuple
+import com.apple.foundationdb.tuple.Versionstamp
+import io.factstore.core.FactFilter
+import io.factstore.core.FactQuery
+import io.factstore.core.ReadDirection
+import io.factstore.core.StoreId
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.Arguments
+import org.junit.jupiter.params.provider.Arguments.arguments
+import org.junit.jupiter.params.provider.MethodSource
 import earth.adi.testcontainers.containers.FoundationDBContainer
 import io.factstore.core.AppendResult
 import io.factstore.core.CreateStoreRequest
@@ -42,6 +53,28 @@ class FactStoreTest : AbstractFactStoreTest() {
 
         @Container
         val testFdbCluster = FoundationDBContainer(DockerImageName.parse("foundationdb/foundationdb:$FDB_VERSION"))
+
+        private fun query(vararg filters: FactFilter) = FactQuery(filters.toList())
+
+        private val region = TagKey("region") to TagValue("eu")
+        private val tier = TagKey("tier") to TagValue("gold")
+
+        @JvmStatic
+        fun singleRangeQueries(): List<Arguments> = listOf(
+            arguments("one subject", query(FactFilter(subjects = setOf(Subject("order/1")))), true),
+            arguments("one type", query(FactFilter(types = setOf(FactType("T")))), true),
+            arguments("one tag", query(FactFilter(tags = mapOf(region))), true),
+            arguments("one type and one tag", query(FactFilter(types = setOf(FactType("T")), tags = mapOf(region))), true),
+            arguments("two subjects", query(FactFilter(subjects = setOf(Subject("order/1"), Subject("order/2")))), false),
+            arguments("two tags", query(FactFilter(tags = mapOf(region, tier))), false),
+            arguments("a subject and a type", query(FactFilter(subjects = setOf(Subject("order/1")), types = setOf(FactType("T")))), false),
+            arguments("one type and two tags", query(FactFilter(types = setOf(FactType("T")), tags = mapOf(region, tier))), false),
+            arguments(
+                "two filters of one subject each",
+                query(FactFilter(subjects = setOf(Subject("order/1"))), FactFilter(subjects = setOf(Subject("order/2")))),
+                false,
+            ),
+        )
 
         @JvmStatic
         @BeforeAll
@@ -87,6 +120,17 @@ class FactStoreTest : AbstractFactStoreTest() {
 
     private fun allKeys(): List<String> = db.read { tr ->
         tr.getRange(ByteArray(0), byteArrayOf(0xff.toByte())).asList().join().map { ByteArrayUtil.printable(it.key) }
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("singleRangeQueries")
+    fun testQueryOfOneIndexRangeIsScanned(description: String, query: FactQuery, singleRange: Boolean) {
+        val streamer = FdbFactStreamer(FdbFactStore(db, FdbFactStoreContext.create(Subspace(Tuple.from("test")))))
+        val head = Versionstamp.complete(ByteArray(10))
+
+        val source = with(streamer) { query.toSource(StoreId(UUID.randomUUID()), head, ReadDirection.Forward) }
+
+        assertThat(source is PositionCursor).isEqualTo(singleRange)
     }
 
     @Test

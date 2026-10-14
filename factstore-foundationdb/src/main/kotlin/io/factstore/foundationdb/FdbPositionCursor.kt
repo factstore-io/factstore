@@ -21,10 +21,10 @@ import kotlinx.coroutines.launch
  */
 internal class PositionCursor(
     private val db: Database,
-    private val keys: PinnedKeys,
+    val keys: PinnedKeys,
     private val batchSize: Int,
-    private val positionOf: (ByteArray) -> FactPosition,
-    private val keyOf: (FactPosition) -> ByteArray,
+    val positionOf: (ByteArray) -> FactPosition,
+    val keyOf: (FactPosition) -> ByteArray,
 ) : PositionSource {
 
     /** The positions of the batch at hand, read out of its keys once. */

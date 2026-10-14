@@ -62,28 +62,13 @@ class QueryResource(
         @QueryParam("direction") @Parameter(schema = Schema(enumeration = ["forward", "backward"], defaultValue = "forward")) direction: String? = null,
         @QueryParam("limit") @Parameter(schema = Schema(type = SchemaType.INTEGER, minimum = "1")) limit: String? = null,
     ): Flow<FactStreamLineHttp> =
-        // The parameters describe one filter, and the cheapest read that can serve it is chosen:
-        // a single subject, a single type or tags alone each have an index of their own, while
-        // anything combined is a query of one filter.
-        when {
-            subjects.isEmpty() && types.isEmpty() && tags.isEmpty() ->
-                streamFactsRequest(storeName, continueAfter, direction, limit).publishTo(store).toResponse()
-
-            subjects.size == 1 && types.isEmpty() && tags.isEmpty() ->
-                streamFactsBySubjectRequest(storeName, subjects.single(), continueAfter, direction, limit)
-                    .publishTo(store).toResponse()
-
-            types.size == 1 && subjects.isEmpty() && tags.isEmpty() ->
-                streamFactsByTypeRequest(storeName, types.single(), continueAfter, direction, limit)
-                    .publishTo(store).toResponse()
-
-            subjects.isEmpty() && types.isEmpty() ->
-                streamFactsByTagsRequest(storeName, tags, continueAfter, direction, limit)
-                    .publishTo(store).toResponse()
-
-            else ->
-                streamFactsByFilterRequest(storeName, subjects, types, tags, continueAfter, direction, limit)
-                    .publishTo(store).toResponse()
+        // Without criteria the whole store is read. Any criteria form one filter, and the store
+        // chooses the cheapest read for it.
+        if (subjects.isEmpty() && types.isEmpty() && tags.isEmpty()) {
+            streamFactsRequest(storeName, continueAfter, direction, limit).publishTo(store).toResponse()
+        } else {
+            streamFactsByFilterRequest(storeName, subjects, types, tags, continueAfter, direction, limit)
+                .publishTo(store).toResponse()
         }
 
     private companion object {

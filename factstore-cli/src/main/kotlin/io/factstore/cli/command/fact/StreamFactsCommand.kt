@@ -93,33 +93,21 @@ class StreamFactsCommand : Callable<Int> {
         CommandLine.ExitCode.OK
     }
 
-    // The cheapest read that can serve the options is chosen, as the HTTP API does: a single
-    // subject, a single type and tags alone each have an index of their own, while anything
-    // combined is a query of one filter.
     private fun facts(): Flow<Fact> {
         requirePositiveLimit(limit)
         val storeName = configResolver.resolveStore(storeName)
         val after = continueAfter?.toString()
-        return when {
-            subjects.isEmpty() && types.isEmpty() && tags.isEmpty() ->
-                client.facts.streamFacts(storeName, direction, limit, after)
-
-            subjects.size == 1 && types.isEmpty() && tags.isEmpty() ->
-                client.facts.streamFactsBySubject(storeName, subjects.single(), direction, limit, after)
-
-            types.size == 1 && subjects.isEmpty() && tags.isEmpty() ->
-                client.facts.streamFactsByType(storeName, types.single(), direction, limit, after)
-
-            subjects.isEmpty() && types.isEmpty() ->
-                client.facts.streamFactsByTags(storeName, tags.toTagFilter(), direction, limit, after)
-
-            else -> client.facts.streamFactsByQuery(
-                storeName = storeName,
-                filters = listOf(FactFilter(subjects = subjects, types = types, tags = tags.toTagFilter())),
-                direction = direction,
-                limit = limit,
-                continueAfter = after,
-            )
+        // Without criteria the whole store is read. Any criteria form one filter, and the server
+        // chooses the cheapest read for it.
+        if (subjects.isEmpty() && types.isEmpty() && tags.isEmpty()) {
+            return client.facts.streamFacts(storeName, direction, limit, after)
         }
+        return client.facts.streamFactsByQuery(
+            storeName = storeName,
+            filters = listOf(FactFilter(subjects = subjects, types = types, tags = tags.toTagFilter())),
+            direction = direction,
+            limit = limit,
+            continueAfter = after,
+        )
     }
 }

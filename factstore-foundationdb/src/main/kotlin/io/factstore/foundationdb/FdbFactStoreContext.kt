@@ -36,8 +36,11 @@ data class FdbFactStoreContext(
 
     companion object {
 
-        fun create(rootDirectory: FactStoreRootDirectory): FdbFactStoreContext {
-            val root = rootDirectory.rootDirectorySubspace
+        fun create(rootDirectory: FactStoreRootDirectory): FdbFactStoreContext =
+            create(rootDirectory.rootDirectorySubspace)
+
+        /** The subspaces of a fact store kept under [root]. */
+        internal fun create(root: Subspace): FdbFactStoreContext {
             return FdbFactStoreContext(
                 storeSubspace = StoreSubspace(root.subspace(Tuple.from(STORES))),
                 storeNameToIdIndex = StoreNameToIdIndexSubspace(root.subspace(Tuple.from(STORE_INDEX))),
