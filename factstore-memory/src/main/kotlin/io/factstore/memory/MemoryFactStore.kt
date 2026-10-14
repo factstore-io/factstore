@@ -215,9 +215,13 @@ class MemoryFactStore : FactStore {
         val to = if (direction == ReadDirection.Forward) head else continuation ?: head
 
         return flow {
-            // Copy under the lock, emit outside of it: a collector may append in between.
-            val selected = lock.withLock { subList(from, to).filter(predicate) }
-            emitAll(selected.applyDirection(direction).applyLimit(limit).asFlow())
+            // Select under the lock, emit outside of it: a collector may append in between. The
+            // facts are visited in reading order, so the selection stops once the limit is reached
+            // instead of copying every match.
+            val selected = lock.withLock {
+                subList(from, to).inReadingOrder(direction).filter(predicate).limitedTo(limit).toList()
+            }
+            emitAll(selected.asFlow())
         }
     }
 
@@ -320,12 +324,13 @@ class MemoryFactStore : FactStore {
         return RemoveStoreResult.StoreRemoved(request.storeName)
     }
 
-    private fun List<Fact>.applyDirection(direction: ReadDirection): List<Fact> = when (direction) {
-        ReadDirection.Forward -> this
-        ReadDirection.Backward -> asReversed()
+    /** The facts in reading order, visited lazily and without copying them. */
+    private fun List<Fact>.inReadingOrder(direction: ReadDirection): Sequence<Fact> = when (direction) {
+        ReadDirection.Forward -> asSequence()
+        ReadDirection.Backward -> asReversed().asSequence()
     }
 
-    private fun List<Fact>.applyLimit(limit: Limit): List<Fact> = when (val cap = limit.value) {
+    private fun Sequence<Fact>.limitedTo(limit: Limit): Sequence<Fact> = when (val cap = limit.value) {
         null -> this
         else -> take(cap)
     }

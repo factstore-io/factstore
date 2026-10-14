@@ -167,6 +167,30 @@ type FactStreamLine =
  * that every fact arrived; a stream that stops without it is reported as incomplete.
  */
 async function fetchFactStream(url: string, init: RequestInit = {}): Promise<Fact[]> {
+  const facts: Fact[] = []
+  for await (const line of readFactStreamLines(url, init)) {
+    if ("fact" in line) {
+      facts.push(line.fact)
+    } else if ("end" in line) {
+      if (line.end.count !== facts.length) {
+        throw new Error(`The fact stream announced ${line.end.count} facts but delivered ${facts.length}.`)
+      }
+      return facts
+    }
+  }
+  throw new Error("The fact stream ended before it was complete.")
+}
+
+/**
+ * Opens an NDJSON fact stream and yields its lines as they arrive, until the response ends.
+ *
+ * Failures are thrown rather than yielded: an error response, and an `error` line, which a
+ * stream sends in place of the lines it could not write.
+ */
+async function* readFactStreamLines(
+  url: string,
+  init: RequestInit = {},
+): AsyncGenerator<Exclude<FactStreamLine, { error: ApiError }>> {
   const res = await fetch(url, {
     ...init,
     headers: { Accept: "application/x-ndjson", ...(init.headers ?? {}) },
@@ -174,32 +198,27 @@ async function fetchFactStream(url: string, init: RequestInit = {}): Promise<Fac
   if (!res.ok) throw await toApiError(res)
   if (!res.body) throw new Error("The fact stream has no body.")
 
-  const facts: Fact[] = []
   const reader = res.body.pipeThrough(new TextDecoderStream()).getReader()
-  let pending = ""
-  for (;;) {
-    const { done, value } = await reader.read()
-    if (value) pending += value
-    const lines = pending.split("\n")
-    // Until the body is done, the last piece may be a line that has not fully arrived yet.
-    pending = done ? "" : (lines.pop() ?? "")
-    for (const line of lines) {
-      if (!line.trim()) continue
-      const parsed = parseFactStreamLine(line)
-      if ("fact" in parsed) {
-        facts.push(parsed.fact)
-      } else if ("end" in parsed) {
-        if (parsed.end.count !== facts.length) {
-          throw new Error(`The fact stream announced ${parsed.end.count} facts but delivered ${facts.length}.`)
-        }
-        return facts
-      } else if ("error" in parsed) {
-        throw new Error(parsed.error.message)
+  try {
+    let pending = ""
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (value) pending += value
+      const lines = pending.split("\n")
+      // Until the body is done, the last piece may be a line that has not fully arrived yet.
+      pending = done ? "" : (lines.pop() ?? "")
+      for (const line of lines) {
+        if (!line.trim()) continue
+        const parsed = parseFactStreamLine(line)
+        if ("error" in parsed) throw new ApiRequestError(parsed.error.message, parsed.error.reason)
+        yield parsed
       }
+      if (done) return
     }
-    if (done) break
+  } finally {
+    // A caller that stops early, at the `end` line or on a failure, no longer needs the body.
+    reader.cancel().catch(() => {})
   }
-  throw new Error("The fact stream ended before it was complete.")
 }
 
 function parseFactStreamLine(line: string): FactStreamLine {
@@ -303,27 +322,10 @@ async function readSubscription(
   onFact: (fact: Fact) => void,
   onLine: () => void,
 ): Promise<void> {
-  const res = await fetch(url, { headers: { Accept: "application/x-ndjson" }, signal })
-  if (!res.ok) throw await toApiError(res)
-  if (!res.body) throw new Error("The subscription has no body.")
-
-  const reader = res.body.pipeThrough(new TextDecoderStream()).getReader()
-  let pending = ""
-  for (;;) {
-    const { done, value } = await reader.read()
-    if (value) pending += value
-    const lines = pending.split("\n")
-    // Until the body is done, the last piece may be a line that has not fully arrived yet.
-    pending = done ? "" : (lines.pop() ?? "")
-    for (const line of lines) {
-      if (!line.trim()) continue
-      const parsed = parseFactStreamLine(line)
-      if ("error" in parsed) throw new ApiRequestError(parsed.error.message, parsed.error.reason)
-      onLine()
-      if ("fact" in parsed) onFact(parsed.fact)
-      // A heartbeat only says the subscription is still being served.
-    }
-    if (done) return
+  for await (const line of readFactStreamLines(url, { signal })) {
+    onLine()
+    if ("fact" in line) onFact(line.fact)
+    // A heartbeat only says the subscription is still being served.
   }
 }
 
