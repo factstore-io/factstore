@@ -2,7 +2,10 @@ package io.factstore.server.http
 
 import io.factstore.core.*
 import io.smallrye.mutiny.Multi
+import io.vertx.core.Vertx
+import io.vertx.kotlin.coroutines.dispatcher
 import jakarta.ws.rs.core.Response
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
@@ -70,9 +73,12 @@ internal fun List<StoreMetadata>.toResponse(): Response = Response.ok(map { it.t
  * Unlike Mutiny's own `asMulti()`, which collects the whole flow into an unbounded queue whatever
  * was requested, this keeps backpressure: returned to Quarkus, a response is read only as fast as
  * the client reads it, so a slow client holds back the read rather than piling it up in memory.
+ *
+ * The flow is collected on [dispatcher]. Without one, it would continue on whichever thread
+ * resumed it after each suspension, such as a timer thread or a database client's thread.
  */
-internal fun <T : Any> Flow<T>.toMulti(): Multi<T> =
-    Multi.createFrom().publisher(asPublisher())
+internal fun <T : Any> Flow<T>.toMulti(dispatcher: CoroutineDispatcher): Multi<T> =
+    Multi.createFrom().publisher(asPublisher(dispatcher))
 
 /**
  * A stream of lines whose request is made once the response is read.
@@ -80,9 +86,14 @@ internal fun <T : Any> Flow<T>.toMulti(): Multi<T> =
  * Resources return it from a plain function: Quarkus streams a [Multi] only when the method's
  * declared return type is one, which a suspending function's is not. A failure before the first
  * line, such as a missing store or invalid input, still becomes an error response.
+ *
+ * The stream runs on the request's Vert.x context, as suspending resource code does, so it must
+ * be created on that context.
  */
-internal fun streamOfLines(lines: suspend () -> Flow<FactStreamLineHttp>): Multi<FactStreamLineHttp> =
-    flow { emitAll(lines()) }.toMulti()
+internal fun streamOfLines(lines: suspend () -> Flow<FactStreamLineHttp>): Multi<FactStreamLineHttp> {
+    val context = checkNotNull(Vertx.currentContext()) { "A stream of lines must be created on a Vert.x context." }
+    return flow { emitAll(lines()) }.toMulti(context.dispatcher())
+}
 
 
 internal fun StreamFactsResult.toResponse(): Flow<FactStreamLineHttp> = when (this) {

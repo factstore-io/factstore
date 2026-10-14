@@ -33,11 +33,12 @@ class FailingTestResource {
     @Path("fact-stream")
     @Produces(APPLICATION_NDJSON)
     @RestStreamElementType(APPLICATION_JSON)
-    fun failingFactStream(): Multi<FactStreamLineHttp> =
+    fun failingFactStream(): Multi<FactStreamLineHttp> = streamOfLines {
         flow {
             emit(Fact(FactId.generate(), "T".toFactType(), "{}".toFactPayload(), "s".toSubject(), Instant.now()))
             throw IllegalStateException(SECRET)
-        }.toFactStreamLines().toMulti()
+        }.toFactStreamLines()
+    }
 
     companion object {
         const val SECRET = "internal detail that must not leak"

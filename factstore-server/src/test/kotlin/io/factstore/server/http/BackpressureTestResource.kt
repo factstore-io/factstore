@@ -28,7 +28,8 @@ class BackpressureTestResource {
     @Path("facts")
     @Produces(APPLICATION_NDJSON)
     @RestStreamElementType(APPLICATION_JSON)
-    fun facts(@QueryParam("count") count: Int): Multi<FactStreamLineHttp> = counted(count).toFactStreamLines().toMulti()
+    fun facts(@QueryParam("count") count: Int): Multi<FactStreamLineHttp> =
+        streamOfLines { counted(count).toFactStreamLines() }
 
     @GET
     @Path("produced")
