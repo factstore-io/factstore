@@ -6,6 +6,7 @@ import io.restassured.RestAssured.given
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
+import java.net.InetSocketAddress
 import java.net.Socket
 import java.net.URL
 
@@ -24,8 +25,10 @@ class BackpressureTest {
     fun streamKeepsBackpressure() {
         // About 1.3 MB of NDJSON per thousand facts: far more than the socket buffers hold.
         val count = 100_000
-        Socket(base.host, base.port).use { socket ->
+        Socket().use { socket ->
+            // Set before connecting: the window it allows is agreed when the connection opens.
             socket.receiveBufferSize = 64 * 1024
+            socket.connect(InetSocketAddress(base.host, base.port))
             socket.getOutputStream().apply {
                 write("GET /api/test/backpressure/facts?count=$count HTTP/1.1\r\nHost: ${base.host}\r\n\r\n".toByteArray())
                 flush()

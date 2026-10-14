@@ -36,8 +36,11 @@ internal const val MAX_FACT_BATCH_BYTES = 1_048_576
  * Reading ahead is what gives [toProtoFactBatches] something to group: while facts are read
  * faster than they are sent they queue up here, and when they trickle in the queue is empty,
  * so a fact is sent on its own.
+ *
+ * The queue fills only while a client reads more slowly than the store, and then holds about
+ * 10 MB at the largest fact the specification allows, a few dozen kB for typical facts.
  */
-internal const val FACT_BATCH_BUFFER = 512
+internal const val FACT_BATCH_BUFFER = 128
 
 /**
  * Groups the facts of a stream into batches whose encoded size stays within [maxBytes].

@@ -175,6 +175,16 @@ class QueryResourceTest {
             mapOf("continueAfter" to second.toString(), "direction" to "backward"),
         )
         assertThat(backward.dropLast(1).map { it["fact"]["id"].asText() }).containsExactly(first.toString())
+
+        // An empty continuation counts as not given, as documented: the stream starts at the beginning.
+        val fromEmpty = ndjsonLines(
+            given().urlEncodingEnabled(false)
+                .get("/api/v1/stores/$store/facts?continueAfter=")
+                .then().statusCode(200).contentType(NDJSON)
+                .extract().asString()
+        )
+        assertThat(fromEmpty.dropLast(1).map { it["fact"]["id"].asText() })
+            .containsExactly(first.toString(), second.toString())
     }
 
     @Test

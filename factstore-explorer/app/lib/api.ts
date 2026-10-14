@@ -38,9 +38,13 @@ export class ApiRequestError extends Error {
     this.status = status
   }
 
-  /** Whether repeating the request unchanged is bound to fail again. */
+  /**
+   * Whether repeating the request unchanged is bound to fail again. A client error is, except
+   * for a timeout or a rate limit, which a proxy may answer with and which pass with time.
+   */
   get permanent(): boolean {
     if (this.reason) return this.reason !== "InternalError"
+    if (this.status === 408 || this.status === 429) return false
     return this.status !== undefined && this.status >= 400 && this.status < 500
   }
 }
@@ -274,6 +278,9 @@ export function subscribeToFacts(
   async function run() {
     let attempt = 0
     while (!closed) {
+      // Every response counts as an attempt, and every line it delivers proves the connection:
+      // a response that ends without a single line, say from a proxy, fails like any other.
+      let failure: unknown = new Error("The subscription ended without delivering anything.")
       try {
         await readSubscription(
           url(),
@@ -289,15 +296,15 @@ export function subscribeToFacts(
         )
         // The response ended although a subscription does not: reconnect.
       } catch (err) {
-        if (closed) return
-        attempt += 1
-        const permanent = err instanceof ApiRequestError && err.permanent
-        if (permanent || attempt >= RECONNECT_ATTEMPTS) {
-          onError(err instanceof Error ? err : new Error(String(err)))
-          return
-        }
+        failure = err
       }
       if (closed) return
+      attempt += 1
+      const permanent = failure instanceof ApiRequestError && failure.permanent
+      if (permanent || attempt >= RECONNECT_ATTEMPTS) {
+        onError(failure instanceof Error ? failure : new Error(String(failure)))
+        return
+      }
       await new Promise((resolve) => setTimeout(resolve, RECONNECT_DELAY_MS))
     }
   }

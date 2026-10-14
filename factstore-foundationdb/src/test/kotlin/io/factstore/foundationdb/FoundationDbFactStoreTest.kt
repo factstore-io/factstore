@@ -17,6 +17,7 @@ import org.junit.jupiter.params.provider.MethodSource
 import earth.adi.testcontainers.containers.FoundationDBContainer
 import io.factstore.core.AppendResult
 import io.factstore.core.CreateStoreRequest
+import io.factstore.core.CreateStoreResult
 import io.factstore.core.FactInput
 import io.factstore.core.FactStore
 import io.factstore.core.FactType
@@ -32,6 +33,7 @@ import kotlinx.coroutines.runBlocking
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.Test
+import java.nio.ByteBuffer
 import java.util.UUID
 import org.junit.jupiter.api.TestInstance
 import org.junit.jupiter.api.TestInstance.Lifecycle.PER_CLASS
@@ -99,9 +101,8 @@ class FactStoreTest : AbstractFactStoreTest() {
 
     @Test
     fun testRemovingStoreLeavesNoKeysBehind(): Unit = runBlocking {
-        val before = allKeys()
         val storeName = StoreName("store-to-remove-completely")
-        store.create(CreateStoreRequest(storeName))
+        val storeId = (store.create(CreateStoreRequest(storeName)) as CreateStoreResult.Created).id
         val fact = FactInput(
             type = FactType("TEST_FACT_TYPE"),
             subject = Subject("TEST_SUBJECT"),
@@ -110,17 +111,30 @@ class FactStoreTest : AbstractFactStoreTest() {
             tags = mapOf(TagKey("region") to TagValue("eu")),
         )
         assertThat(store.append(storeName, listOf(fact, fact))).isInstanceOf(AppendResult.Appended::class.java)
-        assertThat(allKeys()).hasSizeGreaterThan(before.size)
+
+        // A store's keys are found by its id, which every one but the name index carries, and by
+        // its name; looking only for those leaves whatever else the database holds out of it.
+        val storeIdBytes = ByteBuffer.allocate(16)
+            .putLong(storeId.uuid.mostSignificantBits)
+            .putLong(storeId.uuid.leastSignificantBits)
+            .array()
+        val nameBytes = storeName.value.toByteArray()
+        fun keysOfTheStore() = allKeys().filter { it.contains(storeIdBytes) || it.contains(nameBytes) }
+        assertThat(keysOfTheStore()).isNotEmpty()
 
         assertThat(store.remove(RemoveStoreRequest(storeName))).isInstanceOf(RemoveStoreResult.StoreRemoved::class.java)
 
         // Facts included: a removed store is unreachable, so anything left behind would stay for good.
-        assertThat(allKeys()).isEqualTo(before)
+        assertThat(keysOfTheStore().map { ByteArrayUtil.printable(it) }).isEmpty()
     }
 
-    private fun allKeys(): List<String> = db.read { tr ->
-        tr.getRange(ByteArray(0), byteArrayOf(0xff.toByte())).asList().join().map { ByteArrayUtil.printable(it.key) }
+    private fun allKeys(): List<ByteArray> = db.read { tr ->
+        tr.getRange(ByteArray(0), byteArrayOf(0xff.toByte())).asList().join().map { it.key }
     }
+
+    /** Whether [part] occurs in these bytes. */
+    private fun ByteArray.contains(part: ByteArray): Boolean =
+        (0..size - part.size).any { start -> part.indices.all { this[start + it] == part[it] } }
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("singleRangeQueries")

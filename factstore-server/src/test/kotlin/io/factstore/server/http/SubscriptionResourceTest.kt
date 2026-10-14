@@ -68,6 +68,19 @@ class SubscriptionResourceTest {
     }
 
     @Test
+    @DisplayName("GET /facts:subscribe - Should take an empty continuation as not given")
+    fun subscribeWithEmptyContinuation() {
+        val store = store("subscribe-empty-continuation")
+        val first = seedFact(store, type = "order.placed")
+        val second = seedFact(store, type = "order.shipped")
+
+        // As documented: an empty value counts as not given, so it does not clash with 'from'.
+        val facts = subscribe(store, "from=beginning&continueAfter=", factLines = 2)
+
+        assertThat(facts.map { it["id"].asText() }).containsExactly(first.toString(), second.toString())
+    }
+
+    @Test
     @DisplayName("GET /facts:subscribe - Should answer 404 before the stream starts when the store is missing")
     fun subscribeToMissingStore() {
         val error = given()
