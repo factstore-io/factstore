@@ -138,7 +138,7 @@ class GrpcFactService(
                     continuationNotFound = continuationNotFound { factId = result.factId.uuid.toString() }
                 })
 
-                is SubscribeResult.FactStream -> result.facts.toLiveProtoFactBatches().map { batch ->
+                is SubscribeResult.FactStream -> result.facts.toProtoFactBatches().map { batch ->
                     subscribeFactsResponse { this.batch = batch }
                 }
             }

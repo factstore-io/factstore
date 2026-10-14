@@ -1,10 +1,14 @@
 package io.factstore.server.grpc
 
 import io.factstore.core.*
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.asFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
@@ -49,6 +53,23 @@ class FactBatchesTest {
     @DisplayName("No facts result in no batches")
     fun noFacts(): Unit = runBlocking {
         assertThat(emptyFlow<Fact>().toProtoFactBatches().toList()).isEmpty()
+    }
+
+    @Test
+    @DisplayName("A fact is sent without waiting for a batch to fill")
+    fun factIsNotHeldBack(): Unit = runBlocking {
+        val more = CompletableDeferred<Unit>()
+        val first = fact(ByteArray(10))
+        val facts = flow {
+            emit(first)
+            // A slow read, such as a selective query, finds the next fact only much later.
+            more.await()
+            emit(fact(ByteArray(10)))
+        }
+
+        val batch = withTimeout(5_000) { facts.toProtoFactBatches().first() }
+
+        assertThat(batch.factsList.map { it.id }).containsExactly(first.id.uuid.toString())
     }
 
     private fun fact(payload: ByteArray) = Fact(

@@ -31,52 +31,28 @@ internal fun Instant.toTimestamp(): Timestamp = Timestamp.newBuilder()
 internal const val MAX_FACT_BATCH_BYTES = 1_048_576
 
 /**
- * Groups the facts into batches whose encoded size stays within [maxBytes].
+ * The number of facts a stream keeps ready to be batched.
  *
- * A batch is sent once the next fact would not fit, and the last one when the facts are
- * exhausted, so this suits bounded streams only: a live stream would hold back facts
- * until a batch is full.
+ * Reading ahead is what gives [toProtoFactBatches] something to group: while facts are read
+ * faster than they are sent they queue up here, and when they trickle in the queue is empty,
+ * so a fact is sent on its own.
  */
-internal fun Flow<Fact>.toProtoFactBatches(maxBytes: Int = MAX_FACT_BATCH_BYTES): Flow<FactStoreProto.FactBatch> =
-    flow {
-        val batch = mutableListOf<FactStoreProto.Fact>()
-        var batchBytes = 0
-        collect { fact ->
-            val proto = fact.toProto()
-            val size = proto.sizeInBatch()
-            if (batch.isNotEmpty() && batchBytes + size > maxBytes) {
-                emit(factBatch { facts += batch })
-                batch.clear()
-                batchBytes = 0
-            }
-            batch += proto
-            batchBytes += size
-        }
-        if (batch.isNotEmpty()) emit(factBatch { facts += batch })
-    }
+internal const val FACT_BATCH_BUFFER = 512
 
 /**
- * The number of facts a live stream keeps ready to be batched.
+ * Groups the facts of a stream into batches whose encoded size stays within [maxBytes].
  *
- * Reading ahead is what gives [toLiveProtoFactBatches] something to group: while a subscription
- * drains history the facts queue up here, and at the live tail the queue is empty, so a fact is
- * sent on its own.
- */
-internal const val LIVE_BATCH_BUFFER = 512
-
-/**
- * Groups the facts of a live stream into batches whose encoded size stays within [maxBytes].
- *
- * Unlike [toProtoFactBatches] a batch is never waited for: it holds the facts that were ready
- * when it was built, so a subscription draining history sends full batches while one following
- * the tail sends each fact as it arrives. A fact that no longer fits [maxBytes] opens the next
+ * A batch is never waited for: it holds the facts that were ready when it was built. A stream
+ * read faster than it is sent, such as a subscription draining history, sends full batches,
+ * while one whose facts trickle in, such as a selective query or a subscription following the
+ * tail, sends each fact as it arrives. A fact that no longer fits [maxBytes] opens the next
  * batch rather than being dropped or delayed.
  */
-internal fun Flow<Fact>.toLiveProtoFactBatches(
+internal fun Flow<Fact>.toProtoFactBatches(
     maxBytes: Int = MAX_FACT_BATCH_BYTES,
 ): Flow<FactStoreProto.FactBatch> = flow {
     coroutineScope {
-        val ready = buffer(LIVE_BATCH_BUFFER).produceIn(this)
+        val ready = buffer(FACT_BATCH_BUFFER).produceIn(this)
         // The fact that did not fit the batch just sent; it opens the next one.
         var carried: FactStoreProto.Fact? = null
         while (true) {

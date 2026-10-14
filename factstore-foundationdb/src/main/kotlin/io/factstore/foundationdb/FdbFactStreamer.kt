@@ -12,10 +12,8 @@ import kotlinx.coroutines.future.await
 import kotlinx.coroutines.withContext
 import io.factstore.core.*
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.BufferOverflow.SUSPEND
 import kotlinx.coroutines.flow.buffer
-import kotlinx.coroutines.flow.chunked
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.emitAll
@@ -396,13 +394,13 @@ class FdbFactStreamer(
     /**
      * Loads the facts at the positions, at most [limit] of them.
      *
-     * Positions are collected into batches, and each batch is loaded in one transaction, so that
-     * matching a sparse intersection does not cost one read round trip per fact.
+     * The positions found while a batch is loaded make up the next one, so that a dense match
+     * does not cost one read round trip per fact, while a sparse one is not held back until
+     * enough positions are found to fill a batch.
      */
-    @OptIn(ExperimentalCoroutinesApi::class)
     private fun Flow<FactPosition>.loadFacts(storeId: StoreId, limit: Limit): Flow<Fact> =
         (limit.value?.let { take(it) } ?: this)
-            .chunked(streamBatchSize)
+            .batchedAsReady(streamBatchSize)
             .map { positions -> read { tr -> loadFacts(tr, storeId, positions) } }
             .toFacts(readAhead = STREAM_PREFETCH_BATCHES)
 
