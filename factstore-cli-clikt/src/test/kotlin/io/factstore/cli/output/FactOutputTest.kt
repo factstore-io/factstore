@@ -16,11 +16,14 @@ class FactOutputTest {
     private val recorder = TerminalRecorder(ansiLevel = AnsiLevel.NONE)
     private val terminal = Terminal(terminalInterface = recorder, width = 200)
 
+    // The JSON shapes write to a plain sink rather than the terminal, so the tests hand one in.
+    private val out = StringBuilder()
+
     private val fact = fact(type = "OrderPlaced", payload = """{"total":5}""")
 
     @Test
     fun `a table names every column and holds a row per fact`(): Unit = runBlocking {
-        flowOf(fact, fact(type = "OrderPaid")).writeTo(terminal, OutputFormat.Table)
+        flowOf(fact, fact(type = "OrderPaid")).writeTo(terminal, OutputFormat.Table, out)
 
         val output = recorder.output()
         assertThat(output.lines().first { "ID" in it })
@@ -30,21 +33,21 @@ class FactOutputTest {
 
     @Test
     fun `an empty read still prints its table header`(): Unit = runBlocking {
-        flowOf<Fact>().writeTo(terminal, OutputFormat.Table)
+        flowOf<Fact>().writeTo(terminal, OutputFormat.Table, out)
 
         assertThat(recorder.output()).contains("ID", "TYPE")
     }
 
     @Test
     fun `json is one array, ndjson one object per line`(): Unit = runBlocking {
-        flowOf(fact, fact).writeTo(terminal, OutputFormat.Json)
-        val json = recorder.output()
+        flowOf(fact, fact).writeTo(terminal, OutputFormat.Json, out)
+        val json = out.toString()
         assertThat(json.trim()).startsWith("[").endsWith("]")
         assertThat(json).contains("\"type\": \"OrderPlaced\"")
 
-        recorder.clearOutput()
-        flowOf(fact, fact).writeTo(terminal, OutputFormat.Ndjson)
-        val lines = recorder.output().trim().lines()
+        out.clear()
+        flowOf(fact, fact).writeTo(terminal, OutputFormat.Ndjson, out)
+        val lines = out.toString().trim().lines()
         assertThat(lines).hasSize(2)
         assertThat(lines.first()).startsWith("{").contains("\"type\":\"OrderPlaced\"")
     }
@@ -53,7 +56,7 @@ class FactOutputTest {
     fun `a payload longer than the preview is cut, and newlines do not break the row`(): Unit = runBlocking {
         val long = fact(payload = "{\n  \"note\": \"${"x".repeat(80)}\"\n}")
 
-        flowOf(long).writeTo(terminal, OutputFormat.Table)
+        flowOf(long).writeTo(terminal, OutputFormat.Table, out)
 
         val row = recorder.output().lines().first { "OrderPlaced" in it }
         assertThat(row).contains("…")
@@ -62,7 +65,7 @@ class FactOutputTest {
 
     @Test
     fun `a followed stream writes a line per fact, never a table`(): Unit = runBlocking {
-        flowOf(fact, fact(type = "OrderPaid")).followTo(terminal, OutputFormat.Table)
+        flowOf(fact, fact(type = "OrderPaid")).followTo(terminal, OutputFormat.Table, out)
 
         val lines = recorder.output().trim().lines()
         assertThat(lines).hasSize(2)

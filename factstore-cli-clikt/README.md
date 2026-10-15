@@ -140,6 +140,10 @@ exists precisely to avoid that, but it only gets its turn when FFM is absent.
   replays. The specification's own default stays `Beginning`, for projections.
 - **`-t` is `--tag` everywhere.** In the Picocli CLI `-t` meant `--type` for `fact append` and
   `--tag` for `fact stream`; `--type` now has no short form.
+- **Machine-readable output does not go through the terminal.** `json` and `ndjson` are written
+  to a buffered standard output, because Clikt's terminal is Mordant and Mordant reads every
+  character on the way past to style and size it: streaming 105k facts through it cost 1.2 s of
+  a 2.9 s run. Tables still go through the terminal, which is what needs its width and theme.
 - **Tables are Mordant's**, so columns size themselves. A table is rendered to the width
   Mordant reports, which falls back to 79 columns when it cannot see a terminal — narrow enough
   to cut a fact's id, which is what `-o ndjson` is for in a pipeline (`COLUMNS` widens it on the

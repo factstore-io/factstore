@@ -7,14 +7,23 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.toList
 import kotlinx.serialization.json.Json
+import java.io.BufferedWriter
+import java.io.Flushable
+import java.io.OutputStreamWriter
 
 private const val PAYLOAD_PREVIEW = 40
+private const val BUFFER_BYTES = 64 * 1024
 
 private val compactJson = Json { prettyPrint = false }
 private val prettyJson = Json { prettyPrint = true }
 
 /**
  * Writes the facts of a bounded read.
+ *
+ * A table goes through the terminal, which sizes and styles it for whoever is watching. The JSON
+ * shapes go straight to [out] instead, by default a buffered standard output: machine-readable
+ * output has to stay exactly what the reader asked for, and a terminal renderer reads every
+ * character on the way past -- about a second of it for a stream of 100k facts.
  *
  * Both JSON shapes are written as the facts arrive, so a long history can be piped onwards while
  * it is still being read. A table cannot: its columns are only as wide as its widest row, which
@@ -24,23 +33,38 @@ private val prettyJson = Json { prettyPrint = true }
  * terminal -- narrow enough to cut a fact's id. That is the reason `ndjson` exists for pipelines,
  * and `COLUMNS` widens a table on the way to a pager.
  */
-internal suspend fun Flow<Fact>.writeTo(terminal: Terminal, format: OutputFormat): Unit = when (format) {
-    OutputFormat.Table -> terminal.println(toList().toFactTable())
-    OutputFormat.Json -> writeJsonArray(terminal)
-    OutputFormat.Ndjson -> collect { terminal.println(compactJson.encodeToString(it)) }
+internal suspend fun Flow<Fact>.writeTo(
+    terminal: Terminal,
+    format: OutputFormat,
+    out: Appendable = bufferedStdout(),
+) {
+    when (format) {
+        OutputFormat.Table -> terminal.println(toList().toFactTable())
+        OutputFormat.Json -> writeJsonArray(out)
+        OutputFormat.Ndjson -> collect { out.appendLine(compactJson.encodeToString(it)) }
+    }
+    out.flushIfPossible()
 }
 
-internal suspend fun Fact.writeTo(terminal: Terminal, format: OutputFormat): Unit =
-    flowOf(this).writeTo(terminal, format)
+internal suspend fun Fact.writeTo(
+    terminal: Terminal,
+    format: OutputFormat,
+    out: Appendable = bufferedStdout(),
+): Unit = flowOf(this).writeTo(terminal, format, out)
 
 /**
  * Writes the facts of a subscription, which has no last fact: every shape is written one fact at
- * a time, a table included -- as a line each, the way `tail -f` writes lines.
+ * a time, a table included -- as a line each, the way `tail -f` writes lines -- and flushed, so a
+ * follower sees a fact the moment it arrives.
  */
-internal suspend fun Flow<Fact>.followTo(terminal: Terminal, format: OutputFormat): Unit = when (format) {
+internal suspend fun Flow<Fact>.followTo(
+    terminal: Terminal,
+    format: OutputFormat,
+    out: Appendable = bufferedStdout(),
+): Unit = when (format) {
     OutputFormat.Table -> collect { terminal.println(it.toLine()) }
-    OutputFormat.Json -> collect { terminal.println(prettyJson.encodeToString(it)) }
-    OutputFormat.Ndjson -> collect { terminal.println(compactJson.encodeToString(it)) }
+    OutputFormat.Json -> collect { out.appendLine(prettyJson.encodeToString(it)).flushIfPossible() }
+    OutputFormat.Ndjson -> collect { out.appendLine(compactJson.encodeToString(it)).flushIfPossible() }
 }
 
 internal fun List<Fact>.toFactTable() = table {
@@ -68,12 +92,18 @@ private fun Fact.payloadPreview(limit: Int = PAYLOAD_PREVIEW): String {
 }
 
 /** The facts as one JSON array, written as they arrive. */
-private suspend fun Flow<Fact>.writeJsonArray(terminal: Terminal) {
+private suspend fun Flow<Fact>.writeJsonArray(out: Appendable) {
     var first = true
     collect { fact ->
-        terminal.println(if (first) "[" else ",")
-        terminal.print(prettyJson.encodeToString(fact).prependIndent("  "))
+        out.appendLine(if (first) "[" else ",")
+        out.append(prettyJson.encodeToString(fact).prependIndent("  "))
         first = false
     }
-    if (first) terminal.println("[]") else terminal.println("\n]")
+    if (first) out.appendLine("[]") else out.appendLine().appendLine("]")
 }
+
+/** Standard output, buffered: a fact at a time would be a write to the connection at a time. */
+private fun bufferedStdout(): Appendable =
+    BufferedWriter(OutputStreamWriter(System.out, Charsets.UTF_8), BUFFER_BYTES)
+
+private fun Appendable.flushIfPossible() = (this as? Flushable)?.flush()
