@@ -17,7 +17,6 @@ import io.factstore.core.toStoreName
 import io.factstore.core.toSubject
 import io.factstore.core.toTagKey
 import io.factstore.core.toTagValue
-import java.time.Instant
 import java.util.UUID
 
 /*
@@ -53,7 +52,8 @@ internal fun String.asUuid(): UUID =
 
 internal fun String.asFactId(): FactId = FactId(asUuid())
 
-internal fun String?.asInstant(): Instant? = this?.let { Instant.parse(it.trim()) }
+/** Absent means no fact; anything else must be a UUID. */
+internal fun String?.asFactIdOrNull(): FactId? = this?.asFactId()
 
 /** Absent means no limit; anything but a positive integer is rejected. */
 internal fun String?.asLimit(): Limit {
@@ -63,15 +63,31 @@ internal fun String?.asLimit(): Limit {
     return Limit.of(value)
 }
 
+/** Absent means no limit; anything but a positive integer is rejected. */
+internal fun Int?.asLimit(): Limit = this?.let { Limit.of(it) } ?: Limit.None
+
+/**
+ * An absent direction reads forward, the natural order of an append-only log.
+ */
 internal fun String?.asReadDirection(): ReadDirection = when (this?.trim()?.lowercase()) {
     null, "forward" -> ReadDirection.Forward
     "backward" -> ReadDirection.Backward
     else -> throw IllegalArgumentException("Direction must be 'forward' or 'backward', but was '$this'.")
 }
 
-/** Tags given as `key=value` strings, such as query parameters. */
-internal fun List<String>.asTagFilter(): Map<TagKey, TagValue> = associate { tag ->
-    val parts = tag.split("=", limit = 2)
-    require(parts.size == 2) { "A tag must have the form key=value, but was '$tag'." }
-    parts[0].asTagKey() to parts[1].asTagValue()
+/**
+ * Tags given as `key=value` strings, such as query parameters.
+ *
+ * Every tag must be carried, so a key may be given only once.
+ */
+internal fun List<String>.asTagFilter(): Map<TagKey, TagValue> = buildMap {
+    for (tag in this@asTagFilter) {
+        val parts = tag.split("=", limit = 2)
+        require(parts.size == 2) { "A tag must have the form key=value, but was '$tag'." }
+        val key = parts[0].asTagKey()
+        require(key !in this) {
+            "Tag '${key.value}' is given more than once. To match any of several values, use a query."
+        }
+        put(key, parts[1].asTagValue())
+    }
 }

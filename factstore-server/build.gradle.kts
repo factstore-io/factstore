@@ -13,6 +13,7 @@ dependencies {
     implementation("io.quarkus:quarkus-rest-jackson")
     implementation("io.quarkus:quarkus-grpc")
     implementation("io.quarkus:quarkus-vertx-kotlin")
+    implementation("io.vertx:vertx-lang-kotlin-coroutines")
     implementation("io.quarkus:quarkus-kotlin")
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
     implementation("io.quarkus:quarkus-arc")
@@ -22,6 +23,7 @@ dependencies {
     implementation("io.quarkus:quarkus-container-image-docker")
     implementation(libs.quarkus.quinoa)
     implementation("com.google.protobuf:protobuf-kotlin")
+    implementation(libs.coroutines.jdk)
 
 
     // factstore libs

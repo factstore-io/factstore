@@ -44,6 +44,18 @@ class InvalidInputTest {
 
         private fun json(body: Any): RequestSpecification = given().contentType(JSON).body(body)
 
+        /**
+         * A request whose path keeps its colon: RestAssured percent-encodes `:` by default, and
+         * `facts%3Aquery` is a different path than the `facts:query` operation.
+         */
+        private fun jsonToOperation(body: Any): RequestSpecification =
+            given().urlEncodingEnabled(false).contentType(JSON).body(body)
+
+        /** A request to an operation path, with the colon kept, as [jsonToOperation] explains. */
+        private fun toOperation(): RequestSpecification = given().urlEncodingEnabled(false)
+
+        private fun forward(): RequestSpecification = given().queryParam("direction", "forward")
+
         @JvmStatic
         fun invalidRequests(): List<Arguments> = listOf(
             case("create a store with an invalid name") { json(mapOf("name" to "1 bad")).post(STORES) },
@@ -65,20 +77,83 @@ class InvalidInputTest {
                 json(mapOf("idempotencyKey" to "nope", "facts" to listOf(validFact))).post(FACTS)
             },
 
-            case("query without query items") { json(mapOf("queryItems" to emptyList<Any>())).post("$FACTS/query") },
-            case("find a fact by an id that is not a UUID") { given().get("$FACTS/not-a-uuid") },
-            case("find the facts of an invalid subject") { given().get("$STORES/unknown-store/subjects/order 1/facts") },
-            case("find facts with limit 0") { given().queryParam("limit", 0).get(FACTS) },
-            case("find facts in an unknown direction") { given().queryParam("direction", "sideways").get(FACTS) },
-            case("find facts from an unparseable instant") { given().queryParam("from", "yesterday").get(FACTS) },
-            case("find facts by a tag without '='") { given().queryParam("tag", "abc").get(FACTS) },
-            case("find facts by tags within a time range") {
-                given().queryParam("tag", "a=1").queryParam("from", "2026-01-01T00:00:00Z").get(FACTS)
+            case("append a null fact") { json("""{"facts":[null]}""").post(FACTS) },
+            case("append a fact with a null tag value") {
+                json("""{"facts":[{"type":"T","subject":"s","payload":{"data":"e30="},"tags":{"region":null}}]}""").post(FACTS)
+            },
+            case("append a fact with a null metadata value") {
+                json("""{"facts":[{"type":"T","subject":"s","payload":{"data":"e30="},"metadata":{"source":null}}]}""").post(FACTS)
             },
 
-            case("subscribe after an id that is not a UUID") { given().queryParam("after", "nope").get("$FACTS/subscribe") },
-            case("subscribe from an unknown position") { given().queryParam("from", "middle").get("$FACTS/subscribe") },
-            case("replay after an id that is not a UUID") { given().queryParam("after", "nope").get("$FACTS/replay") },
+            case("find a fact by an id that is not a UUID") { given().get("$FACTS/not-a-uuid") },
+            case("stream the facts of an invalid subject") {
+                forward().queryParam("subject", "order 1").get(FACTS)
+            },
+            case("query facts without filters") {
+                jsonToOperation(mapOf("filters" to emptyList<Any>())).post("$FACTS:query")
+            },
+            case("query facts with a filter without predicates") {
+                jsonToOperation(mapOf("filters" to listOf(emptyMap<String, Any>()))).post("$FACTS:query")
+            },
+            case("query facts with a null filter") { jsonToOperation("""{"filters":[null]}""").post("$FACTS:query") },
+            case("query facts with a null subject") {
+                jsonToOperation("""{"filters":[{"subjects":[null]}]}""").post("$FACTS:query")
+            },
+            case("query facts with a null type") {
+                jsonToOperation("""{"filters":[{"types":[null]}]}""").post("$FACTS:query")
+            },
+            case("query facts with a null tag value") {
+                jsonToOperation("""{"filters":[{"tags":{"region":null}}]}""").post("$FACTS:query")
+            },
+            case("query facts with an invalid type") {
+                jsonToOperation(mapOf("filters" to listOf(mapOf("types" to listOf("order created"))))).post("$FACTS:query")
+            },
+            case("query facts in an unknown direction") {
+                jsonToOperation(mapOf("filters" to listOf(mapOf("types" to listOf("T"))), "direction" to "sideways"))
+                    .post("$FACTS:query")
+            },
+            case("query facts with limit 0") {
+                jsonToOperation(mapOf("filters" to listOf(mapOf("types" to listOf("T"))), "limit" to 0)).post("$FACTS:query")
+            },
+            case("stream the facts of an invalid type") {
+                forward().queryParam("type", "order created").get(FACTS)
+            },
+            case("stream facts with limit 0") { forward().queryParam("limit", 0).get(FACTS) },
+            case("stream facts continued after an id that is not a UUID") {
+                forward().queryParam("continueAfter", "not-a-uuid").get(FACTS)
+            },
+            case("stream facts continued after a blank id") {
+                forward().queryParam("continueAfter", " ").get(FACTS)
+            },
+            case("query facts continued after an id that is not a UUID") {
+                jsonToOperation(
+                    mapOf(
+                        "filters" to listOf(mapOf("types" to listOf("T"))),
+                        "continueAfter" to "not-a-uuid",
+                    )
+                ).post("$FACTS:query")
+            },
+            case("stream facts in an unknown direction") { given().queryParam("direction", "sideways").get(FACTS) },
+            case("stream facts by a tag without '='") { forward().queryParam("tag", "abc").get(FACTS) },
+            case("stream facts by a tag key given twice with different values") {
+                forward().queryParam("tag", "region=eu", "region=us").get(FACTS)
+            },
+            case("stream facts by a tag key given twice with the same value") {
+                forward().queryParam("tag", "region=eu", "region=eu").get(FACTS)
+            },
+
+            case("subscribe continued after an id that is not a UUID") {
+                toOperation().queryParam("continueAfter", "nope").get("$FACTS:subscribe")
+            },
+            case("subscribe from an unknown position") {
+                toOperation().queryParam("from", "middle").get("$FACTS:subscribe")
+            },
+            case("subscribe from a position and a continuation at once") {
+                toOperation()
+                    .queryParam("from", "end")
+                    .queryParam("continueAfter", "2f4d6f2c-6a3e-4a77-8c6b-0c3f6c2e5e11")
+                    .get("$FACTS:subscribe")
+            },
         )
     }
 }

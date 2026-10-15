@@ -4,7 +4,9 @@ import com.fasterxml.jackson.annotation.JsonSubTypes
 import com.fasterxml.jackson.annotation.JsonTypeInfo
 import io.factstore.core.AppendRequest
 import io.factstore.core.CLEAN_TEXT_PATTERN
+import io.factstore.core.FactFilter
 import io.factstore.core.FactInput
+import io.factstore.core.FactQuery
 import io.factstore.core.FactPayload
 import io.factstore.core.FactType
 import io.factstore.core.StoreName
@@ -123,6 +125,67 @@ data class FactHttp(
     val metadata: Map<String, String>?,
     val tags: Map<String, String>?
 )
+
+/**
+ * A query and how to read its result, the body of `POST /facts:query`.
+ *
+ * @property filters the filters to match, of which at least one must match a fact
+ * @property direction `forward` (the default) or `backward`
+ * @property limit the maximum number of facts to stream, over the whole result
+ */
+data class StreamFactsByQueryHttpRequest(
+    @field:Schema(minItems = 1, maxItems = FactQuery.MAX_FILTERS)
+    val filters: List<FactFilterHttp>,
+    @field:Schema(description = "Continue after this fact, exclusive and in reading order.", format = "uuid")
+    val continueAfter: UUID? = null,
+    @field:Schema(enumeration = ["forward", "backward"], defaultValue = "forward")
+    val direction: String? = null,
+    @field:Schema(minimum = "1")
+    val limit: Int? = null,
+)
+
+/**
+ * Matches facts by subject, type and tags. Every property that is set must hold, while a property
+ * with several values matches any of them. At least one must be set.
+ */
+data class FactFilterHttp(
+    @field:Schema(maxItems = FactFilter.MAX_SUBJECTS)
+    val subjects: List<String>? = null,
+    @field:Schema(maxItems = FactFilter.MAX_TYPES)
+    val types: List<String>? = null,
+    @field:Schema(maxProperties = FactInput.MAX_TAGS)
+    val tags: Map<String, String>? = null,
+)
+
+/**
+ * One line of an NDJSON fact stream.
+ *
+ * Each line is a JSON object with exactly one property: `fact` for every fact, followed by
+ * either `end` once all facts were sent, or `error` if the stream failed part way. A stream
+ * that stops without an `end` or `error` line is incomplete, however the connection ended.
+ *
+ * A subscription follows the store instead of ending, so it never sends an `end` line and sends
+ * a `heartbeat` line while no fact is appended.
+ */
+sealed interface FactStreamLineHttp {
+
+    data class FactLine(val fact: FactHttp) : FactStreamLineHttp
+
+    data class EndLine(val end: FactStreamEndHttp) : FactStreamLineHttp
+
+    data class HeartbeatLine(val heartbeat: FactStreamHeartbeatHttp) : FactStreamLineHttp
+
+    data class ErrorLine(val error: ApiError) : FactStreamLineHttp
+}
+
+/** Closes a complete fact stream; [count] is the number of `fact` lines before it. */
+data class FactStreamEndHttp(val count: Long)
+
+/**
+ * Keeps an idle subscription alive and tells a reader it is still being served; [at] is the
+ * server's clock when the line was written, and says nothing about the store's facts.
+ */
+data class FactStreamHeartbeatHttp(val at: Instant)
 
 data class FactPayloadHttp(
     @field:Schema(description = "Base64-encoded payload of at most ${FactPayload.MAX_SIZE} bytes.")

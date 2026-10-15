@@ -73,22 +73,63 @@ class GrpcInvalidInputTest {
         case("check a fact by an id that is not a UUID") {
             facts.factExists(factExistsRequest { storeName = STORE; factId = "nope" })
         },
-        case("find the facts of an invalid subject") {
-            facts.findFactsBySubject(findFactsBySubjectRequest { storeName = STORE; subject = "order 1" })
+        case("stream the facts of an invalid subject") {
+            facts.streamFactsBySubject(streamFactsBySubjectRequest {
+                storeName = STORE; subject = "order 1"; direction = FORWARD
+            }).first()
         },
-        case("find facts without tags") { facts.findFactsByTags(findFactsByTagsRequest { storeName = STORE }) },
-        case("query facts without query items") {
-            facts.queryFacts(queryFactsRequest { storeName = STORE; query = tagQuery { } })
+        case("stream the facts of a subject without a direction") {
+            facts.streamFactsBySubject(streamFactsBySubjectRequest { storeName = STORE; subject = "s" }).first()
         },
-        case("find facts with limit 0") {
-            facts.findFactsInTimeRange(findFactsInTimeRangeRequest { storeName = STORE; limit = 0 })
+        case("stream facts by a query without filters") {
+            facts.streamFactsByQuery(streamFactsByQueryRequest {
+                storeName = STORE; direction = FORWARD; query = factQuery { }
+            }).first()
+        },
+        case("stream facts by a filter without predicates") {
+            facts.streamFactsByQuery(streamFactsByQueryRequest {
+                storeName = STORE; direction = FORWARD; query = factQuery { filters += factFilter { } }
+            }).first()
+        },
+        case("stream facts by a query with an invalid subject") {
+            facts.streamFactsByQuery(streamFactsByQueryRequest {
+                storeName = STORE; direction = FORWARD
+                query = factQuery { filters += factFilter { subjects += "order 1" } }
+            }).first()
+        },
+        case("stream facts without tags") {
+            facts.streamFactsByTags(streamFactsByTagsRequest { storeName = STORE; direction = FORWARD }).first()
+        },
+        case("stream facts by six tags") {
+            facts.streamFactsByTags(streamFactsByTagsRequest {
+                storeName = STORE; direction = FORWARD; (1..6).forEach { tags["k$it"] = "v" }
+            }).first()
+        },
+        case("stream the facts of an invalid type") {
+            facts.streamFactsByType(streamFactsByTypeRequest {
+                storeName = STORE; type = "order created"; direction = FORWARD
+            }).first()
+        },
+        case("stream the facts of a type without a direction") {
+            facts.streamFactsByType(streamFactsByTypeRequest { storeName = STORE; type = "T" }).first()
+        },
+        case("stream facts continued after an id that is not a UUID") {
+            facts.streamFacts(streamFactsRequest {
+                storeName = STORE; direction = FORWARD; continueAfterFactId = "nope"
+            }).first()
+        },
+        case("stream facts without a direction") {
+            facts.streamFacts(streamFactsRequest { storeName = STORE }).first()
+        },
+        case("stream facts in an unknown direction") {
+            facts.streamFacts(streamFactsRequest { storeName = STORE; directionValue = 42 }).first()
+        },
+        case("stream facts with limit 0") {
+            facts.streamFacts(streamFactsRequest { storeName = STORE; direction = FORWARD; limit = 0 }).first()
         },
 
         case("subscribe to a store with an invalid name") {
             facts.subscribeFacts(subscribeFactsRequest { storeName = "1 bad" }).first()
-        },
-        case("replay after an id that is not a UUID") {
-            facts.replayFacts(replayFactsRequest { storeName = STORE; afterFactId = "nope" }).first()
         },
     )
 
@@ -103,5 +144,6 @@ class GrpcInvalidInputTest {
 
     companion object {
         const val STORE = "unknown-store"
+        val FORWARD = FactStoreProto.ReadDirection.READ_DIRECTION_FORWARD
     }
 }

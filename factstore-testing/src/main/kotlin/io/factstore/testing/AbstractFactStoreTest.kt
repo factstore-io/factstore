@@ -9,6 +9,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
@@ -27,6 +28,8 @@ import kotlin.time.Duration.Companion.seconds
 private const val ALICE_SUBJECT_VALUE = "USER:ALICE"
 private const val BOB_SUBJECT_VALUE = "USER:BOB"
 private const val CHARLIE_SUBJECT_VALUE = "USER:CHARLIE"
+private const val EVEN_FACT_TYPE = "FACT_EVEN"
+private const val ODD_FACT_TYPE = "FACT_ODD"
 
 abstract class AbstractFactStoreTest {
 
@@ -138,9 +141,7 @@ abstract class AbstractFactStoreTest {
         val fact = appendStored(input(ALICE_SUBJECT_VALUE, "USER_ONBOARDED", payload))
         val id = fact.id
 
-        store.subscribe(SubscribeRequest(testStore)).let { (it as SubscribeResult.FactStream).stream }.transform { batch -> batch.forEach { emit(it) } }.take(1).collect {
-            println("Streamed fact: $it")
-        }
+        assertThat(subscribeToList(count = 1)).containsExactly(fact)
 
         // validate existence of fact
         assertThat(store.existsById(ExistsByIdRequest(testStore, id))).isEqualTo(ExistsByIdResult.Exists)
@@ -171,168 +172,12 @@ abstract class AbstractFactStoreTest {
         assertThat(result).isInstanceOf(FindByIdResult.StoreNotFound::class.java)
     }
 
-    @Test
-    fun testFindInTimeRange(): Unit = runBlocking {
-        // appendedAt is server-assigned; small delays guarantee distinct, increasing timestamps.
-        val fact1 = appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload))
-        delay(10.milliseconds)
-        val fact2 = appendStored(
-            input(ALICE_SUBJECT_VALUE, "USER_UPDATED", """{ "username": "Alice", "status": "active" }""".toFactPayload())
-        )
-        delay(10.milliseconds)
-        val fact3 = appendStored(input(BOB_SUBJECT_VALUE, "USER_DELETED", bobPayload))
 
-        // Half-open [fact1, fact3): covers fact1 + fact2, excludes fact3 (end is exclusive).
-        val result = store.findInTimeRange(
-            FindInTimeRangeRequest(
-                storeName = testStore,
-                timeRange = TimeRange(
-                    start = fact1.appendedAt,
-                    end = fact3.appendedAt
-                )
-            )
-        )
 
-        assertThat(result).isInstanceOf(FindInTimeRangeResult.Found::class.java)
-        val foundFacts = (result as FindInTimeRangeResult.Found).facts
-        assertThat(foundFacts).containsExactlyInAnyOrder(fact1, fact2)
-        assertThat(foundFacts).doesNotContain(fact3)
-    }
 
-    @Test
-    fun testFindInTimeRangeBoundariesAreHalfOpen(): Unit = runBlocking {
-        // Use the fact's own server-assigned timestamp as the boundary, so the
-        // assertion is exact regardless of the backend's timestamp precision.
-        val fact = appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload))
-        val t = fact.appendedAt
 
-        // end is exclusive: a fact exactly at `end` must NOT be returned.
-        val endExclusive = store.findInTimeRange(
-            FindInTimeRangeRequest(
-                storeName = testStore,
-                timeRange = TimeRange(start = t.minusSeconds(10), end = t)
-            )
-        )
-        assertThat(endExclusive).isInstanceOf(FindInTimeRangeResult.Found::class.java)
-        assertThat((endExclusive as FindInTimeRangeResult.Found).facts).isEmpty()
 
-        // start is inclusive: a fact exactly at `start` must be returned.
-        val startInclusive = store.findInTimeRange(
-            FindInTimeRangeRequest(
-                storeName = testStore,
-                timeRange = TimeRange(start = t, end = t.plusSeconds(10))
-            )
-        )
-        assertThat(startInclusive).isInstanceOf(FindInTimeRangeResult.Found::class.java)
-        assertThat((startInclusive as FindInTimeRangeResult.Found).facts)
-            .containsExactly(fact)
-    }
 
-    @Test
-    fun testFindInTimeRangeWithOpenBounds(): Unit = runBlocking {
-        val fact1 = appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload))
-        delay(10.milliseconds)
-        val fact2 = appendStored(input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload))
-        delay(10.milliseconds)
-        val fact3 = appendStored(input(CHARLIE_SUBJECT_VALUE, "USER_CREATED", charliePayload))
-
-        // from(t2): unbounded above, inclusive lower → fact2 and fact3
-        val fromResult = store.findInTimeRange(
-            FindInTimeRangeRequest(testStore, TimeRange.from(fact2.appendedAt))
-        )
-        assertThat((fromResult as FindInTimeRangeResult.Found).facts).containsExactly(fact2, fact3)
-
-        // until(t2): unbounded below, exclusive upper → fact1 only
-        val untilResult = store.findInTimeRange(
-            FindInTimeRangeRequest(testStore, TimeRange.until(fact2.appendedAt))
-        )
-        assertThat((untilResult as FindInTimeRangeResult.Found).facts).containsExactly(fact1)
-
-        // unbounded: every fact
-        val allResult = store.findInTimeRange(
-            FindInTimeRangeRequest(testStore, TimeRange.unbounded)
-        )
-        assertThat((allResult as FindInTimeRangeResult.Found).facts).containsExactly(fact1, fact2, fact3)
-    }
-
-    @Test
-    fun testFindInTimeRangeForNonExistingStore(): Unit = runBlocking {
-        val result = store.findInTimeRange(
-            FindInTimeRangeRequest(
-                storeName = nonExistingStore,
-                timeRange = TimeRange(
-                    start = Instant.now().minusSeconds(120),
-                    end = Instant.now().plusSeconds(10)
-                )
-            )
-        )
-
-        assertThat(result).isInstanceOf(FindInTimeRangeResult.StoreNotFound::class.java)
-    }
-
-    @Test
-    fun testFindInTimeRangeWithLimit(): Unit = runBlocking {
-        val fact1 = appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload))
-        delay(10.milliseconds)
-        val fact2 = appendStored(input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload))
-        delay(10.milliseconds)
-        val fact3 = appendStored(input(CHARLIE_SUBJECT_VALUE, "USER_CREATED", charliePayload))
-
-        val result = store.findInTimeRange(
-            FindInTimeRangeRequest(
-                storeName = testStore,
-                timeRange = TimeRange.until(fact3.appendedAt.plusSeconds(10)),
-                limit = Limit.of(2),
-            )
-        )
-
-        assertThat(result).isInstanceOf(FindInTimeRangeResult.Found::class.java)
-        // Forward + limit 2 → oldest two facts
-        assertThat((result as FindInTimeRangeResult.Found).facts).containsExactly(fact1, fact2)
-    }
-
-    @Test
-    fun testFindInTimeRangeWithReadDirectionBackward(): Unit = runBlocking {
-        val fact1 = appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload))
-        delay(10.milliseconds)
-        val fact2 = appendStored(input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload))
-        delay(10.milliseconds)
-        val fact3 = appendStored(input(CHARLIE_SUBJECT_VALUE, "USER_CREATED", charliePayload))
-
-        val result = store.findInTimeRange(
-            FindInTimeRangeRequest(
-                storeName = testStore,
-                timeRange = TimeRange.until(fact3.appendedAt.plusSeconds(10)),
-                direction = ReadDirection.Backward,
-            )
-        )
-
-        assertThat(result).isInstanceOf(FindInTimeRangeResult.Found::class.java)
-        // Backward, no limit → newest first
-        assertThat((result as FindInTimeRangeResult.Found).facts).containsExactly(fact3, fact2, fact1)
-    }
-
-    @Test
-    fun testFindInTimeRangeWithLimitAndBackwardDirection(): Unit = runBlocking {
-        val fact1 = appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload))
-        delay(10.milliseconds)
-        val fact2 = appendStored(input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload))
-        delay(10.milliseconds)
-        val fact3 = appendStored(input(CHARLIE_SUBJECT_VALUE, "USER_CREATED", charliePayload))
-
-        val result = store.findInTimeRange(
-            FindInTimeRangeRequest(
-                storeName = testStore,
-                timeRange = TimeRange.until(fact3.appendedAt.plusSeconds(10)),
-                limit = Limit.of(2),
-                direction = ReadDirection.Backward,
-            )
-        )
-
-        assertThat(result).isInstanceOf(FindInTimeRangeResult.Found::class.java)
-        // Backward + limit 2 → the 2 most recent facts, newest first
-        assertThat((result as FindInTimeRangeResult.Found).facts).containsExactly(fact3, fact2)
-    }
 
     @Test
     fun testConditionalAppendWithSubject(): Unit = runBlocking {
@@ -414,9 +259,8 @@ abstract class AbstractFactStoreTest {
         assertThat(results.count { it is AppendResult.AppendConditionViolated }).isEqualTo(contenders - 1)
 
         // The subject history therefore contains exactly the seed plus the single winner.
-        val subjectFacts = store.findBySubject(FindBySubjectRequest(testStore, Subject(ALICE_SUBJECT_VALUE)))
-        assertThat(subjectFacts).isInstanceOf(FindBySubjectResult.Found::class.java)
-        assertThat((subjectFacts as FindBySubjectResult.Found).facts).hasSize(2)
+        val subjectFacts = streamToList(subjectRequest(ALICE_SUBJECT_VALUE, ReadDirection.Forward, Limit.None))
+        assertThat(subjectFacts).hasSize(2)
     }
 
     @Test
@@ -469,111 +313,10 @@ abstract class AbstractFactStoreTest {
 
     }
 
-    @Test
-    fun testSubjectQueries(): Unit = runBlocking {
 
-        val (fact1, fact2, fact3) = appendStored(
-            listOf(
-                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
-                input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload),
-                input(ALICE_SUBJECT_VALUE, "USER_LOCKED", alicePayload),
-            )
-        )
 
-        val aliceResult = store.findBySubject(FindBySubjectRequest(testStore, Subject(ALICE_SUBJECT_VALUE)))
-        assertThat(aliceResult).isInstanceOf(FindBySubjectResult.Found::class.java)
-        assertThat((aliceResult as FindBySubjectResult.Found).facts)
-            .containsExactly(fact1, fact3)
 
-        val bobResult = store.findBySubject(FindBySubjectRequest(testStore, Subject(BOB_SUBJECT_VALUE)))
-        assertThat(bobResult).isInstanceOf(FindBySubjectResult.Found::class.java)
-        assertThat((bobResult as FindBySubjectResult.Found).facts)
-            .containsExactly(fact2)
 
-        val peterResult = store.findBySubject(FindBySubjectRequest(testStore, Subject("USER:PETER")))
-        assertThat(peterResult).isInstanceOf(FindBySubjectResult.Found::class.java)
-        assertThat((peterResult as FindBySubjectResult.Found).facts).isEmpty()
-
-        val unknownResult = store.findBySubject(FindBySubjectRequest(testStore, Subject("UNKNOWN:UNKNOWN")))
-        assertThat(unknownResult).isInstanceOf(FindBySubjectResult.Found::class.java)
-        assertThat((unknownResult as FindBySubjectResult.Found).facts).isEmpty()
-    }
-
-    @Test
-    fun findBySubjectForNonExistingFactstore(): Unit = runBlocking {
-        val result = store.findBySubject(FindBySubjectRequest(nonExistingStore, Subject("SOME_TYPE:SOME_ID")))
-        assertThat(result).isInstanceOf(FindBySubjectResult.StoreNotFound::class.java)
-    }
-
-    @Test
-    fun testFindBySubjectWithLimit(): Unit = runBlocking {
-        val (fact1, fact2, fact3) = appendStored(
-            listOf(
-                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
-                input(ALICE_SUBJECT_VALUE, "USER_UPDATED", alicePayload),
-                input(ALICE_SUBJECT_VALUE, "USER_LOCKED", alicePayload),
-            )
-        )
-
-        val result = store.findBySubject(
-            FindBySubjectRequest(
-                storeName = testStore,
-                subject = Subject(ALICE_SUBJECT_VALUE),
-                limit = Limit.of(2),
-            )
-        )
-
-        assertThat(result).isInstanceOf(FindBySubjectResult.Found::class.java)
-        // Forward + limit 2 → first two facts appended
-        assertThat((result as FindBySubjectResult.Found).facts).containsExactly(fact1, fact2)
-    }
-
-    @Test
-    fun testFindBySubjectWithReadDirectionBackward(): Unit = runBlocking {
-        val (fact1, fact2, fact3) = appendStored(
-            listOf(
-                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
-                input(ALICE_SUBJECT_VALUE, "USER_UPDATED", alicePayload),
-                input(ALICE_SUBJECT_VALUE, "USER_LOCKED", alicePayload),
-            )
-        )
-
-        val result = store.findBySubject(
-            FindBySubjectRequest(
-                storeName = testStore,
-                subject = Subject(ALICE_SUBJECT_VALUE),
-                direction = ReadDirection.Backward,
-            )
-        )
-
-        assertThat(result).isInstanceOf(FindBySubjectResult.Found::class.java)
-        // Backward, no limit → newest first
-        assertThat((result as FindBySubjectResult.Found).facts).containsExactly(fact3, fact2, fact1)
-    }
-
-    @Test
-    fun testFindBySubjectWithLimitAndBackwardDirection(): Unit = runBlocking {
-        val (fact1, fact2, fact3) = appendStored(
-            listOf(
-                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
-                input(ALICE_SUBJECT_VALUE, "USER_UPDATED", alicePayload),
-                input(ALICE_SUBJECT_VALUE, "USER_LOCKED", alicePayload),
-            )
-        )
-
-        val result = store.findBySubject(
-            FindBySubjectRequest(
-                storeName = testStore,
-                subject = Subject(ALICE_SUBJECT_VALUE),
-                limit = Limit.of(2),
-                direction = ReadDirection.Backward,
-            )
-        )
-
-        assertThat(result).isInstanceOf(FindBySubjectResult.Found::class.java)
-        // Backward + limit 2 → the 2 most recently appended facts, newest first
-        assertThat((result as FindBySubjectResult.Found).facts).containsExactly(fact3, fact2)
-    }
 
 
     @Test
@@ -673,747 +416,1298 @@ abstract class AbstractFactStoreTest {
         assertThat(last).isEqualTo(inputs.last().toFact(last.id, last.appendedAt))
     }
 
+
+
+
+
+
+
+
+    // ===== FactSubscriber: subscribe =====
+
     @Test
-    fun appendEventsWithTagsAndFindThem(): Unit = runBlocking {
-        val (fact1, fact2, fact3) = appendStored(
+    fun testSubscribeFromBeginningDrainsTheHistoryThenFollowsTheTail(): Unit = runBlocking {
+        val (alice, bob) = appendStored(
             listOf(
-                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload, tags = mapOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("eu"))),
-                input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload, tags = mapOf(TagKey("role") to TagValue("user"), TagKey("region") to TagValue("us"))),
-                input(CHARLIE_SUBJECT_VALUE, "USER_CREATED", charliePayload, tags = mapOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("us"))),
+                userInput("ALICE", "Alice", role = "admin", region = "eu"),
+                userInput("BOB", "Bob", role = "user", region = "us"),
             )
         )
 
-        // --- Query 1: Find all role=admin (AND semantics → fact1 + fact3, both have role=admin)
-        val adminResult = store.findByTags(FindByTagsRequest(testStore, mapOf(TagKey("role") to TagValue("admin"))))
-        assertThat(adminResult).isInstanceOf(FindByTagsResult.Found::class.java)
-        assertThat((adminResult as FindByTagsResult.Found).facts).containsExactly(fact1, fact3)
-
-        // --- Query 2: Find all region=us (AND semantics → fact2 + fact3, both have region=us)
-        val usResult = store.findByTags(FindByTagsRequest(testStore, mapOf(TagKey("region") to TagValue("us"))))
-        assertThat(usResult).isInstanceOf(FindByTagsResult.Found::class.java)
-        assertThat((usResult as FindByTagsResult.Found).facts).containsExactly(fact2, fact3)
-
-        // --- Query 3: Find role=admin AND region=eu (AND semantics → fact1 only, the only fact with both tags)
-        val adminAndEuResult = store.findByTags(
-            FindByTagsRequest(
-                storeName = testStore,
-                tags = mapOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("eu"))
-            )
-        )
-        assertThat(adminAndEuResult).isInstanceOf(FindByTagsResult.Found::class.java)
-        assertThat((adminAndEuResult as FindByTagsResult.Found).facts).containsExactly(fact1)
-
-        // --- Query 4: Non-existent tag → empty
-        val noFactsResult = store.findByTags(FindByTagsRequest(testStore, mapOf(TagKey("region") to TagValue("asia"))))
-        assertThat(noFactsResult).isInstanceOf(FindByTagsResult.Found::class.java)
-        assertThat((noFactsResult as FindByTagsResult.Found).facts).isEmpty()
-
-        // --- Query 5: Find role=admin AND region=us (AND semantics → fact3 only, the only fact with both tags)
-        val adminAndUsResult = store.findByTags(
-            FindByTagsRequest(
-                storeName = testStore,
-                tags = mapOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("us"))
-            )
-        )
-        assertThat(adminAndUsResult).isInstanceOf(FindByTagsResult.Found::class.java)
-        assertThat((adminAndUsResult as FindByTagsResult.Found).facts).containsExactly(fact3)
-
-        // --- Query 6: Direct lookup still works as before
-        val fact1Loaded = store.findById(FindByIdRequest(testStore, fact1.id))
-        assertThat(fact1Loaded).isInstanceOf(FindByIdResult.Found::class.java)
-        println(fact1Loaded)
-    }
-
-    @Test
-    fun testFindByTagsWithNonExistingFactstore(): Unit = runBlocking {
-        val result = store.findByTags(
-            FindByTagsRequest(
-                storeName = nonExistingStore,
-                tags = mapOf(TagKey("region") to TagValue("asia"))
-            )
-        )
-
-        assertThat(result).isInstanceOf(FindByTagsResult.StoreNotFound::class.java)
-    }
-
-    @Test
-    fun testFindByTagsWithLimit(): Unit = runBlocking {
-        val (fact1, fact2, fact3) = appendStored(
-            listOf(
-                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload, tags = mapOf(TagKey("role") to TagValue("admin"))),
-                input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload, tags = mapOf(TagKey("role") to TagValue("admin"))),
-                input(CHARLIE_SUBJECT_VALUE, "USER_CREATED", charliePayload, tags = mapOf(TagKey("role") to TagValue("admin"))),
-            )
-        )
-
-        val result = store.findByTags(
-            FindByTagsRequest(
-                storeName = testStore,
-                tags = mapOf(TagKey("role") to TagValue("admin")),
-                limit = Limit.of(2),
-            )
-        )
-
-        assertThat(result).isInstanceOf(FindByTagsResult.Found::class.java)
-        // Forward + limit 2 → first two matching facts
-        assertThat((result as FindByTagsResult.Found).facts).containsExactly(fact1, fact2)
-    }
-
-    @Test
-    fun testFindByTagsWithReadDirectionBackward(): Unit = runBlocking {
-        val (fact1, fact2, fact3) = appendStored(
-            listOf(
-                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload, tags = mapOf(TagKey("role") to TagValue("admin"))),
-                input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload, tags = mapOf(TagKey("role") to TagValue("admin"))),
-                input(CHARLIE_SUBJECT_VALUE, "USER_CREATED", charliePayload, tags = mapOf(TagKey("role") to TagValue("admin"))),
-            )
-        )
-
-        val result = store.findByTags(
-            FindByTagsRequest(
-                storeName = testStore,
-                tags = mapOf(TagKey("role") to TagValue("admin")),
-                direction = ReadDirection.Backward,
-            )
-        )
-
-        assertThat(result).isInstanceOf(FindByTagsResult.Found::class.java)
-        // Backward, no limit → newest first
-        assertThat((result as FindByTagsResult.Found).facts).containsExactly(fact3, fact2, fact1)
-    }
-
-    @Test
-    fun testFindByTagsWithLimitAndBackwardDirection(): Unit = runBlocking {
-        val (fact1, fact2, fact3) = appendStored(
-            listOf(
-                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload, tags = mapOf(TagKey("role") to TagValue("admin"))),
-                input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload, tags = mapOf(TagKey("role") to TagValue("admin"))),
-                input(CHARLIE_SUBJECT_VALUE, "USER_CREATED", charliePayload, tags = mapOf(TagKey("role") to TagValue("admin"))),
-            )
-        )
-
-        val result = store.findByTags(
-            FindByTagsRequest(
-                storeName = testStore,
-                tags = mapOf(TagKey("role") to TagValue("admin")),
-                limit = Limit.of(2),
-                direction = ReadDirection.Backward,
-            )
-        )
-
-        assertThat(result).isInstanceOf(FindByTagsResult.Found::class.java)
-        // Backward + limit 2 → the 2 most recently appended matching facts, newest first
-        assertThat((result as FindByTagsResult.Found).facts).containsExactly(fact3, fact2)
-    }
-
-    @Test
-    fun testFindByTagsWithLimitAndBackwardDirectionMultipleTags(): Unit = runBlocking {
-        // Verifies that limit + direction work correctly on the multi-tag intersection path
-        val (fact1, fact2, fact3) = appendStored(
-            listOf(
-                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload, tags = mapOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("eu"))),
-                input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload, tags = mapOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("eu"))),
-                input(CHARLIE_SUBJECT_VALUE, "USER_CREATED", charliePayload, tags = mapOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("eu"))),
-            )
-        )
-
-        val result = store.findByTags(
-            FindByTagsRequest(
-                storeName = testStore,
-                tags = mapOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("eu")),
-                limit = Limit.of(2),
-                direction = ReadDirection.Backward,
-            )
-        )
-
-        assertThat(result).isInstanceOf(FindByTagsResult.Found::class.java)
-        // Backward + limit 2 on multi-tag intersection → the 2 most recently appended matching facts
-        assertThat((result as FindByTagsResult.Found).facts).containsExactly(fact3, fact2)
-    }
-
-    @Test
-    fun testLimitLargerThanResultSetReturnsAll(): Unit = runBlocking {
-        val (fact1, fact2) = appendStored(
-            listOf(
-                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
-                input(ALICE_SUBJECT_VALUE, "USER_UPDATED", alicePayload),
-            )
-        )
-
-        val result = store.findBySubject(
-            FindBySubjectRequest(
-                storeName = testStore,
-                subject = Subject(ALICE_SUBJECT_VALUE),
-                limit = Limit.of(100),
-            )
-        )
-
-        assertThat(result).isInstanceOf(FindBySubjectResult.Found::class.java)
-        // Limit larger than actual result set → all facts returned
-        assertThat((result as FindBySubjectResult.Found).facts).containsExactly(fact1, fact2)
-    }
-
-    @OptIn(FlowPreview::class)
-    @Test
-    fun testFactStreaming(): Unit = runBlocking {
-
-        val collectedFacts = mutableListOf<Fact>()
-        val firstThreeReceived = CompletableDeferred<Unit>()
-
-        // Subscribe from the beginning
-        val streamJob = launch {
-            store.subscribe(SubscribeRequest(testStore))
-                .let { (it as SubscribeResult.FactStream).stream }
-                .transform { batch -> batch.forEach { emit(it) } }
-                .take(3)
-                .collect {
-                    collectedFacts += it
-                    if (collectedFacts.size == 3) {
-                        firstThreeReceived.complete(Unit)
-                    }
-                }
+        lateinit var charlie: Fact
+        val received = subscribeWhile(count = 3) {
+            charlie = appendStored(userInput("CHARLIE", "Charlie", role = "admin", region = "us"))
         }
 
-        // Create + append (the store assigns ids/appendedAt and returns the stored facts)
-        val fact1 = appendStored(userInput("ALICE", "Alice", "admin", "eu"))
-        val fact2 = appendStored(userInput("BOB", "Bob", "user", "us"))
-        val fact3 = appendStored(userInput("CHARLIE", "Charlie", "admin", "us"))
-
-        // Wait deterministically until 3 facts are received
-        firstThreeReceived.await()
-
-        assertThat(collectedFacts).containsExactly(fact1, fact2, fact3)
-
-        streamJob.cancelAndJoin()
-
-        // ---- Test StartPosition.After ----
-
-        val streamedEvents = store.subscribe(
-            SubscribeRequest(testStore, startPosition = StartPosition.After(fact1.id))
-        ).let { (it as SubscribeResult.FactStream).stream }
-            .transform { batch -> batch.forEach { emit(it) } }
-            .take(2)
-            .toList()
-
-        assertThat(streamedEvents).containsExactly(fact2, fact3)
-
-        // ---- Test non-existing fact ----
-
-        val nonExistingFactId = FactId.generate()
-
-        val subscribeResult = store.subscribe(
-            SubscribeRequest(testStore, startPosition = StartPosition.After(nonExistingFactId))
-        )
-
-        assertThat(subscribeResult).isInstanceOf(SubscribeResult.FactIdNotFound::class.java)
+        assertThat(received).containsExactly(alice, bob, charlie)
     }
 
-    @OptIn(FlowPreview::class)
     @Test
-    fun testFactStreamingStartPositionEnd() = runBlocking {
-
-        // Append initial facts BEFORE starting the stream
-        appendStored(userInput("ALICE", "Alice", "admin", "eu"))
-        appendStored(userInput("BOB", "Bob", "user", "us"))
-
-        val received = mutableListOf<Fact>()
-        val receivedLatch = CompletableDeferred<Unit>()
-        val streamStartedLatch = CompletableDeferred<Unit>()
-
-        // Start stream from END (should NOT see initialFact1/2)
-        val job = launch {
-            store.subscribe(
-                SubscribeRequest(testStore, startPosition = StartPosition.End)
+    fun testSubscribeFromEndSkipsTheHistory(): Unit = runBlocking {
+        appendStored(
+            listOf(
+                userInput("ALICE", "Alice", role = "admin", region = "eu"),
+                userInput("BOB", "Bob", role = "user", region = "us"),
             )
-                .let { (it as SubscribeResult.FactStream).stream }
-                .transform { batch -> batch.forEach { emit(it) } }
-                .take(2)
-                .onStart { streamStartedLatch.complete(Unit) }
-                .collect {
-                    received += it
-                    if (received.size == 2) {
-                        receivedLatch.complete(Unit)
-                    }
-                }
+        )
+
+        lateinit var appended: List<Fact>
+        val received = subscribeWhile(count = 2, startPosition = StartPosition.End) {
+            appended = appendStored(
+                listOf(
+                    userInput("CHARLIE", "Charlie", role = "admin", region = "us"),
+                    userInput("DAVID", "David", role = "user", region = "eu"),
+                )
+            )
         }
 
-        // wait for the streaming to start
-        streamStartedLatch.await()
+        assertThat(received).containsExactlyElementsOf(appended)
+    }
 
-        // Append facts AFTER stream started
-        val newFact1 = appendStored(userInput("CHARLIE", "Charlie", "admin", "us"))
-        val newFact2 = appendStored(userInput("DAVID", "David", "user", "eu"))
+    @Test
+    fun testSubscribeContinuesAfterAKnownFact(): Unit = runBlocking {
+        val (alice, bob, charlie) = appendStored(
+            listOf(
+                userInput("ALICE", "Alice", role = "admin", region = "eu"),
+                userInput("BOB", "Bob", role = "user", region = "us"),
+                userInput("CHARLIE", "Charlie", role = "admin", region = "us"),
+            )
+        )
 
-        // Wait deterministically until 2 facts received
-        receivedLatch.await()
+        val received = subscribeToList(count = 2, startPosition = StartPosition.ContinueAfter(alice.id))
 
-        assertThat(received)
-            .containsExactly(newFact1, newFact2)
+        assertThat(received).containsExactly(bob, charlie)
+    }
 
-        job.cancelAndJoin()
+    @Test
+    fun testSubscribeUnknownContinuation(): Unit = runBlocking {
+        appendStored(userInput("ALICE", "Alice", role = "admin", region = "eu"))
+        val unknown = FactId.generate()
+
+        val result = store.subscribe(
+            SubscribeRequest(testStore, startPosition = StartPosition.ContinueAfter(unknown))
+        )
+
+        assertThat(result).isEqualTo(SubscribeResult.ContinuationNotFound(unknown))
     }
 
     @Test
     fun testSubscribeNonExistingFactstore(): Unit = runBlocking {
         val result = store.subscribe(SubscribeRequest(nonExistingStore))
-        assertThat(result).isInstanceOf(SubscribeResult.StoreNotFound::class.java)
+        assertThat(result).isEqualTo(SubscribeResult.StoreNotFound(nonExistingStore))
     }
 
-    @Test
-    fun testReplayNonExistingFactstore(): Unit = runBlocking {
-        val result = store.replay(ReplayRequest(nonExistingStore))
-        assertThat(result).isInstanceOf(ReplayResult.StoreNotFound::class.java)
+    private suspend fun subscribed(startPosition: StartPosition): Flow<Fact> {
+        val result = store.subscribe(SubscribeRequest(testStore, startPosition))
+        return (result as SubscribeResult.FactStream).facts
     }
 
-    @Test
-    fun testReplayCompletesAtPinnedHead(): Unit = runBlocking {
-        val fact1 = appendStored(userInput("ALICE", "Alice", "admin", "eu"))
-        val fact2 = appendStored(userInput("BOB", "Bob", "user", "us"))
-        val fact3 = appendStored(userInput("CHARLIE", "Charlie", "admin", "us"))
-
-        // replay completes on its own; toList() returning proves termination.
-        val replayed = replayToList(ReplayRequest(testStore))
-
-        assertThat(replayed).containsExactly(fact1, fact2, fact3)
+    /**
+     * Collects the first [count] facts of a subscription over what the store already holds.
+     *
+     * A subscription never completes on its own, so it is always read by count and under a timeout.
+     */
+    private suspend fun subscribeToList(
+        count: Int,
+        startPosition: StartPosition = StartPosition.Beginning,
+    ): List<Fact> = withTimeout(10.seconds) {
+        subscribed(startPosition).take(count).toList()
     }
 
-    @Test
-    fun testReplayExcludesFactsAppendedAfterOpen(): Unit = runBlocking {
-        val fact1 = appendStored(userInput("ALICE", "Alice", "admin", "eu"))
-        val fact2 = appendStored(userInput("BOB", "Bob", "user", "us"))
-
-        // The end is pinned when the replay is opened.
-        val stream = (store.replay(ReplayRequest(testStore)) as ReplayResult.FactStream).stream
-
-        // Appended after the replay was opened => excluded.
-        appendStored(userInput("CHARLIE", "Charlie", "admin", "us"))
-
-        val replayed = withTimeout(10.seconds) {
-            stream.transform { batch -> batch.forEach { emit(it) } }.toList()
-        }
-
-        assertThat(replayed).containsExactly(fact1, fact2)
-    }
-
-    @Test
-    fun testReplayFromAfterReturnsDelta(): Unit = runBlocking {
-        val fact1 = appendStored(userInput("ALICE", "Alice", "admin", "eu"))
-        val fact2 = appendStored(userInput("BOB", "Bob", "user", "us"))
-        val fact3 = appendStored(userInput("CHARLIE", "Charlie", "admin", "us"))
-
-        val replayed = replayToList(
-            ReplayRequest(testStore, start = ReplayStart.After(fact1.id))
-        )
-
-        assertThat(replayed).containsExactly(fact2, fact3)
-    }
-
-    @Test
-    fun testReplayEmptyDeltaCompletesImmediately(): Unit = runBlocking {
-        val fact1 = appendStored(userInput("ALICE", "Alice", "admin", "eu"))
-
-        // Nothing after the head => completes immediately with nothing.
-        val replayed = replayToList(
-            ReplayRequest(testStore, start = ReplayStart.After(fact1.id))
-        )
-
-        assertThat(replayed).isEmpty()
-    }
-
-    @Test
-    fun testReplayEmptyStoreCompletesImmediately(): Unit = runBlocking {
-        // Empty store => replay completes immediately with nothing.
-        val replayed = replayToList(ReplayRequest(testStore))
-
-        assertThat(replayed).isEmpty()
-    }
-
-    @Test
-    fun testReplayUnknownCursor(): Unit = runBlocking {
-        appendStored(userInput("ALICE", "Alice", "admin", "eu"))
-
-        val result = store.replay(
-            ReplayRequest(testStore, start = ReplayStart.After(FactId.generate()))
-        )
-
-        assertThat(result).isInstanceOf(ReplayResult.FactIdNotFound::class.java)
-    }
-
-    private suspend fun replayToList(request: ReplayRequest): List<Fact> {
-        val stream = (store.replay(request) as ReplayResult.FactStream).stream
-        return withTimeout(10.seconds) {
-            stream.transform { batch -> batch.forEach { emit(it) } }.toList()
-        }
-    }
-
-    @Test
-    fun testFindByTagQuery(): Unit = runBlocking {
-
-        // define facts to append
-
-        val (fact1, fact2, fact3) = appendStored(
-            listOf(
-                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload, tags = mapOf(TagKey("username") to TagValue("alice"), TagKey("region") to TagValue("eu"))),
-                input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload, tags = mapOf(TagKey("username") to TagValue("bob"), TagKey("region") to TagValue("us"))),
-                input(CHARLIE_SUBJECT_VALUE, "USER_CREATED", charliePayload, tags = mapOf(TagKey("username") to TagValue("charlie"), TagKey("region") to TagValue("us"))),
-            )
-        )
-
-
-        // Test 1: Query with a single tag (username = "bob")
-        val bobQuery = TagQuery(
-            queryItems = listOf(
-                TagTypeItem(
-                    types = setOf(FactType("USER_CREATED")),
-                    tags = mapOf(TagKey("username") to TagValue("bob"))
-                )
-            )
-        )
-
-        val bobFacts = store.findByTagQuery(FindByTagQueryRequest(testStore, bobQuery))
-        assertThat(bobFacts).isInstanceOf(FindByTagQueryResult.Found::class.java)
-        assertThat((bobFacts as FindByTagQueryResult.Found).facts).containsExactly(fact2)
-
-        // Test 2: Query with multiple tags (AND condition: username = "bob" and region = "us")
-        val multipleTagsQuery = TagQuery(
-            queryItems = listOf(
-                TagTypeItem(
-                    types = setOf(FactType("USER_CREATED")),
-                    tags = mapOf(TagKey("username") to TagValue("bob"), TagKey("region") to TagValue("us"))
-                )
-            )
-        )
-
-        val multipleTagsFacts = store.findByTagQuery(FindByTagQueryRequest(testStore, multipleTagsQuery))
-        assertThat(multipleTagsFacts).isInstanceOf(FindByTagQueryResult.Found::class.java)
-        assertThat((multipleTagsFacts as FindByTagQueryResult.Found).facts).containsExactly(fact2)
-
-        // Test 3: Query with multiple tags but one does not match (username = "bob" and region = "eu")
-        val noMatchQuery = TagQuery(
-            queryItems = listOf(
-                TagTypeItem(
-                    types = setOf(FactType("USER_CREATED")),
-                    tags = mapOf(TagKey("username") to TagValue("bob"), TagKey("region") to TagValue("eu"))
-                )
-            )
-        )
-
-        val noMatchFacts = store.findByTagQuery(FindByTagQueryRequest(testStore, noMatchQuery))
-        assertThat(noMatchFacts).isInstanceOf(FindByTagQueryResult.Found::class.java)
-        assertThat((noMatchFacts as FindByTagQueryResult.Found).facts).isEmpty()
-
-        // Test 4: Query with multiple types (USER_CREATED or USER_DELETED)
-        val multipleTypesQuery = TagQuery(
-            queryItems = listOf(
-                TagTypeItem(
-                    types = setOf("USER_CREATED".toFactType(), "USER_DELETED".toFactType()),
-                    tags = mapOf(TagKey("username") to TagValue("bob"))
-                )
-            )
-        )
-
-        val multipleTypesFacts = store.findByTagQuery(FindByTagQueryRequest(testStore, multipleTypesQuery))
-        assertThat(multipleTypesFacts).isInstanceOf(FindByTagQueryResult.Found::class.java)
-        assertThat((multipleTypesFacts as FindByTagQueryResult.Found).facts).containsExactly(fact2)
-
-        // Test 5: Query with multiple tags and multiple types (AND for tags, OR for types)
-        val complexQuery = TagQuery(
-            queryItems = listOf(
-                TagTypeItem(
-                    types = setOf("USER_CREATED".toFactType(), "USER_DELETED".toFactType()),
-                    tags = mapOf(TagKey("username") to TagValue("bob"), TagKey("region") to TagValue("us"))
-                )
-            )
-        )
-
-        val complexFacts = store.findByTagQuery(FindByTagQueryRequest(testStore, complexQuery))
-        assertThat(complexFacts).isInstanceOf(FindByTagQueryResult.Found::class.java)
-        assertThat((complexFacts as FindByTagQueryResult.Found).facts).containsExactly(fact2)
-
-        // Test 6: Query with tags but no matching facts (tags = "username" to "dave")
-        val noMatchingTagQuery = TagQuery(
-            queryItems = listOf(
-                TagTypeItem(
-                    types = setOf(FactType("USER_CREATED")),
-                    tags = mapOf(TagKey("username") to TagValue("dave"))
-                )
-            )
-        )
-
-        val noMatchingTagFacts = store.findByTagQuery(FindByTagQueryRequest(testStore, noMatchingTagQuery))
-        assertThat(noMatchingTagFacts).isInstanceOf(FindByTagQueryResult.Found::class.java)
-        assertThat((noMatchingTagFacts as FindByTagQueryResult.Found).facts).isEmpty()
-
-        // Test 7: Query with types but no matching facts (types = "USER_DELETED" but no such facts exist)
-        val noMatchingTypeQuery = TagQuery(
-            queryItems = listOf(
-                TagTypeItem(
-                    types = setOf(FactType("USER_DELETED")),
-                    tags = mapOf(TagKey("username") to TagValue("bob"))
-                )
-            )
-        )
-
-        val noMatchingTypeFacts = store.findByTagQuery(FindByTagQueryRequest(testStore, noMatchingTypeQuery))
-        assertThat(noMatchingTypeFacts).isInstanceOf(FindByTagQueryResult.Found::class.java)
-        assertThat((noMatchingTypeFacts as FindByTagQueryResult.Found).facts).isEmpty()
-
-        // Test 8: Query with tags but no facts that have these tags
-        val tagsNoFactsQuery = TagQuery(
-            queryItems = listOf(
-                TagTypeItem(
-                    types = setOf(FactType("USER_CREATED")),
-                    tags = mapOf(TagKey("username") to TagValue("david"), TagKey("region") to TagValue("asia"))
-                )
-            )
-        )
-
-        val tagsNoFacts = store.findByTagQuery(FindByTagQueryRequest(testStore, tagsNoFactsQuery))
-        assertThat(tagsNoFacts).isInstanceOf(FindByTagQueryResult.Found::class.java)
-        assertThat((tagsNoFacts as FindByTagQueryResult.Found).facts).isEmpty()
-
-        // Test 9: Query for facts with different tags
-        val differentTagsQuery = TagQuery(
-            queryItems = listOf(
-                TagTypeItem(
-                    types = setOf(FactType("USER_CREATED")),
-                    tags = mapOf(TagKey("username") to TagValue("charlie"), TagKey("region") to TagValue("us"))
-                )
-            )
-        )
-
-        val differentTagsFacts = store.findByTagQuery(FindByTagQueryRequest(testStore, differentTagsQuery))
-        assertThat(differentTagsFacts).isInstanceOf(FindByTagQueryResult.Found::class.java)
-        assertThat((differentTagsFacts as FindByTagQueryResult.Found).facts).containsExactly(fact3)
-
-    }
-
-    @Test
-    fun testMultipleFactTypesOneQueryItem(): Unit = runBlocking {
-        // Create facts with different types
-        val (fact1, fact2, fact3) = appendStored(
-            listOf(
-                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload, tags = mapOf(TagKey("username") to TagValue("alice"), TagKey("region") to TagValue("eu"))),
-                input(BOB_SUBJECT_VALUE, "USER_UPDATED", bobPayload, tags = mapOf(TagKey("username") to TagValue("bob"), TagKey("region") to TagValue("us"))),
-                input(CHARLIE_SUBJECT_VALUE, "USER_CREATED", charliePayload, tags = mapOf(TagKey("username") to TagValue("charlie"), TagKey("region") to TagValue("us"))),
-            )
-        )
-
-        // Query for facts with types "USER_CREATED" or "USER_UPDATED" and with tags "username" = "alice"
-        val query = TagQuery(
-            queryItems = listOf(
-                TagTypeItem(
-                    types = setOf("USER_CREATED".toFactType(), "USER_UPDATED".toFactType()),
-                    tags = mapOf(TagKey("username") to TagValue("alice"))
-                )
-            )
-        )
-
-        val result = store.findByTagQuery(FindByTagQueryRequest(testStore, query))
-
-        // Expecting fact1 only (username = alice, type = "USER_CREATED")
-        assertThat(result).isInstanceOf(FindByTagQueryResult.Found::class.java)
-        assertThat((result as FindByTagQueryResult.Found).facts).containsExactly(fact1)
-    }
-
-    @Test
-    fun testMultipleQueryItems(): Unit = runBlocking {
-        // Create facts with different types and tags
-        val (fact1, fact2, fact3) = appendStored(
-            listOf(
-                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload, tags = mapOf(TagKey("username") to TagValue("alice"), TagKey("region") to TagValue("eu"))),
-                input(BOB_SUBJECT_VALUE, "USER_UPDATED", bobPayload, tags = mapOf(TagKey("username") to TagValue("bob"), TagKey("region") to TagValue("us"))),
-                input(CHARLIE_SUBJECT_VALUE, "USER_CREATED", charliePayload, tags = mapOf(TagKey("username") to TagValue("charlie"), TagKey("region") to TagValue("us"))),
-            )
-        )
-
-        // Query for facts with type "USER_CREATED" or "USER_UPDATED", tagged with "username" = "bob"
-        val query = TagQuery(
-            queryItems = listOf(
-                TagTypeItem(
-                    types = setOf("USER_CREATED".toFactType(), "USER_UPDATED".toFactType()),
-                    tags = mapOf(TagKey("username") to TagValue("bob"))
-                ),
-                TagTypeItem(
-                    types = setOf("USER_CREATED".toFactType()),
-                    tags = mapOf(TagKey("region") to TagValue("us"))
-                )
-            )
-        )
-
-        val result = store.findByTagQuery(FindByTagQueryRequest(testStore, query))
-
-        // Expecting fact2 (username = bob, region = us, type = USER_UPDATED)
-        // Expecting fact3 (region = us, type = USER_CREATED, but no username filter for 'bob')
-        assertThat(result).isInstanceOf(FindByTagQueryResult.Found::class.java)
-        assertThat((result as FindByTagQueryResult.Found).facts).containsExactlyInAnyOrder(fact2, fact3)
-
-    }
-
-    @Test
-    fun testMixedTypesAndTagsQueryItems(): Unit = runBlocking {
-        // Create facts with different types and tags
-        val (fact1, fact2, fact3) = appendStored(
-            listOf(
-                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload, tags = mapOf(TagKey("username") to TagValue("alice"), TagKey("region") to TagValue("eu"))),
-                input(BOB_SUBJECT_VALUE, "USER_UPDATED", bobPayload, tags = mapOf(TagKey("username") to TagValue("bob"), TagKey("region") to TagValue("us"))),
-                input(CHARLIE_SUBJECT_VALUE, "USER_CREATED", charliePayload, tags = mapOf(TagKey("username") to TagValue("charlie"), TagKey("region") to TagValue("us"))),
-            )
-        )
-
-        // Query with multiple query items
-        val query = TagQuery(
-            queryItems = listOf(
-                TagTypeItem(
-                    types = setOf("USER_CREATED".toFactType(), "USER_UPDATED".toFactType()),
-                    tags = mapOf(TagKey("username") to TagValue("bob"), TagKey("region") to TagValue("us"))
-                ),
-                TagTypeItem(
-                    types = setOf("USER_CREATED".toFactType()),
-                    tags = mapOf(TagKey("region") to TagValue("eu"), TagKey("username") to TagValue("alice"))
-                )
-            )
-        )
-
-        val result = store.findByTagQuery(FindByTagQueryRequest(testStore, query))
-
-        // Expecting fact2 (username = bob, region = us, type = USER_UPDATED)
-        // Expecting fact1 (username = alice, region = eu, type = USER_CREATED)
-        assertThat(result).isInstanceOf(FindByTagQueryResult.Found::class.java)
-        assertThat((result as FindByTagQueryResult.Found).facts).containsExactlyInAnyOrder(fact2, fact1)
-    }
-
-    @Test
-    fun testNoMatchingFacts(): Unit = runBlocking {
-        // Create facts with different types and tags
-        appendStored(
-            input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload, tags = mapOf(TagKey("username") to TagValue("alice"), TagKey("region") to TagValue("eu")))
-        )
-
-        // Query for facts with a non-matching type and tag
-        val query = TagQuery(
-            queryItems = listOf(
-                TagTypeItem(
-                    types = setOf(FactType("USER_UPDATED")),
-                    tags = mapOf(TagKey("username") to TagValue("bob"))
-                )
-            )
-        )
-
-        val result = store.findByTagQuery(FindByTagQueryRequest(testStore, query))
-
-        // Expecting no facts because no fact matches the query
-        assertThat(result).isInstanceOf(FindByTagQueryResult.Found::class.java)
-        assertThat((result as FindByTagQueryResult.Found).facts).isEmpty()
-    }
-
-    @Test
-    fun testLargeDatasetQueryByTags(): Unit = runBlocking {
-        // Step 1: Append 10,000 events with varying tags
-        val events = (1..10_000).map { index ->
-            val tag = if (index % 2 == 0) "user" else "admin" // Use alternating tags
-            val region = if (index % 2 == 0) "us" else "eu" // Use alternating regions
-
-            input(
-                subject = "USER:user-$index",
-                type = "USER_CREATED",
-                payload = """{ "username": "user$index" }""".toFactPayload(),
-                tags = mapOf(
-                    TagKey("role") to TagValue(tag),
-                    TagKey("region") to TagValue(region)
-                )
-            )
-        }
-
-        // Append all events to the store (in chunks to avoid exceeding byte limit in FoundationDB)
-        events
-            .chunked(500)
-            .forEach { store.append(testStore, it) }
-
-        // append a few more events
-        store.append(
-            testStore,
-            input(
-                subject = "USER:user-${FactId.generate().uuid}",
-                type = "USER_CREATED",
-                payload = """{ "username": "user" }""".toFactPayload(),
-                tags = mapOf(
-                    TagKey("role") to TagValue("custom"),
-                    TagKey("region") to TagValue("eu")
-                )
-            )
-        )
-
-
-        // Step 2: Query for only a handful of the events (e.g., 100 events with tag "user" and region "us")
-        val query = TagQuery(
-            queryItems = listOf(
-                TagTypeItem(
-                    types = setOf(FactType("USER_CREATED")),
-                    tags = mapOf(TagKey("role") to TagValue("user"), TagKey("region") to TagValue("us"))
-                )
-            )
-        )
-
-        val result = store.findByTagQuery(FindByTagQueryRequest(testStore, query))
-
-
-        measureTimeMillis {
-            store.findByTagQuery(FindByTagQueryRequest(testStore, query))
-        }.also { println(it) }
-
-        measureTimeMillis {
-            store.findByTagQuery(
-                FindByTagQueryRequest(
-                    storeName = testStore,
-                    query = TagQuery(
-                        listOf(
-                            TagTypeItem(
-                                types = setOf(FactType("USER_CREATED")),
-                                tags = mapOf(TagKey("role") to TagValue("custom"))
-                            )
-                        )
-                    )
-                )
-            )
-        }.also { println(it) }
-
-
-        // Step 3: Verify that the result only contains facts with the expected tags
-        // The number of events matching "role=user" and "region=us" should be around half of 10,000 (i.e., ~5000).
-        val expectedCount =
-            events.count { it.tags[TagKey("role")] == TagValue("user") && it.tags[TagKey("region")] == TagValue("us") }
-        assertThat(result).isInstanceOf(FindByTagQueryResult.Found::class.java)
-        assertThat((result as FindByTagQueryResult.Found).facts)
-            .hasSize(expectedCount) // Ensure the correct number of matching events
-            .allMatch {
-                it.tags[TagKey("role")] == TagValue("user") &&
-                        it.tags[TagKey("region")] == TagValue("us")
-            }.also {
-                println("Found ${result.facts.size} events with 'role=user' and 'region=us'.")
+    /**
+     * Opens a subscription, runs [append] once it is collecting, and returns the first [count]
+     * facts it emits — the way the live tail is asserted on.
+     */
+    private suspend fun subscribeWhile(
+        count: Int,
+        startPosition: StartPosition = StartPosition.Beginning,
+        append: suspend () -> Unit,
+    ): List<Fact> = coroutineScope {
+        val collecting = CompletableDeferred<Unit>()
+        val received = async {
+            withTimeout(10.seconds) {
+                subscribed(startPosition)
+                    .onStart { collecting.complete(Unit) }
+                    .take(count)
+                    .toList()
             }
+        }
+        collecting.await()
+        append()
+        received.await()
+    }
 
+    // ===== FactStreamer: streamFacts =====
+
+    @Test
+    fun testStreamFactsForward(): Unit = runBlocking {
+        val facts = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
+                input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload),
+                input(ALICE_SUBJECT_VALUE, "USER_LOCKED", alicePayload),
+            )
+        )
+
+        val streamed = streamToList(StreamFactsRequest(testStore, null, ReadDirection.Forward, Limit.None))
+
+        assertThat(streamed).containsExactlyElementsOf(facts)
     }
 
     @Test
-    fun testFindByTagQueryWithNonExistingFactstore(): Unit = runBlocking {
-        assertThat(
-            store.findByTagQuery(
-                FindByTagQueryRequest(
-                    storeName = nonExistingStore,
-                    query = TagQuery(
-                        listOf(
-                            TagTypeItem(
-                                types = setOf(FactType("USER_CREATED")),
-                                tags = mapOf(TagKey("role") to TagValue("custom"))
-                            )
-                        )
-                    )
-                )
+    fun testStreamFactsBackward(): Unit = runBlocking {
+        val facts = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
+                input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload),
+                input(ALICE_SUBJECT_VALUE, "USER_LOCKED", alicePayload),
             )
         )
-            .isInstanceOf(FindByTagQueryResult.StoreNotFound::class.java)
+
+        val streamed = streamToList(StreamFactsRequest(testStore, null, ReadDirection.Backward, Limit.None))
+
+        assertThat(streamed).containsExactlyElementsOf(facts.reversed())
     }
+
+    @Test
+    fun testStreamFactsWithLimit(): Unit = runBlocking {
+        val (fact1, fact2, fact3) = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
+                input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload),
+                input(ALICE_SUBJECT_VALUE, "USER_LOCKED", alicePayload),
+            )
+        )
+
+        // Forward + limit 2 → the two oldest facts
+        assertThat(streamToList(StreamFactsRequest(testStore, null, ReadDirection.Forward, Limit.of(2))))
+            .containsExactly(fact1, fact2)
+
+        // Backward + limit 2 → the two newest facts, newest first
+        assertThat(streamToList(StreamFactsRequest(testStore, null, ReadDirection.Backward, Limit.of(2))))
+            .containsExactly(fact3, fact2)
+    }
+
+    @Test
+    fun testStreamFactsWithLimitLargerThanStore(): Unit = runBlocking {
+        val facts = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
+                input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload),
+            )
+        )
+
+        val streamed = streamToList(StreamFactsRequest(testStore, null, ReadDirection.Forward, Limit.of(10)))
+
+        assertThat(streamed).containsExactlyElementsOf(facts)
+    }
+
+    @Test
+    fun testStreamFactsOfEmptyStore(): Unit = runBlocking {
+        val streamed = streamToList(StreamFactsRequest(testStore, null, ReadDirection.Forward, Limit.None))
+
+        assertThat(streamed).isEmpty()
+    }
+
+    @Test
+    fun testStreamFactsOfNonExistingStore(): Unit = runBlocking {
+        val result = store.streamFacts(StreamFactsRequest(nonExistingStore, null, ReadDirection.Forward, Limit.None))
+
+        assertThat(result).isEqualTo(StreamFactsResult.StoreNotFound(nonExistingStore))
+    }
+
+    @Test
+    fun testStreamFactsOnlyContainsFactsOfTheRequestedStore(): Unit = runBlocking {
+        val otherStore = StoreName("other-store")
+        store.create(CreateStoreRequest(otherStore))
+
+        val fact = appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload))
+        appendStored(input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload), otherStore)
+
+        val streamed = streamToList(StreamFactsRequest(testStore, null, ReadDirection.Forward, Limit.None))
+
+        assertThat(streamed).containsExactly(fact)
+    }
+
+    @Test
+    fun testStreamFactsExcludesFactsAppendedAfterCall(): Unit = runBlocking {
+        val fact1 = appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload))
+        val fact2 = appendStored(input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload))
+
+        // The head is pinned when the stream is requested, not when it is collected.
+        val stream = (store.streamFacts(StreamFactsRequest(testStore, null, ReadDirection.Forward, Limit.None))
+                as StreamFactsResult.FactStream).facts
+
+        appendStored(input(CHARLIE_SUBJECT_VALUE, "USER_CREATED", charliePayload))
+
+        assertThat(withTimeout(10.seconds) { stream.toList() }).containsExactly(fact1, fact2)
+    }
+
+    @Test
+    fun testStreamFactsBackwardExcludesFactsAppendedAfterCall(): Unit = runBlocking {
+        val fact1 = appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload))
+        val fact2 = appendStored(input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload))
+
+        // Reading backward starts at the pinned head, not at the newest fact at collection time.
+        val stream = (store.streamFacts(StreamFactsRequest(testStore, null, ReadDirection.Backward, Limit.None))
+                as StreamFactsResult.FactStream).facts
+
+        appendStored(input(CHARLIE_SUBJECT_VALUE, "USER_CREATED", charliePayload))
+
+        assertThat(withTimeout(10.seconds) { stream.toList() }).containsExactly(fact2, fact1)
+    }
+
+    @Test
+    fun testStreamFactsIsRepeatable(): Unit = runBlocking {
+        val facts = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
+                input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload),
+            )
+        )
+
+        val stream = (store.streamFacts(StreamFactsRequest(testStore, null, ReadDirection.Forward, Limit.None))
+                as StreamFactsResult.FactStream).facts
+
+        val first = withTimeout(10.seconds) { stream.toList() }
+        appendStored(input(CHARLIE_SUBJECT_VALUE, "USER_CREATED", charliePayload))
+        val second = withTimeout(10.seconds) { stream.toList() }
+
+        assertThat(first).containsExactlyElementsOf(facts)
+        assertThat(second).isEqualTo(first)
+    }
+
+    @Test
+    fun testStreamFactsOfLargeStore(): Unit = runBlocking {
+        val facts = appendLargeHistory()
+
+        assertThat(streamToList(StreamFactsRequest(testStore, null, ReadDirection.Forward, Limit.None)))
+            .containsExactlyElementsOf(facts)
+        assertThat(streamToList(StreamFactsRequest(testStore, null, ReadDirection.Backward, Limit.None)))
+            .containsExactlyElementsOf(facts.reversed())
+        assertThat(streamToList(StreamFactsRequest(testStore, null, ReadDirection.Forward, Limit.of(777))))
+            .containsExactlyElementsOf(facts.take(777))
+        assertThat(streamToList(StreamFactsRequest(testStore, null, ReadDirection.Backward, Limit.of(777))))
+            .containsExactlyElementsOf(facts.reversed().take(777))
+    }
+
+    // ===== FactStreamer: continuing a stream =====
+
+    @Test
+    fun testStreamFactsContinuesAfterAFact(): Unit = runBlocking {
+        val (fact1, fact2, fact3) = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
+                input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload),
+                input(CHARLIE_SUBJECT_VALUE, "USER_CREATED", charliePayload),
+            )
+        )
+
+        assertThat(streamToList(StreamFactsRequest(testStore, fact1.id, ReadDirection.Forward, Limit.None)))
+            .containsExactly(fact2, fact3)
+        // Backward, continuing after a fact means the ones appended before it.
+        assertThat(streamToList(StreamFactsRequest(testStore, fact3.id, ReadDirection.Backward, Limit.None)))
+            .containsExactly(fact2, fact1)
+        // With a limit, counted from the continuation.
+        assertThat(streamToList(StreamFactsRequest(testStore, fact1.id, ReadDirection.Forward, Limit.of(1))))
+            .containsExactly(fact2)
+    }
+
+    @Test
+    fun testStreamFactsContinuedAfterTheNewestFactIsEmpty(): Unit = runBlocking {
+        val facts = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
+                input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload),
+            )
+        )
+
+        assertThat(streamToList(StreamFactsRequest(testStore, facts.last().id, ReadDirection.Forward, Limit.None)))
+            .isEmpty()
+        // Reading backward, the oldest fact is the end of the stream.
+        assertThat(streamToList(StreamFactsRequest(testStore, facts.first().id, ReadDirection.Backward, Limit.None)))
+            .isEmpty()
+    }
+
+    @Test
+    fun testStreamFactsContinuedAfterAnUnknownFact(): Unit = runBlocking {
+        appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload))
+        val unknown = FactId.generate()
+
+        val result = store.streamFacts(StreamFactsRequest(testStore, unknown, ReadDirection.Forward, Limit.None))
+
+        assertThat(result).isEqualTo(StreamFactsResult.ContinuationNotFound(unknown))
+    }
+
+    @Test
+    fun testStreamFactsBySubjectContinuesAfterAFactOfAnotherSubject(): Unit = runBlocking {
+        val (alice1, bob, alice2) = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
+                input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload),
+                input(ALICE_SUBJECT_VALUE, "USER_LOCKED", alicePayload),
+            )
+        )
+
+        // The continuation marks a position; it need not be a fact the stream itself emits.
+        assertThat(streamToList(subjectRequest(ALICE_SUBJECT_VALUE, ReadDirection.Forward, Limit.None, bob.id)))
+            .containsExactly(alice2)
+        assertThat(streamToList(subjectRequest(ALICE_SUBJECT_VALUE, ReadDirection.Forward, Limit.None, alice1.id)))
+            .containsExactly(alice2)
+    }
+
+    @Test
+    fun testStreamFactsByTypeContinuesAfterAFact(): Unit = runBlocking {
+        val (created1, locked, created2) = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
+                input(BOB_SUBJECT_VALUE, "USER_LOCKED", bobPayload),
+                input(CHARLIE_SUBJECT_VALUE, "USER_CREATED", charliePayload),
+            )
+        )
+
+        assertThat(streamToList(typeRequest("USER_CREATED", ReadDirection.Forward, Limit.None, locked.id)))
+            .containsExactly(created2)
+        assertThat(streamToList(typeRequest("USER_CREATED", ReadDirection.Backward, Limit.None, created2.id)))
+            .containsExactly(created1)
+    }
+
+    @Test
+    fun testStreamFactsByTagsContinuesAfterAFact(): Unit = runBlocking {
+        val (alice, bob, charlie) = appendStored(
+            listOf(
+                userInput("ALICE", "Alice", role = "admin", region = "eu"),
+                userInput("BOB", "Bob", role = "user", region = "eu"),
+                userInput("CHARLIE", "Charlie", role = "admin", region = "eu"),
+            )
+        )
+
+        // One tag, and several tags, both continue from the same marker.
+        assertThat(streamToList(tagsRequest(mapOf("role" to "admin"), ReadDirection.Forward, Limit.None, bob.id)))
+            .containsExactly(charlie)
+        assertThat(
+            streamToList(
+                tagsRequest(mapOf("role" to "admin", "region" to "eu"), ReadDirection.Forward, Limit.None, alice.id)
+            )
+        ).containsExactly(charlie)
+    }
+
+    @Test
+    fun testStreamFactsByQueryContinuesAfterAFact(): Unit = runBlocking {
+        val (alice, bob, charlie) = appendStored(
+            listOf(
+                userInput("ALICE", "Alice", role = "admin", region = "eu"),
+                userInput("BOB", "Bob", role = "user", region = "us"),
+                userInput("CHARLIE", "Charlie", role = "admin", region = "us"),
+            )
+        )
+
+        val query = query(
+            FactFilter(subjects = setOf(Subject(ALICE_SUBJECT_VALUE))),
+            FactFilter(tags = mapOf(TagKey("role") to TagValue("admin"))),
+        )
+
+        assertThat(streamToList(query, continueAfter = bob.id)).containsExactly(charlie)
+        assertThat(streamToList(query, continueAfter = alice.id)).containsExactly(charlie)
+        assertThat(streamToList(query, ReadDirection.Backward, continueAfter = charlie.id))
+            .containsExactly(alice)
+    }
+
+    @Test
+    fun testContinuingAStreamCoversEveryFactExactlyOnce(): Unit = runBlocking {
+        // Read a long history in pages, the way a resuming consumer does, and check that the pages
+        // join up without a gap or a repetition, including across the backends' read batches.
+        val facts = appendLargeHistory()
+
+        val pages = mutableListOf<Fact>()
+        var continueAfter: FactId? = null
+        do {
+            val page = streamToList(StreamFactsRequest(testStore, continueAfter, ReadDirection.Forward, Limit.of(300)))
+            pages += page
+            continueAfter = page.lastOrNull()?.id
+        } while (page.isNotEmpty())
+
+        assertThat(pages).containsExactlyElementsOf(facts)
+    }
+
+    @Test
+    fun testStreamFactsByQueryContinuedAfterAnUnknownFact(): Unit = runBlocking {
+        appendStored(userInput("ALICE", "Alice", role = "admin", region = "eu"))
+        val unknown = FactId.generate()
+
+        val result = store.streamFactsByQuery(
+            StreamFactsByQueryRequest(
+                testStore,
+                FactQuery(listOf(FactFilter(tags = mapOf(TagKey("role") to TagValue("admin"))))),
+                unknown,
+                ReadDirection.Forward,
+                Limit.None,
+            )
+        )
+
+        assertThat(result).isEqualTo(StreamFactsByQueryResult.ContinuationNotFound(unknown))
+    }
+
+    // ===== FactStreamer: streamFactsBySubject =====
+
+    @Test
+    fun testStreamFactsBySubjectForward(): Unit = runBlocking {
+        val (fact1, fact2, fact3) = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
+                input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload),
+                input(ALICE_SUBJECT_VALUE, "USER_LOCKED", alicePayload),
+            )
+        )
+
+        assertThat(streamToList(subjectRequest(ALICE_SUBJECT_VALUE, ReadDirection.Forward, Limit.None)))
+            .containsExactly(fact1, fact3)
+        assertThat(streamToList(subjectRequest(BOB_SUBJECT_VALUE, ReadDirection.Forward, Limit.None)))
+            .containsExactly(fact2)
+    }
+
+    @Test
+    fun testStreamFactsBySubjectBackward(): Unit = runBlocking {
+        val (fact1, _, fact3) = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
+                input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload),
+                input(ALICE_SUBJECT_VALUE, "USER_LOCKED", alicePayload),
+            )
+        )
+
+        assertThat(streamToList(subjectRequest(ALICE_SUBJECT_VALUE, ReadDirection.Backward, Limit.None)))
+            .containsExactly(fact3, fact1)
+    }
+
+    @Test
+    fun testStreamFactsBySubjectWithLimit(): Unit = runBlocking {
+        val (fact1, fact2, fact3) = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
+                input(ALICE_SUBJECT_VALUE, "USER_UPDATED", alicePayload),
+                input(ALICE_SUBJECT_VALUE, "USER_LOCKED", alicePayload),
+            )
+        )
+
+        // Forward + limit 2 → the subject's two oldest facts
+        assertThat(streamToList(subjectRequest(ALICE_SUBJECT_VALUE, ReadDirection.Forward, Limit.of(2))))
+            .containsExactly(fact1, fact2)
+
+        // Backward + limit 2 → the subject's two newest facts, newest first
+        assertThat(streamToList(subjectRequest(ALICE_SUBJECT_VALUE, ReadDirection.Backward, Limit.of(2))))
+            .containsExactly(fact3, fact2)
+    }
+
+    @Test
+    fun testStreamFactsBySubjectLimitCountsOnlyTheSubjectsFacts(): Unit = runBlocking {
+        val (fact1, _, _, fact4) = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
+                input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload),
+                input(BOB_SUBJECT_VALUE, "USER_UPDATED", bobPayload),
+                input(ALICE_SUBJECT_VALUE, "USER_LOCKED", alicePayload),
+            )
+        )
+
+        // Bob's facts in between must neither be emitted nor count towards the limit.
+        assertThat(streamToList(subjectRequest(ALICE_SUBJECT_VALUE, ReadDirection.Forward, Limit.of(2))))
+            .containsExactly(fact1, fact4)
+    }
+
+    @Test
+    fun testStreamFactsBySubjectWithoutFacts(): Unit = runBlocking {
+        appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload))
+
+        assertThat(streamToList(subjectRequest("USER:PETER", ReadDirection.Forward, Limit.None))).isEmpty()
+    }
+
+    @Test
+    fun testStreamFactsBySubjectOfNonExistingStore(): Unit = runBlocking {
+        val result = store.streamFactsBySubject(
+            StreamFactsBySubjectRequest(nonExistingStore, Subject(ALICE_SUBJECT_VALUE), null, ReadDirection.Forward, Limit.None)
+        )
+
+        assertThat(result).isEqualTo(StreamFactsBySubjectResult.StoreNotFound(nonExistingStore))
+    }
+
+    @Test
+    fun testStreamFactsBySubjectOnlyContainsFactsOfTheRequestedStore(): Unit = runBlocking {
+        val otherStore = StoreName("other-store")
+        store.create(CreateStoreRequest(otherStore))
+
+        val fact = appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload))
+        appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload), otherStore)
+
+        assertThat(streamToList(subjectRequest(ALICE_SUBJECT_VALUE, ReadDirection.Forward, Limit.None)))
+            .containsExactly(fact)
+    }
+
+    @Test
+    fun testStreamFactsBySubjectExcludesFactsAppendedAfterCall(): Unit = runBlocking {
+        val fact1 = appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload))
+
+        // The head is pinned when the stream is requested, not when it is collected.
+        val stream = (store.streamFactsBySubject(subjectRequest(ALICE_SUBJECT_VALUE, ReadDirection.Forward, Limit.None))
+                as StreamFactsBySubjectResult.FactStream).facts
+
+        appendStored(input(ALICE_SUBJECT_VALUE, "USER_LOCKED", alicePayload))
+
+        assertThat(withTimeout(10.seconds) { stream.toList() }).containsExactly(fact1)
+    }
+
+    @Test
+    fun testStreamFactsBySubjectIsRepeatable(): Unit = runBlocking {
+        val (fact1, _, fact3) = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
+                input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload),
+                input(ALICE_SUBJECT_VALUE, "USER_LOCKED", alicePayload),
+            )
+        )
+
+        val stream = (store.streamFactsBySubject(subjectRequest(ALICE_SUBJECT_VALUE, ReadDirection.Forward, Limit.None))
+                as StreamFactsBySubjectResult.FactStream).facts
+
+        val first = withTimeout(10.seconds) { stream.toList() }
+        appendStored(input(ALICE_SUBJECT_VALUE, "USER_UNLOCKED", alicePayload))
+        val second = withTimeout(10.seconds) { stream.toList() }
+
+        assertThat(first).containsExactly(fact1, fact3)
+        assertThat(second).isEqualTo(first)
+    }
+
+    @Test
+    fun testStreamFactsBySubjectOfLargeHistory(): Unit = runBlocking {
+        val aliceFacts = appendLargeHistory().filter { it.subject.value == ALICE_SUBJECT_VALUE }
+
+        assertThat(streamToList(subjectRequest(ALICE_SUBJECT_VALUE, ReadDirection.Forward, Limit.None)))
+            .containsExactlyElementsOf(aliceFacts)
+        assertThat(streamToList(subjectRequest(ALICE_SUBJECT_VALUE, ReadDirection.Backward, Limit.None)))
+            .containsExactlyElementsOf(aliceFacts.reversed())
+        assertThat(streamToList(subjectRequest(ALICE_SUBJECT_VALUE, ReadDirection.Forward, Limit.of(333))))
+            .containsExactlyElementsOf(aliceFacts.take(333))
+        assertThat(streamToList(subjectRequest(ALICE_SUBJECT_VALUE, ReadDirection.Backward, Limit.of(333))))
+            .containsExactlyElementsOf(aliceFacts.reversed().take(333))
+    }
+
+    // ===== FactStreamer: streamFactsByType =====
+
+    @Test
+    fun testStreamFactsByTypeForward(): Unit = runBlocking {
+        val (fact1, _, fact3) = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
+                input(BOB_SUBJECT_VALUE, "USER_LOCKED", bobPayload),
+                input(CHARLIE_SUBJECT_VALUE, "USER_CREATED", charliePayload),
+            )
+        )
+
+        // Facts of one type, across subjects.
+        assertThat(streamToList(typeRequest("USER_CREATED", ReadDirection.Forward, Limit.None)))
+            .containsExactly(fact1, fact3)
+    }
+
+    @Test
+    fun testStreamFactsByTypeBackward(): Unit = runBlocking {
+        val (fact1, _, fact3) = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
+                input(BOB_SUBJECT_VALUE, "USER_LOCKED", bobPayload),
+                input(CHARLIE_SUBJECT_VALUE, "USER_CREATED", charliePayload),
+            )
+        )
+
+        assertThat(streamToList(typeRequest("USER_CREATED", ReadDirection.Backward, Limit.None)))
+            .containsExactly(fact3, fact1)
+    }
+
+    @Test
+    fun testStreamFactsByTypeWithLimit(): Unit = runBlocking {
+        val (fact1, fact2, fact3) = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
+                input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload),
+                input(CHARLIE_SUBJECT_VALUE, "USER_CREATED", charliePayload),
+            )
+        )
+
+        assertThat(streamToList(typeRequest("USER_CREATED", ReadDirection.Forward, Limit.of(2))))
+            .containsExactly(fact1, fact2)
+        assertThat(streamToList(typeRequest("USER_CREATED", ReadDirection.Backward, Limit.of(2))))
+            .containsExactly(fact3, fact2)
+    }
+
+    @Test
+    fun testStreamFactsByTypeLimitCountsOnlyTheTypesFacts(): Unit = runBlocking {
+        val (fact1, _, _, fact4) = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
+                input(BOB_SUBJECT_VALUE, "USER_LOCKED", bobPayload),
+                input(BOB_SUBJECT_VALUE, "USER_UNLOCKED", bobPayload),
+                input(CHARLIE_SUBJECT_VALUE, "USER_CREATED", charliePayload),
+            )
+        )
+
+        // Facts of other types in between must neither be emitted nor count towards the limit.
+        assertThat(streamToList(typeRequest("USER_CREATED", ReadDirection.Forward, Limit.of(2))))
+            .containsExactly(fact1, fact4)
+    }
+
+    @Test
+    fun testStreamFactsByTypeMatchesTheTypeExactly(): Unit = runBlocking {
+        val exact = appendStored(input(ALICE_SUBJECT_VALUE, "com.acme.OrderPlaced", alicePayload))
+        appendStored(input(ALICE_SUBJECT_VALUE, "com.acme.OrderPlaced.V2", alicePayload))
+
+        assertThat(streamToList(typeRequest("com.acme.OrderPlaced", ReadDirection.Forward, Limit.None)))
+            .containsExactly(exact)
+        assertThat(streamToList(typeRequest("com.acme", ReadDirection.Forward, Limit.None))).isEmpty()
+    }
+
+    @Test
+    fun testStreamFactsByTypeWithoutFacts(): Unit = runBlocking {
+        appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload))
+
+        assertThat(streamToList(typeRequest("USER_DELETED", ReadDirection.Forward, Limit.None))).isEmpty()
+    }
+
+    @Test
+    fun testStreamFactsByTypeOfNonExistingStore(): Unit = runBlocking {
+        val result = store.streamFactsByType(
+            StreamFactsByTypeRequest(nonExistingStore, FactType("USER_CREATED"), null, ReadDirection.Forward, Limit.None)
+        )
+
+        assertThat(result).isEqualTo(StreamFactsByTypeResult.StoreNotFound(nonExistingStore))
+    }
+
+    @Test
+    fun testStreamFactsByTypeOnlyContainsFactsOfTheRequestedStore(): Unit = runBlocking {
+        val otherStore = StoreName("other-store")
+        store.create(CreateStoreRequest(otherStore))
+
+        val fact = appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload))
+        appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload), otherStore)
+
+        assertThat(streamToList(typeRequest("USER_CREATED", ReadDirection.Forward, Limit.None)))
+            .containsExactly(fact)
+    }
+
+    @Test
+    fun testStreamFactsByTypeExcludesFactsAppendedAfterCall(): Unit = runBlocking {
+        val fact1 = appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload))
+
+        val stream = (store.streamFactsByType(typeRequest("USER_CREATED", ReadDirection.Forward, Limit.None))
+                as StreamFactsByTypeResult.FactStream).facts
+
+        appendStored(input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload))
+
+        assertThat(withTimeout(10.seconds) { stream.toList() }).containsExactly(fact1)
+    }
+
+    @Test
+    fun testStreamFactsByTypeExcludesFactsAppendedWhileCollected(): Unit = runBlocking {
+        // More facts than a backend is likely to read at once, so collecting spans several reads.
+        val facts = appendStored((0 until 300).map { input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload) })
+
+        val stream = (store.streamFactsByType(typeRequest("USER_CREATED", ReadDirection.Forward, Limit.None))
+                as StreamFactsByTypeResult.FactStream).facts
+
+        val collected = mutableListOf<Fact>()
+        withTimeout(10.seconds) {
+            stream.collect { fact ->
+                if (collected.isEmpty()) appendStored(input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload))
+                collected += fact
+            }
+        }
+
+        assertThat(collected).containsExactlyElementsOf(facts)
+    }
+
+    @Test
+    fun testStreamFactsByTypeIsRepeatable(): Unit = runBlocking {
+        val (fact1, _, fact3) = appendStored(
+            listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
+                input(BOB_SUBJECT_VALUE, "USER_LOCKED", bobPayload),
+                input(CHARLIE_SUBJECT_VALUE, "USER_CREATED", charliePayload),
+            )
+        )
+
+        val stream = (store.streamFactsByType(typeRequest("USER_CREATED", ReadDirection.Forward, Limit.None))
+                as StreamFactsByTypeResult.FactStream).facts
+
+        val first = withTimeout(10.seconds) { stream.toList() }
+        appendStored(input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload))
+        val second = withTimeout(10.seconds) { stream.toList() }
+
+        assertThat(first).containsExactly(fact1, fact3)
+        assertThat(second).isEqualTo(first)
+    }
+
+    @Test
+    fun testStreamFactsByTypeOfLargeHistory(): Unit = runBlocking {
+        val evenFacts = appendLargeHistory().filterIndexed { index, _ -> index % 2 == 0 }
+
+        assertThat(streamToList(typeRequest(EVEN_FACT_TYPE, ReadDirection.Forward, Limit.None)))
+            .containsExactlyElementsOf(evenFacts)
+        assertThat(streamToList(typeRequest(EVEN_FACT_TYPE, ReadDirection.Backward, Limit.None)))
+            .containsExactlyElementsOf(evenFacts.reversed())
+        assertThat(streamToList(typeRequest(EVEN_FACT_TYPE, ReadDirection.Forward, Limit.of(333))))
+            .containsExactlyElementsOf(evenFacts.take(333))
+    }
+
+    // ===== FactStreamer: streamFactsByTags =====
+
+    @Test
+    fun testStreamFactsByOneTag(): Unit = runBlocking {
+        val (alice, _, charlie) = appendStored(
+            listOf(
+                userInput("ALICE", "Alice", role = "admin", region = "eu"),
+                userInput("BOB", "Bob", role = "user", region = "us"),
+                userInput("CHARLIE", "Charlie", role = "admin", region = "us"),
+            )
+        )
+
+        assertThat(streamToList(tagsRequest(mapOf("role" to "admin"), ReadDirection.Forward, Limit.None)))
+            .containsExactly(alice, charlie)
+    }
+
+    @Test
+    fun testStreamFactsByTagsRequiresAllTags(): Unit = runBlocking {
+        val (_, _, charlie) = appendStored(
+            listOf(
+                userInput("ALICE", "Alice", role = "admin", region = "eu"),
+                userInput("BOB", "Bob", role = "user", region = "us"),
+                userInput("CHARLIE", "Charlie", role = "admin", region = "us"),
+            )
+        )
+
+        // Only Charlie carries both tags; Alice and Bob carry one each.
+        assertThat(streamToList(tagsRequest(mapOf("role" to "admin", "region" to "us"), ReadDirection.Forward, Limit.None)))
+            .containsExactly(charlie)
+    }
+
+    @Test
+    fun testStreamFactsByTagsMatchesTheTagValueExactly(): Unit = runBlocking {
+        appendStored(userInput("ALICE", "Alice", role = "admin", region = "eu"))
+
+        assertThat(streamToList(tagsRequest(mapOf("role" to "admins"), ReadDirection.Forward, Limit.None))).isEmpty()
+        assertThat(streamToList(tagsRequest(mapOf("role" to "adm"), ReadDirection.Forward, Limit.None))).isEmpty()
+    }
+
+    @Test
+    fun testStreamFactsByTagsBackward(): Unit = runBlocking {
+        val (alice, _, charlie) = appendStored(
+            listOf(
+                userInput("ALICE", "Alice", role = "admin", region = "eu"),
+                userInput("BOB", "Bob", role = "user", region = "us"),
+                userInput("CHARLIE", "Charlie", role = "admin", region = "us"),
+            )
+        )
+
+        assertThat(streamToList(tagsRequest(mapOf("role" to "admin"), ReadDirection.Backward, Limit.None)))
+            .containsExactly(charlie, alice)
+    }
+
+    @Test
+    fun testStreamFactsByTagsWithLimit(): Unit = runBlocking {
+        val (alice, _, charlie) = appendStored(
+            listOf(
+                userInput("ALICE", "Alice", role = "admin", region = "eu"),
+                userInput("BOB", "Bob", role = "user", region = "eu"),
+                userInput("CHARLIE", "Charlie", role = "admin", region = "eu"),
+            )
+        )
+
+        // The limit counts matching facts only, whatever lies between them.
+        assertThat(streamToList(tagsRequest(mapOf("role" to "admin"), ReadDirection.Forward, Limit.of(1))))
+            .containsExactly(alice)
+        assertThat(streamToList(tagsRequest(mapOf("role" to "admin", "region" to "eu"), ReadDirection.Backward, Limit.of(1))))
+            .containsExactly(charlie)
+    }
+
+    @Test
+    fun testStreamFactsByTagsWithoutMatches(): Unit = runBlocking {
+        appendStored(userInput("ALICE", "Alice", role = "admin", region = "eu"))
+
+        assertThat(streamToList(tagsRequest(mapOf("role" to "guest"), ReadDirection.Forward, Limit.None))).isEmpty()
+        assertThat(streamToList(tagsRequest(mapOf("role" to "admin", "region" to "us"), ReadDirection.Forward, Limit.None)))
+            .isEmpty()
+    }
+
+    @Test
+    fun testStreamFactsByTagsOfNonExistingStore(): Unit = runBlocking {
+        val result = store.streamFactsByTags(
+            StreamFactsByTagsRequest(
+                nonExistingStore,
+                mapOf(TagKey("role") to TagValue("admin")),
+                null,
+                ReadDirection.Forward,
+                Limit.None,
+            )
+        )
+
+        assertThat(result).isEqualTo(StreamFactsByTagsResult.StoreNotFound(nonExistingStore))
+    }
+
+    @Test
+    fun testStreamFactsByTagsExcludesFactsAppendedAfterCall(): Unit = runBlocking {
+        val alice = appendStored(userInput("ALICE", "Alice", role = "admin", region = "eu"))
+
+        val stream = (store.streamFactsByTags(tagsRequest(mapOf("role" to "admin"), ReadDirection.Forward, Limit.None))
+                as StreamFactsByTagsResult.FactStream).facts
+
+        appendStored(userInput("CHARLIE", "Charlie", role = "admin", region = "eu"))
+
+        assertThat(withTimeout(10.seconds) { stream.toList() }).containsExactly(alice)
+    }
+
+    @Test
+    fun testStreamFactsByTagsIsRepeatable(): Unit = runBlocking {
+        val alice = appendStored(userInput("ALICE", "Alice", role = "admin", region = "eu"))
+
+        val stream = (store.streamFactsByTags(tagsRequest(mapOf("role" to "admin"), ReadDirection.Forward, Limit.None))
+                as StreamFactsByTagsResult.FactStream).facts
+
+        val first = withTimeout(10.seconds) { stream.toList() }
+        appendStored(userInput("CHARLIE", "Charlie", role = "admin", region = "eu"))
+        val second = withTimeout(10.seconds) { stream.toList() }
+
+        assertThat(first).containsExactly(alice)
+        assertThat(second).isEqualTo(first)
+    }
+
+    @Test
+    fun testStreamFactsBySeveralTagsIsRepeatable(): Unit = runBlocking {
+        val alice = appendStored(userInput("ALICE", "Alice", role = "admin", region = "eu"))
+        appendStored(userInput("BOB", "Bob", role = "user", region = "eu"))
+
+        val stream = (store.streamFactsByTags(
+            tagsRequest(mapOf("role" to "admin", "region" to "eu"), ReadDirection.Forward, Limit.None)
+        ) as StreamFactsByTagsResult.FactStream).facts
+
+        val first = withTimeout(10.seconds) { stream.toList() }
+        val second = withTimeout(10.seconds) { stream.toList() }
+
+        assertThat(first).containsExactly(alice)
+        assertThat(second).isEqualTo(first)
+    }
+
+    @Test
+    fun testStreamFactsByTagsOfLargeHistory(): Unit = runBlocking {
+        // 900 facts: every third carries role=admin, every fifth region=eu, so the tags match
+        // different, interleaved sets. The 300 admin facts are more than a backend reads at once,
+        // so matching the two tags has to continue across several reads of that tag's index.
+        val inputs = (0 until 900).map { i ->
+            val tags = buildMap {
+                if (i % 3 == 0) put(TagKey("role"), TagValue("admin"))
+                if (i % 5 == 0) put(TagKey("region"), TagValue("eu"))
+            }
+            input(ALICE_SUBJECT_VALUE, "FACT_$i", alicePayload, tags = tags)
+        }
+        val facts = inputs.chunked(AppendRequest.MAX_FACTS).flatMap { appendStored(it) }
+
+        val admins = facts.filterIndexed { i, _ -> i % 3 == 0 }
+        val adminsInEu = facts.filterIndexed { i, _ -> i % 3 == 0 && i % 5 == 0 }
+
+        assertThat(streamToList(tagsRequest(mapOf("role" to "admin"), ReadDirection.Forward, Limit.None)))
+            .containsExactlyElementsOf(admins)
+        assertThat(streamToList(tagsRequest(mapOf("role" to "admin", "region" to "eu"), ReadDirection.Forward, Limit.None)))
+            .containsExactlyElementsOf(adminsInEu)
+        assertThat(streamToList(tagsRequest(mapOf("role" to "admin", "region" to "eu"), ReadDirection.Backward, Limit.None)))
+            .containsExactlyElementsOf(adminsInEu.reversed())
+        assertThat(streamToList(tagsRequest(mapOf("role" to "admin", "region" to "eu"), ReadDirection.Forward, Limit.of(7))))
+            .containsExactlyElementsOf(adminsInEu.take(7))
+    }
+
+    // ===== FactStreamer: streamFactsByQuery =====
+
+    @Test
+    fun testStreamFactsByQueryWithOneFilterMatchesTheShorthands(): Unit = runBlocking {
+        val (alice, bob, aliceLocked) = appendStored(
+            listOf(
+                userInput("ALICE", "Alice", role = "admin", region = "eu"),
+                userInput("BOB", "Bob", role = "user", region = "us"),
+                input(ALICE_SUBJECT_VALUE, "USER_LOCKED", alicePayload, tags = mapOf(TagKey("role") to TagValue("admin"))),
+            )
+        )
+
+        // A single filter is exactly the shorthand it constrains.
+        assertThat(streamToList(query(FactFilter(subjects = setOf(Subject(ALICE_SUBJECT_VALUE))))))
+            .containsExactly(alice, aliceLocked)
+        assertThat(streamToList(query(FactFilter(types = setOf(FactType("USER_CREATED"))))))
+            .containsExactly(alice, bob)
+        assertThat(streamToList(query(FactFilter(tags = mapOf(TagKey("role") to TagValue("admin"))))))
+            .containsExactly(alice, aliceLocked)
+    }
+
+    @Test
+    fun testStreamFactsByQueryCombinesPredicatesWithAnd(): Unit = runBlocking {
+        val (_, _, aliceLocked) = appendStored(
+            listOf(
+                userInput("ALICE", "Alice", role = "admin", region = "eu"),
+                userInput("BOB", "Bob", role = "admin", region = "eu"),
+                input(ALICE_SUBJECT_VALUE, "USER_LOCKED", alicePayload, tags = mapOf(TagKey("role") to TagValue("admin"))),
+            )
+        )
+
+        // Subject AND type AND tag: only the third fact satisfies all three.
+        val filter = FactFilter(
+            subjects = setOf(Subject(ALICE_SUBJECT_VALUE)),
+            types = setOf(FactType("USER_LOCKED")),
+            tags = mapOf(TagKey("role") to TagValue("admin")),
+        )
+
+        assertThat(streamToList(query(filter))).containsExactly(aliceLocked)
+    }
+
+    @Test
+    fun testStreamFactsByQueryMatchesAnyValueOfAPredicate(): Unit = runBlocking {
+        val (alice, bob, charlie) = appendStored(
+            listOf(
+                userInput("ALICE", "Alice", role = "admin", region = "eu"),
+                userInput("BOB", "Bob", role = "user", region = "us"),
+                input(CHARLIE_SUBJECT_VALUE, "USER_LOCKED", charliePayload),
+            )
+        )
+
+        // Several types in one filter match any of them.
+        assertThat(streamToList(query(FactFilter(types = setOf(FactType("USER_CREATED"), FactType("USER_LOCKED"))))))
+            .containsExactly(alice, bob, charlie)
+
+        // The same for subjects.
+        assertThat(streamToList(query(FactFilter(subjects = setOf(Subject(ALICE_SUBJECT_VALUE), Subject(CHARLIE_SUBJECT_VALUE))))))
+            .containsExactly(alice, charlie)
+    }
+
+    @Test
+    fun testStreamFactsByQueryCombinesOneTypeWithSeveralTags(): Unit = runBlocking {
+        val (alice, _, _) = appendStored(
+            listOf(
+                // Right type, both tags.
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload, tags = adminInEu),
+                // Right type, one tag missing.
+                input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload, tags = mapOf(TagKey("role") to TagValue("admin"))),
+                // Both tags, wrong type.
+                input(CHARLIE_SUBJECT_VALUE, "USER_LOCKED", charliePayload, tags = adminInEu),
+            )
+        )
+
+        val filter = FactFilter(types = setOf(FactType("USER_CREATED")), tags = adminInEu)
+
+        assertThat(streamToList(query(filter))).containsExactly(alice)
+    }
+
+    @Test
+    fun testStreamFactsByQueryCombinesSeveralTypesWithSeveralTags(): Unit = runBlocking {
+        val (alice, _, _, charlie) = appendStored(
+            listOf(
+                // Alice: right type, both tags.
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload, tags = adminInEu),
+                // Bob: right type, only one tag.
+                input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload, tags = mapOf(TagKey("role") to TagValue("admin"))),
+                // Wrong type, both tags.
+                input(BOB_SUBJECT_VALUE, "USER_DELETED", bobPayload, tags = adminInEu),
+                // Charlie: the other allowed type, both tags.
+                input(CHARLIE_SUBJECT_VALUE, "USER_LOCKED", charliePayload, tags = adminInEu),
+            )
+        )
+
+        val filter = FactFilter(
+            types = setOf(FactType("USER_CREATED"), FactType("USER_LOCKED")),
+            tags = adminInEu,
+        )
+
+        assertThat(streamToList(query(filter))).containsExactly(alice, charlie)
+    }
+
+    @Test
+    fun testStreamFactsByQueryCombinesFiltersWithOr(): Unit = runBlocking {
+        val (alice, _, charlie) = appendStored(
+            listOf(
+                userInput("ALICE", "Alice", role = "admin", region = "eu"),
+                userInput("BOB", "Bob", role = "user", region = "us"),
+                input(CHARLIE_SUBJECT_VALUE, "USER_LOCKED", charliePayload, tags = mapOf(TagKey("role") to TagValue("guest"))),
+            )
+        )
+
+        val result = streamToList(
+            query(
+                FactFilter(subjects = setOf(Subject(ALICE_SUBJECT_VALUE))),
+                FactFilter(tags = mapOf(TagKey("role") to TagValue("guest"))),
+            )
+        )
+
+        assertThat(result).containsExactly(alice, charlie)
+    }
+
+    @Test
+    fun testStreamFactsByQueryEmitsAFactMatchingSeveralFiltersOnce(): Unit = runBlocking {
+        val (alice, bob) = appendStored(
+            listOf(
+                userInput("ALICE", "Alice", role = "admin", region = "eu"),
+                userInput("BOB", "Bob", role = "admin", region = "eu"),
+            )
+        )
+
+        // Alice satisfies both filters, yet is one fact.
+        val result = streamToList(
+            query(
+                FactFilter(subjects = setOf(Subject(ALICE_SUBJECT_VALUE))),
+                FactFilter(tags = mapOf(TagKey("role") to TagValue("admin"))),
+            )
+        )
+
+        assertThat(result).containsExactly(alice, bob)
+    }
+
+    @Test
+    fun testStreamFactsByQueryBackwardAndWithLimit(): Unit = runBlocking {
+        val (alice, bob, charlie) = appendStored(
+            listOf(
+                userInput("ALICE", "Alice", role = "admin", region = "eu"),
+                userInput("BOB", "Bob", role = "user", region = "us"),
+                userInput("CHARLIE", "Charlie", role = "admin", region = "us"),
+            )
+        )
+
+        val filters = arrayOf(
+            FactFilter(subjects = setOf(Subject(BOB_SUBJECT_VALUE))),
+            FactFilter(tags = mapOf(TagKey("role") to TagValue("admin"))),
+        )
+
+        assertThat(streamToList(query(*filters), ReadDirection.Backward))
+            .containsExactly(charlie, bob, alice)
+        // The limit counts the merged result, not each filter.
+        assertThat(streamToList(query(*filters), ReadDirection.Forward, Limit.of(2)))
+            .containsExactly(alice, bob)
+    }
+
+    @Test
+    fun testStreamFactsByQueryWithoutMatches(): Unit = runBlocking {
+        appendStored(userInput("ALICE", "Alice", role = "admin", region = "eu"))
+
+        assertThat(streamToList(query(FactFilter(types = setOf(FactType("USER_DELETED")))))).isEmpty()
+    }
+
+    @Test
+    fun testStreamFactsByQueryOfNonExistingStore(): Unit = runBlocking {
+        val result = store.streamFactsByQuery(
+            StreamFactsByQueryRequest(
+                nonExistingStore,
+                FactQuery(listOf(FactFilter(types = setOf(FactType("USER_CREATED"))))),
+                null,
+                ReadDirection.Forward,
+                Limit.None,
+            )
+        )
+
+        assertThat(result).isEqualTo(StreamFactsByQueryResult.StoreNotFound(nonExistingStore))
+    }
+
+    @Test
+    fun testStreamFactsByQueryExcludesFactsAppendedAfterCall(): Unit = runBlocking {
+        val alice = appendStored(userInput("ALICE", "Alice", role = "admin", region = "eu"))
+
+        val stream = (store.streamFactsByQuery(
+            StreamFactsByQueryRequest(
+                testStore,
+                FactQuery(listOf(FactFilter(types = setOf(FactType("USER_CREATED"))))),
+                null,
+                ReadDirection.Forward,
+                Limit.None,
+            )
+        ) as StreamFactsByQueryResult.FactStream).facts
+
+        appendStored(userInput("BOB", "Bob", role = "user", region = "us"))
+
+        assertThat(withTimeout(10.seconds) { stream.toList() }).containsExactly(alice)
+    }
+
+    @Test
+    fun testStreamFactsByQueryIsRepeatable(): Unit = runBlocking {
+        val (alice, _, charlie) = appendStored(
+            listOf(
+                userInput("ALICE", "Alice", role = "admin", region = "eu"),
+                userInput("BOB", "Bob", role = "user", region = "us"),
+                input(CHARLIE_SUBJECT_VALUE, "USER_LOCKED", charliePayload, tags = adminInEu),
+            )
+        )
+
+        val stream = (store.streamFactsByQuery(
+            StreamFactsByQueryRequest(
+                testStore,
+                FactQuery(
+                    listOf(
+                        FactFilter(subjects = setOf(Subject(ALICE_SUBJECT_VALUE))),
+                        FactFilter(types = setOf(FactType("USER_LOCKED")), tags = adminInEu),
+                    )
+                ),
+                null,
+                ReadDirection.Forward,
+                Limit.None,
+            )
+        ) as StreamFactsByQueryResult.FactStream).facts
+
+        val first = withTimeout(10.seconds) { stream.toList() }
+        val second = withTimeout(10.seconds) { stream.toList() }
+
+        assertThat(first).containsExactly(alice, charlie)
+        assertThat(second).isEqualTo(first)
+    }
+
+    @Test
+    fun testStreamFactsByQueryOfLargeHistory(): Unit = runBlocking {
+        // 900 facts: every third is an admin, every fifth is in the EU, and the types alternate,
+        // so every part of the query spans more than one read of a backend.
+        val inputs = (0 until 900).map { i ->
+            val tags = buildMap {
+                if (i % 3 == 0) put(TagKey("role"), TagValue("admin"))
+                if (i % 5 == 0) put(TagKey("region"), TagValue("eu"))
+            }
+            val subject = if (i % 2 == 0) ALICE_SUBJECT_VALUE else BOB_SUBJECT_VALUE
+            val type = if (i % 2 == 0) EVEN_FACT_TYPE else ODD_FACT_TYPE
+            input(subject, type, alicePayload, tags = tags)
+        }
+        val facts = inputs.chunked(AppendRequest.MAX_FACTS).flatMap { appendStored(it) }
+
+        // Admins in the EU (every fifteenth), or anything of Bob's subject (every odd one).
+        val expected = facts.filterIndexed { i, _ -> (i % 3 == 0 && i % 5 == 0) || i % 2 == 1 }
+
+        val request = query(
+            FactFilter(tags = mapOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("eu"))),
+            FactFilter(subjects = setOf(Subject(BOB_SUBJECT_VALUE))),
+        )
+
+        assertThat(streamToList(request)).containsExactlyElementsOf(expected)
+        assertThat(streamToList(request, ReadDirection.Backward)).containsExactlyElementsOf(expected.reversed())
+        assertThat(streamToList(request, ReadDirection.Forward, Limit.of(17)))
+            .containsExactlyElementsOf(expected.take(17))
+    }
+
+    @Test
+    fun testStreamFactsByQueryOfOneIndexRange(): Unit = runBlocking {
+        // A filter of a single subject, type or tag, or one type and one tag, may be read
+        // differently from a query that combines several. 600 facts, so that the larger results
+        // span more than one read of a backend.
+        val admin = mapOf(TagKey("role") to TagValue("admin"))
+        val inputs = (0 until 600).map { i ->
+            val subject = if (i % 2 == 0) ALICE_SUBJECT_VALUE else BOB_SUBJECT_VALUE
+            val type = if (i % 3 == 0) EVEN_FACT_TYPE else ODD_FACT_TYPE
+            input(subject, type, alicePayload, tags = if (i % 4 == 0) admin else emptyMap())
+        }
+        val facts = inputs.chunked(AppendRequest.MAX_FACTS).flatMap { appendStored(it) }
+
+        val cases = mapOf(
+            FactFilter(subjects = setOf(Subject(ALICE_SUBJECT_VALUE))) to { i: Int -> i % 2 == 0 },
+            FactFilter(types = setOf(FactType(EVEN_FACT_TYPE))) to { i: Int -> i % 3 == 0 },
+            FactFilter(tags = admin) to { i: Int -> i % 4 == 0 },
+            FactFilter(types = setOf(FactType(EVEN_FACT_TYPE)), tags = admin) to { i: Int -> i % 12 == 0 },
+        )
+        for ((filter, matches) in cases) {
+            val query = query(filter)
+            val expected = facts.filterIndexed { i, _ -> matches(i) }
+
+            assertThat(streamToList(query)).containsExactlyElementsOf(expected)
+            assertThat(streamToList(query, ReadDirection.Backward)).containsExactlyElementsOf(expected.reversed())
+            assertThat(streamToList(query, ReadDirection.Forward, Limit.of(17)))
+                .containsExactlyElementsOf(expected.take(17))
+
+            // Continuing after a fact the query matches, and after one it does not.
+            val middle = expected.size / 2
+            assertThat(streamToList(query, continueAfter = expected[middle].id))
+                .containsExactlyElementsOf(expected.drop(middle + 1))
+            assertThat(streamToList(query, ReadDirection.Backward, continueAfter = expected[middle].id))
+                .containsExactlyElementsOf(expected.take(middle).reversed())
+            val outsider = facts.indices.first { it > 300 && !matches(it) }
+            assertThat(streamToList(query, continueAfter = facts[outsider].id))
+                .containsExactlyElementsOf(facts.filterIndexed { i, _ -> i > outsider && matches(i) })
+        }
+    }
+
+    private val adminInEu = mapOf(TagKey("role") to TagValue("admin"), TagKey("region") to TagValue("eu"))
+
+    private fun query(vararg filters: FactFilter) = FactQuery(filters.toList())
+
+    private suspend fun streamToList(
+        query: FactQuery,
+        direction: ReadDirection = ReadDirection.Forward,
+        limit: Limit = Limit.None,
+        continueAfter: FactId? = null,
+    ): List<Fact> {
+        val request = StreamFactsByQueryRequest(testStore, query, continueAfter, direction, limit)
+        val stream = (store.streamFactsByQuery(request) as StreamFactsByQueryResult.FactStream).facts
+        return withTimeout(10.seconds) { stream.toList() }
+    }
+
+    private fun tagsRequest(
+        tags: Map<String, String>,
+        direction: ReadDirection,
+        limit: Limit,
+        continueAfter: FactId? = null,
+    ) = StreamFactsByTagsRequest(
+        storeName = testStore,
+        tags = tags.entries.associate { TagKey(it.key) to TagValue(it.value) },
+        continueAfter = continueAfter,
+        direction = direction,
+        limit = limit,
+    )
+
+    private suspend fun streamToList(request: StreamFactsByTagsRequest): List<Fact> {
+        val stream = (store.streamFactsByTags(request) as StreamFactsByTagsResult.FactStream).facts
+        return withTimeout(10.seconds) { stream.toList() }
+    }
+
+    private fun typeRequest(
+        type: String,
+        direction: ReadDirection,
+        limit: Limit,
+        continueAfter: FactId? = null,
+    ) = StreamFactsByTypeRequest(testStore, FactType(type), continueAfter, direction, limit)
+
+    private suspend fun streamToList(request: StreamFactsByTypeRequest): List<Fact> {
+        val stream = (store.streamFactsByType(request) as StreamFactsByTypeResult.FactStream).facts
+        return withTimeout(10.seconds) { stream.toList() }
+    }
+
+    private fun subjectRequest(
+        subject: String,
+        direction: ReadDirection,
+        limit: Limit,
+        continueAfter: FactId? = null,
+    ) = StreamFactsBySubjectRequest(testStore, Subject(subject), continueAfter, direction, limit)
+
+    private suspend fun streamToList(request: StreamFactsRequest): List<Fact> {
+        val stream = (store.streamFacts(request) as StreamFactsResult.FactStream).facts
+        return withTimeout(10.seconds) { stream.toList() }
+    }
+
+    private suspend fun streamToList(request: StreamFactsBySubjectRequest): List<Fact> {
+        val stream = (store.streamFactsBySubject(request) as StreamFactsBySubjectResult.FactStream).facts
+        return withTimeout(10.seconds) { stream.toList() }
+    }
+
+    /**
+     * Appends 2,000 facts, alternating between Alice and Bob, in appends of the maximum size.
+     *
+     * Large enough that a backend reading in batches needs several of them, so the
+     * tests cover batch boundaries without knowing a backend's batch size.
+     */
+    private suspend fun appendLargeHistory(): List<Fact> {
+        val inputs = (0 until 2_000).map { i ->
+            val subject = if (i % 2 == 0) ALICE_SUBJECT_VALUE else BOB_SUBJECT_VALUE
+            val type = if (i % 2 == 0) EVEN_FACT_TYPE else ODD_FACT_TYPE
+            input(subject, type, """{ "index": $i }""".toFactPayload())
+        }
+        return inputs.chunked(AppendRequest.MAX_FACTS).flatMap { appendStored(it) }
+    }
+
+
+
+
+
+
+
 
 
     @Test
@@ -1606,20 +1900,6 @@ abstract class AbstractFactStoreTest {
             .isInstanceOf(AppendResult.AppendConditionViolated::class.java)
     }
 
-    @Test
-    fun testTagQueryRequiresAllTagsForTagOnlyRead(): Unit = runBlocking {
-        appendTagged("COURSE_DEFINED", courseTag)
-        appendTagged("STUDENT_REGISTERED", studentTag)
-        val subscribed = appendTagged("STUDENT_SUBSCRIBED", courseTag, studentTag)
-        appendTagged("COURSE_UPDATED", courseTag)
-
-        val result = store.findByTagQuery(
-            FindByTagQueryRequest(testStore, TagQuery(listOf(TagOnlyQueryItem(mapOf(courseTag, studentTag)))))
-        )
-
-        assertThat(result).isInstanceOf(FindByTagQueryResult.Found::class.java)
-        assertThat((result as FindByTagQueryResult.Found).facts).containsExactly(subscribed)
-    }
 
     @Test
     fun testIsolationOfFactStoreInstances(): Unit = runBlocking {

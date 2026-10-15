@@ -16,21 +16,426 @@ import kotlinx.coroutines.channels.BufferOverflow.SUSPEND
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.flow.transform
 import java.util.concurrent.CompletableFuture
 
 const val DEFAULT_BATCH_SIZE = 10_000
 const val RAW_CHANNEL_CAPACITY = 4
 
 /**
- * FoundationDB streaming engine. Backs both the live [FactSubscriber] and the
- * bounded [FactReplayer]: each entry point resolves a start cursor and an
- * [EndBoundary], then delegates to a single shared [scan] pipeline.
+ * The number of entries a [FactStreamer] stream reads per transaction.
+ *
+ * Every batch is read in its own short transaction, far from FoundationDB's five-second
+ * limit: even at the largest fact the specification allows, about 75 kB, a batch loads
+ * less than 20 MB.
+ */
+const val STREAM_BATCH_SIZE = 256
+
+/**
+ * The number of batches a [FactStreamer] stream reads ahead of its consumer.
+ *
+ * Reading ahead lets the next batches be read while the consumer processes the current one.
+ * The batches read ahead wait in memory: with the batch being processed, a stream holds at
+ * most 5 batches, which is about 96 MB at the largest fact size and a few MB for typical facts.
+ */
+const val STREAM_PREFETCH_BATCHES = 4
+
+/** Turns the entries of a batch into the serialized facts behind them, within the batch's transaction. */
+private typealias BatchLoader = (ReadTransaction, List<KeyValue>) -> CompletableFuture<List<ByteArray>>
+
+/**
+ * FoundationDB streaming engine.
+ *
+ * Backs the bounded [FactStreamer], which pins the store's head when called and then
+ * scans an index up to it in batches ([scanPinned]), as well as the live
+ * [FactSubscriber], which resolves a start cursor and then follows the head
+ * indefinitely ([scan]).
+ *
+ * @param streamBatchSize the number of entries a [FactStreamer] stream reads per transaction
  */
 class FdbFactStreamer(
     private val store: FdbFactStore,
     private val deserializationDispatcher: CoroutineDispatcher = Dispatchers.Default,
-) : FactSubscriber, FactReplayer {
+    private val streamBatchSize: Int = STREAM_BATCH_SIZE,
+) : FactStreamer, FactSubscriber {
+
+    init {
+        require(streamBatchSize > 0) { "The stream batch size must be positive, but was $streamBatchSize." }
+    }
+
+    // -------------------------------------------------------------------------
+    // Stream (bounded, pinned at call time)
+    // -------------------------------------------------------------------------
+
+    override suspend fun streamFacts(request: StreamFactsRequest): StreamFactsResult {
+        val pinned = when (val pinned = pin(request.storeName, request.continueAfter)) {
+            Pinned.StoreMissing -> return StreamFactsResult.StoreNotFound(request.storeName)
+            is Pinned.ContinuationMissing -> return StreamFactsResult.ContinuationNotFound(pinned.factId)
+            is Pinned.Resolved -> pinned
+        }
+        val head = pinned.head ?: return StreamFactsResult.FactStream(emptyFlow())
+
+        // The facts themselves are stored in position order, so they are their own index.
+        val factSubspace = store.context.factSubspace
+        val facts = scanPinned(
+            keys = PinnedKeys(
+                range = factSubspace.getRange(pinned.storeId),
+                pinnedEndKey = factSubspace.getFactKey(pinned.storeId, head),
+                direction = request.direction,
+            ),
+            continueAfterKey = pinned.continueAfter?.let { factSubspace.getFactKey(pinned.storeId, it) },
+            limit = request.limit,
+        ) { _, entries -> CompletableFuture.completedFuture(entries.map { it.value }) }
+
+        return StreamFactsResult.FactStream(facts)
+    }
+
+    override suspend fun streamFactsBySubject(request: StreamFactsBySubjectRequest): StreamFactsBySubjectResult {
+        val pinned = when (val pinned = pin(request.storeName, request.continueAfter)) {
+            Pinned.StoreMissing -> return StreamFactsBySubjectResult.StoreNotFound(request.storeName)
+            is Pinned.ContinuationMissing -> return StreamFactsBySubjectResult.ContinuationNotFound(pinned.factId)
+            is Pinned.Resolved -> pinned
+        }
+        val head = pinned.head ?: return StreamFactsBySubjectResult.FactStream(emptyFlow())
+
+        val subjectIndex = store.context.subjectIndexSubspace
+        val facts = scanPinned(
+            keys = subjectIndex.pinnedKeys(pinned.storeId, request.subject, head, request.direction),
+            // The continuation marks a position, and needs no entry of its own in this index.
+            continueAfterKey = pinned.continueAfter?.let { subjectIndex.getKey(pinned.storeId, request.subject, it) },
+            limit = request.limit,
+        ) { tr, entries -> loadFacts(tr, pinned.storeId, entries.map { subjectIndex.unpackPosition(it.key) }) }
+
+        return StreamFactsBySubjectResult.FactStream(facts)
+    }
+
+    override suspend fun streamFactsByType(request: StreamFactsByTypeRequest): StreamFactsByTypeResult {
+        val pinned = when (val pinned = pin(request.storeName, request.continueAfter)) {
+            Pinned.StoreMissing -> return StreamFactsByTypeResult.StoreNotFound(request.storeName)
+            is Pinned.ContinuationMissing -> return StreamFactsByTypeResult.ContinuationNotFound(pinned.factId)
+            is Pinned.Resolved -> pinned
+        }
+        val head = pinned.head ?: return StreamFactsByTypeResult.FactStream(emptyFlow())
+
+        val typeIndex = store.context.eventTypeIndexSubspace
+        val facts = scanPinned(
+            keys = typeIndex.pinnedKeys(pinned.storeId, request.type, head, request.direction),
+            continueAfterKey = pinned.continueAfter?.let { typeIndex.getKey(pinned.storeId, request.type, it) },
+            limit = request.limit,
+        ) { tr, entries -> loadFacts(tr, pinned.storeId, entries.map { typeIndex.unpackPosition(it.key) }) }
+
+        return StreamFactsByTypeResult.FactStream(facts)
+    }
+
+    override suspend fun streamFactsByTags(request: StreamFactsByTagsRequest): StreamFactsByTagsResult {
+        val pinned = when (val pinned = pin(request.storeName, request.continueAfter)) {
+            Pinned.StoreMissing -> return StreamFactsByTagsResult.StoreNotFound(request.storeName)
+            is Pinned.ContinuationMissing -> return StreamFactsByTagsResult.ContinuationNotFound(pinned.factId)
+            is Pinned.Resolved -> pinned
+        }
+        val head = pinned.head ?: return StreamFactsByTagsResult.FactStream(emptyFlow())
+
+        val tagsIndex = store.context.tagsIndexSubspace
+        val tags = request.tags.map { (key, value) -> key to value }
+
+        // One tag is a plain scan of its index; several are an intersection of their scans.
+        val facts = if (tags.size == 1) {
+            scanPinned(
+                keys = tagsIndex.pinnedKeys(pinned.storeId, tags.single(), head, request.direction),
+                continueAfterKey = pinned.continueAfter?.let { tagsIndex.getKey(pinned.storeId, tags.single(), it) },
+                limit = request.limit,
+            ) { tr, entries -> loadFacts(tr, pinned.storeId, entries.map { tagsIndex.unpackPosition(it.key) }) }
+        } else {
+            positionsOf {
+                AllOf(tags.map { tagCursor(pinned.storeId, it, head, request.direction) }, request.direction)
+                    .continuingAfter(pinned.continueAfter)
+            }.loadFacts(pinned.storeId, request.limit)
+        }
+
+        return StreamFactsByTagsResult.FactStream(facts)
+    }
+
+    override suspend fun streamFactsByQuery(request: StreamFactsByQueryRequest): StreamFactsByQueryResult {
+        val pinned = when (val pinned = pin(request.storeName, request.continueAfter)) {
+            Pinned.StoreMissing -> return StreamFactsByQueryResult.StoreNotFound(request.storeName)
+            is Pinned.ContinuationMissing -> return StreamFactsByQueryResult.ContinuationNotFound(pinned.factId)
+            is Pinned.Resolved -> pinned
+        }
+        val head = pinned.head ?: return StreamFactsByQueryResult.FactStream(emptyFlow())
+
+        val source = { request.query.toSource(pinned.storeId, head, request.direction) }
+
+        // A query that comes down to a single index range needs nothing combined: the range is
+        // scanned as for a single subject, type or tag, reading index entries and facts together.
+        val range = source() as? PositionCursor
+        val facts = if (range != null) {
+            scanPinned(
+                keys = range.keys,
+                continueAfterKey = pinned.continueAfter?.let(range.keyOf),
+                limit = request.limit,
+            ) { tr, entries -> loadFacts(tr, pinned.storeId, entries.map { range.positionOf(it.key) }) }
+        } else {
+            positionsOf { source().continuingAfter(pinned.continueAfter) }.loadFacts(pinned.storeId, request.limit)
+        }
+
+        return StreamFactsByQueryResult.FactStream(facts)
+    }
+
+    /**
+     * The positions of the facts this query matches: a filter is an intersection of its
+     * predicates, and the query the union of its filters.
+     *
+     * Building the sources reads nothing, so a query can be inspected before it is read.
+     */
+    internal fun FactQuery.toSource(storeId: StoreId, head: FactPosition, direction: ReadDirection): PositionSource =
+        anyOf(filters.map { it.toSource(storeId, head, direction) }, direction)
+
+    /**
+     * The positions of the facts this filter matches: every predicate it sets must hold, while a
+     * predicate holding several values matches any of them.
+     */
+    private fun FactFilter.toSource(storeId: StoreId, head: FactPosition, direction: ReadDirection): PositionSource {
+        val tags = tags.map { (key, value) -> key to value }
+
+        val predicates = buildList {
+            if (subjects.isNotEmpty()) {
+                add(anyOf(subjects.map { subjectCursor(storeId, it, head, direction) }, direction))
+            }
+
+            if (types.isNotEmpty() && tags.isNotEmpty()) {
+                // Facts are indexed by type and tag together, and that index holds only the facts
+                // carrying both, so reading a tag from it skips every fact of the type without it.
+                // Each type read this way costs its own cursor, so tags are folded into the types
+                // only as far as that keeps the number of cursors the same.
+                if (types.size == 1) {
+                    val type = types.single()
+                    tags.forEach { add(typeTagCursor(storeId, type, it, head, direction)) }
+                } else {
+                    val folded = tags.first()
+                    add(anyOf(types.map { typeTagCursor(storeId, it, folded, head, direction) }, direction))
+                    tags.drop(1).forEach { add(tagCursor(storeId, it, head, direction)) }
+                }
+            } else {
+                if (types.isNotEmpty()) {
+                    add(anyOf(types.map { typeCursor(storeId, it, head, direction) }, direction))
+                }
+                tags.forEach { add(tagCursor(storeId, it, head, direction)) }
+            }
+        }
+
+        return if (predicates.size == 1) predicates.single() else AllOf(predicates, direction)
+    }
+
+    /**
+     * The positions of a source that is built anew for every collection.
+     *
+     * Sources are cursors, and a cursor is consumed as it is read. Building the tree inside the
+     * flow is what keeps a stream repeatable: collecting it twice reads the same facts, rather than
+     * finding the cursors of the first collection used up.
+     */
+    private fun positionsOf(source: suspend () -> PositionSource): Flow<FactPosition> =
+        flow { emitAll(source().positions()) }
+
+    /** Combines sources into a union, without wrapping a single one. */
+    private fun anyOf(sources: List<PositionSource>, direction: ReadDirection): PositionSource =
+        if (sources.size == 1) sources.single() else AnyOf(sources, direction)
+
+    private fun subjectCursor(storeId: StoreId, subject: Subject, head: FactPosition, direction: ReadDirection) =
+        store.context.subjectIndexSubspace.let { index ->
+            cursor(
+                keys = index.pinnedKeys(storeId, subject, head, direction),
+                positionOf = { key -> index.unpackPosition(key) },
+                keyOf = { position -> index.getKey(storeId, subject, position) },
+            )
+        }
+
+    private fun typeCursor(storeId: StoreId, type: FactType, head: FactPosition, direction: ReadDirection) =
+        store.context.eventTypeIndexSubspace.let { index ->
+            cursor(
+                keys = index.pinnedKeys(storeId, type, head, direction),
+                positionOf = { key -> index.unpackPosition(key) },
+                keyOf = { position -> index.getKey(storeId, type, position) },
+            )
+        }
+
+    private fun typeTagCursor(
+        storeId: StoreId,
+        type: FactType,
+        tag: Pair<TagKey, TagValue>,
+        head: FactPosition,
+        direction: ReadDirection,
+    ) = store.context.tagsTypeIndexSubspace.let { index ->
+        cursor(
+            keys = index.pinnedKeys(storeId, type, tag, head, direction),
+            positionOf = { key -> index.unpackPosition(key) },
+            keyOf = { position -> index.getKey(storeId, type, tag, position) },
+        )
+    }
+
+    private fun tagCursor(storeId: StoreId, tag: Pair<TagKey, TagValue>, head: FactPosition, direction: ReadDirection) =
+        store.context.tagsIndexSubspace.let { index ->
+            cursor(
+                keys = index.pinnedKeys(storeId, tag, head, direction),
+                positionOf = { key -> index.unpackPosition(key) },
+                keyOf = { position -> index.getKey(storeId, tag, position) },
+            )
+        }
+
+    /** A cursor over the [keys] of one index, which says how its keys and positions map to each other. */
+    private fun cursor(
+        keys: PinnedKeys,
+        positionOf: (ByteArray) -> FactPosition,
+        keyOf: (FactPosition) -> ByteArray,
+    ) = PositionCursor(store.db, keys, streamBatchSize, positionOf, keyOf)
+
+    /**
+     * What a stream needs before it can read: the store, the head it stops at, and the position it
+     * continues after.
+     */
+    private sealed interface Pinned {
+        data object StoreMissing : Pinned
+        data class ContinuationMissing(val factId: FactId) : Pinned
+        class Resolved(val storeId: StoreId, val head: FactPosition?, val continueAfter: FactPosition?) : Pinned
+    }
+
+    /**
+     * Resolves the store, its current head and the continuation in one read, so that a stream
+     * cannot see them from different moments.
+     */
+    private suspend fun pin(storeName: StoreName, continueAfter: FactId?): Pinned =
+        read { tr ->
+            with(tr) {
+                store.context.lookUpStoreIdByName(storeName).thenCompose { storeId ->
+                    if (storeId == null) {
+                        CompletableFuture.completedFuture(Pinned.StoreMissing)
+                    } else {
+                        store.getHead(storeId, tr).thenCompose { head ->
+                            if (continueAfter == null) {
+                                CompletableFuture.completedFuture(Pinned.Resolved(storeId, head, null))
+                            } else {
+                                store.context.factPositionIndexSubspace.getPosition(storeId, continueAfter)
+                                    .thenApply { position ->
+                                        if (position == null) Pinned.ContinuationMissing(continueAfter)
+                                        else Pinned.Resolved(storeId, head, position)
+                                    }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+    /**
+     * Continues the source after [position]: the named position is a marker, so a source sitting
+     * exactly on it moves past it.
+     */
+    private suspend fun PositionSource.continuingAfter(position: FactPosition?): PositionSource {
+        if (position == null) return this
+        seekTo(position)
+        if (peek() == position) advance()
+        return this
+    }
+
+    /**
+     * Streams the facts behind [keys], at most [limit] of them.
+     *
+     * [load] turns the entries of a batch into serialized facts, within the batch's transaction.
+     */
+    private fun scanPinned(
+        keys: PinnedKeys,
+        continueAfterKey: ByteArray?,
+        limit: Limit,
+        load: BatchLoader,
+    ): Flow<Fact> =
+        readPinnedBatches(keys, continueAfterKey, limit, load).toFacts(readAhead = STREAM_PREFETCH_BATCHES)
+
+    /**
+     * Reads the serialized facts behind [keys], at most [limit] of them, and emits them batch by batch.
+     *
+     * Each batch is read in its own transaction and emitted only once that transaction is done,
+     * so no transaction stays open while a batch waits or is processed. The last key a batch read
+     * is the cursor the next batch continues from. Keys are versionstamped and positions only grow,
+     * so every batch sees the same entries up to the pinned key: together, the batches read what a
+     * single transaction would have read.
+     */
+    private fun readPinnedBatches(
+        keys: PinnedKeys,
+        continueAfterKey: ByteArray?,
+        limit: Limit,
+        load: BatchLoader,
+    ): Flow<List<ByteArray>> = flow {
+        // The keys are read after the continuation, which is exactly how a batch continues.
+        var cursor: ByteArray? = continueAfterKey
+        var remaining = limit.value ?: Int.MAX_VALUE
+        do {
+            val size = minOf(streamBatchSize, remaining)
+            val batch = readBatch(keys, cursor, size, load)
+            if (batch.facts.isNotEmpty()) emit(batch.facts)
+            cursor = batch.entries.lastOrNull()?.key
+            remaining -= batch.entries.size
+            // A batch smaller than requested means every key up to the pinned one was read.
+        } while (batch.entries.size == size && remaining > 0)
+    }
+
+    /** Reads, in one transaction, up to [size] of the [keys] that follow [cursor], and the facts behind them. */
+    private suspend fun readBatch(keys: PinnedKeys, cursor: ByteArray?, size: Int, load: BatchLoader): Batch =
+        read { tr ->
+            val (begin, end) = keys.remainingAfter(cursor)
+            tr.getRange(begin, end, size, keys.reverse, StreamingMode.WANT_ALL).asList()
+                .thenCompose { entries -> load(tr, entries).thenApply { facts -> Batch(entries, facts) } }
+        }
+
+    /** The entries one batch read, and the serialized facts behind them. */
+    private class Batch(val entries: List<KeyValue>, val facts: List<ByteArray>)
+
+    /**
+     * Loads the facts at the positions, at most [limit] of them.
+     *
+     * The positions found while a batch is loaded make up the next one, so that a dense match
+     * does not cost one read round trip per fact, while a sparse one is not held back until
+     * enough positions are found to fill a batch.
+     */
+    private fun Flow<FactPosition>.loadFacts(storeId: StoreId, limit: Limit): Flow<Fact> =
+        (limit.value?.let { take(it) } ?: this)
+            .batchedAsReady(streamBatchSize)
+            .map { positions -> read { tr -> loadFacts(tr, storeId, positions) } }
+            .toFacts(readAhead = STREAM_PREFETCH_BATCHES)
+
+    /**
+     * Turns batches of serialized facts into facts.
+     *
+     * The batches are read in their own coroutine, up to [readAhead] of them ahead of the
+     * consumer, so reading the next batches overlaps with processing the current one.
+     *
+     * Batches are how a store is read, not how its facts are consumed: each fact is emitted on
+     * its own, and batching is left to whoever transports it.
+     */
+    private fun Flow<List<ByteArray>>.toFacts(readAhead: Int): Flow<Fact> =
+        buffer(capacity = readAhead, onBufferOverflow = SUSPEND)
+            .map { serializedFacts ->
+                withContext(deserializationDispatcher) {
+                    serializedFacts.map { it.toSerializableFdbFact().toFact() }
+                }
+            }
+            .transform { facts -> facts.forEach { emit(it) } }
+
+    /** Loads the serialized facts at [positions], in their order. */
+    private fun loadFacts(
+        tr: ReadTransaction,
+        storeId: StoreId,
+        positions: List<FactPosition>,
+    ): CompletableFuture<List<ByteArray>> {
+        val futures = positions.map { position ->
+            with(tr) { store.context.factSubspace.findFact(storeId, position) }.thenApply { fact ->
+                // An index entry and its fact are written, and removed, in the same transaction.
+                fact ?: throw IllegalStateException("Store $storeId has an index entry at $position without a fact.")
+            }
+        }
+        return CompletableFuture.allOf(*futures.toTypedArray()).thenApply { futures.map { it.resultNow() } }
+    }
 
     // -------------------------------------------------------------------------
     // Subscribe (live tail)
@@ -46,100 +451,42 @@ class FdbFactStreamer(
         val cursorResult = with(storeId) { resolveInitialCursor(request.startPosition) }
         val initialCursor = when (cursorResult) {
             is CursorResult.Found -> cursorResult.key
-            is CursorResult.FactNotFound -> return SubscribeResult.FactIdNotFound(cursorResult.factId)
+            is CursorResult.FactNotFound -> return SubscribeResult.ContinuationNotFound(cursorResult.factId)
             CursorResult.Beginning -> null
         }
 
-        return SubscribeResult.FactStream(scan(storeId, initialCursor, EndBoundary.Follow))
-    }
-
-    // -------------------------------------------------------------------------
-    // Replay (bounded)
-    // -------------------------------------------------------------------------
-
-    override suspend fun replay(request: ReplayRequest): ReplayResult {
-        val storeName = request.storeName
-
-        // Resolve the store, the begin cursor and the pinned head in a single
-        // consistent read, so the replay window cannot be skewed by concurrent
-        // writes or deletes between separate transactions.
-        val resolution = read { tr ->
-            with(tr) {
-                store.context.lookUpStoreIdByName(storeName).thenCompose { storeId ->
-                    if (storeId == null) CompletableFuture.completedFuture(ReplayResolution.StoreMissing)
-                    else resolveReplayBounds(tr, storeId, request.start)
-                }
-            }
-        }
-
-        return when (resolution) {
-            ReplayResolution.StoreMissing -> ReplayResult.StoreNotFound(storeName)
-            is ReplayResolution.CursorMissing -> ReplayResult.FactIdNotFound(resolution.factId)
-            is ReplayResolution.Resolved -> {
-                // No head => empty store => nothing to replay.
-                val pinnedEndKey = resolution.pinnedEndKey ?: return ReplayResult.FactStream(emptyFlow())
-                ReplayResult.FactStream(scan(resolution.storeId, resolution.beginCursor, EndBoundary.StopAt(pinnedEndKey)))
-            }
-        }
-    }
-
-    private fun resolveReplayBounds(
-        tr: ReadTransaction,
-        storeId: StoreId,
-        start: ReplayStart,
-    ): CompletableFuture<ReplayResolution> {
-        val beginFuture: CompletableFuture<BeginResolution> = when (start) {
-            ReplayStart.Beginning -> CompletableFuture.completedFuture(BeginResolution.From(null))
-            is ReplayStart.After -> with(tr) {
-                store.context.factPositionIndexSubspace.getPosition(storeId, start.factId).thenApply { position ->
-                    if (position == null) BeginResolution.Missing(start.factId)
-                    else BeginResolution.From(store.context.factSubspace.getFactKey(storeId, position))
-                }
-            }
-        }
-
-        return beginFuture.thenCompose { begin ->
-            when (begin) {
-                is BeginResolution.Missing -> CompletableFuture.completedFuture(ReplayResolution.CursorMissing(begin.factId))
-                is BeginResolution.From -> store.getHead(storeId, tr).thenApply { headPosition ->
-                    val pinnedEndKey = headPosition?.let { store.context.factSubspace.getFactKey(storeId, it) }
-                    ReplayResolution.Resolved(storeId, begin.cursor, pinnedEndKey)
-                }
-            }
-        }
+        return SubscribeResult.FactStream(scan(storeId, initialCursor))
     }
 
     // -------------------------------------------------------------------------
     // Shared scan pipeline
     // -------------------------------------------------------------------------
 
+    /**
+     * Reads the store's facts from [beginCursor] onwards in batches, waiting for the next append
+     * whenever it runs out.
+     *
+     * The facts are read in the store's own order, which is the order they are stored in, so a
+     * subscription needs no index.
+     */
     private fun scan(
         storeId: StoreId,
         beginCursor: ByteArray?,
-        endBoundary: EndBoundary,
-    ): Flow<List<Fact>> =
-        readBatches(storeId, beginCursor, endBoundary)
-            .buffer(
-                capacity = RAW_CHANNEL_CAPACITY,
-                onBufferOverflow = SUSPEND
-            )
-            .map { keyValues ->
-                withContext(deserializationDispatcher) {
-                    keyValues.map { it.value.toSerializableFdbFact().toFact() }
-                }
-            }
+    ): Flow<Fact> =
+        readBatches(storeId, beginCursor)
+            .map { keyValues -> keyValues.map { it.value } }
+            .toFacts(readAhead = RAW_CHANNEL_CAPACITY)
 
     private fun readBatches(
         storeId: StoreId,
         beginCursor: ByteArray?,
-        endBoundary: EndBoundary,
     ): Flow<List<KeyValue>> = flow {
         val globalRange = store.context.factSubspace.getRange(storeId)
         var lastSeenKey = beginCursor
         while (true) {
             val readResult = store.db.runAsync { tr ->
-                readNextBatch(lastSeenKey, globalRange, endBoundary, tr)
-                    .thenApply { batch -> batch.toReadResult(tr, storeId, endBoundary) }
+                readNextBatch(lastSeenKey, globalRange, tr)
+                    .thenApply { batch -> batch.toReadResult(tr, storeId) }
             }.await()
             when (readResult) {
                 is ReadResult.BatchResult -> {
@@ -148,8 +495,6 @@ class FdbFactStreamer(
                 }
 
                 is ReadResult.WatchResult -> readResult.waitForFacts()
-
-                ReadResult.Complete -> return@flow
             }
         }
     }
@@ -157,7 +502,6 @@ class FdbFactStreamer(
     private fun readNextBatch(
         lastSeenKey: ByteArray?,
         globalRange: Range,
-        endBoundary: EndBoundary,
         tr: ReadTransaction
     ): CompletableFuture<List<KeyValue>> {
         val beginSelector =
@@ -168,28 +512,20 @@ class FdbFactStreamer(
 
         return tr.snapshot().getRange(
             beginSelector,
-            endBoundary.endSelector(globalRange),
+            KeySelector.firstGreaterOrEqual(globalRange.end),
             DEFAULT_BATCH_SIZE,
             false,
             StreamingMode.WANT_ALL
         ).asList()
     }
 
-    private fun List<KeyValue>.toReadResult(
-        tr: Transaction,
-        storeId: StoreId,
-        endBoundary: EndBoundary
-    ): ReadResult =
+    /** An empty batch means the live tail is caught up: wait for the next append, then resume. */
+    private fun List<KeyValue>.toReadResult(tr: Transaction, storeId: StoreId): ReadResult =
         if (isNotEmpty()) {
             ReadResult.BatchResult(this)
-        } else when (endBoundary) {
-            // Live tail: wait for the next append, then resume.
-            EndBoundary.Follow -> {
-                val watchFuture = tr.watch(store.context.headSubspace.headKey(storeId))
-                ReadResult.WatchResult { watchFuture.await() }
-            }
-            // Bounded: pinned head reached, the replay is done.
-            is EndBoundary.StopAt -> ReadResult.Complete
+        } else {
+            val watchFuture = tr.watch(store.context.headSubspace.headKey(storeId))
+            ReadResult.WatchResult { watchFuture.await() }
         }
 
     // -------------------------------------------------------------------------
@@ -215,7 +551,7 @@ class FdbFactStreamer(
                 if (key == null) CursorResult.Beginning else CursorResult.Found(key)
             }
 
-            is StartPosition.After -> {
+            is StartPosition.ContinueAfter -> {
                 val key = getKeyForFactOrNull(startPosition.factId)
                 if (key == null) CursorResult.FactNotFound(startPosition.factId)
                 else CursorResult.Found(key)
@@ -249,43 +585,6 @@ class FdbFactStreamer(
     private sealed interface ReadResult {
         data class BatchResult(val batch: List<KeyValue>) : ReadResult
         data class WatchResult(val waitForFacts: suspend () -> Unit) : ReadResult
-        data object Complete : ReadResult
-    }
-
-    /**
-     * Where the scan ends. [Follow] tails the live head indefinitely; [StopAt]
-     * reads up to and including the head pinned at replay start, then completes.
-     */
-    private sealed interface EndBoundary {
-        fun endSelector(globalRange: Range): KeySelector
-
-        data object Follow : EndBoundary {
-            override fun endSelector(globalRange: Range): KeySelector =
-                KeySelector.firstGreaterOrEqual(globalRange.end)
-        }
-
-        // Plain class (not data class): equals/hashCode over a ByteArray would be
-        // identity-based and misleading.
-        class StopAt(val pinnedEndKey: ByteArray) : EndBoundary {
-            // The pinned end is the head fact's key; include it with firstGreaterThan.
-            override fun endSelector(globalRange: Range): KeySelector =
-                KeySelector.firstGreaterThan(pinnedEndKey)
-        }
-    }
-
-    private sealed interface ReplayResolution {
-        data object StoreMissing : ReplayResolution
-        data class CursorMissing(val factId: FactId) : ReplayResolution
-        class Resolved(
-            val storeId: StoreId,
-            val beginCursor: ByteArray?,
-            val pinnedEndKey: ByteArray?,
-        ) : ReplayResolution
-    }
-
-    private sealed interface BeginResolution {
-        class From(val cursor: ByteArray?) : BeginResolution
-        data class Missing(val factId: FactId) : BeginResolution
     }
 
     private suspend fun <T> read(trBlock: (ReadTransaction) -> CompletableFuture<T>): T =

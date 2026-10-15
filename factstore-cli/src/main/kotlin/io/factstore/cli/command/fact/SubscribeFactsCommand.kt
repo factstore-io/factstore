@@ -14,8 +14,11 @@ import java.util.concurrent.Callable
 
 @CommandLine.Command(
     name = "subscribe",
-    aliases = ["stream"],
-    description = ["Subscribe to a store and stream facts in real-time (similar to tail -f)"]
+    description = [
+        "Subscribe to a store and stream its facts in real time (similar to tail -f).",
+        "Every fact of the store is streamed, and unlike 'fact stream' a subscription does not " +
+            "stop at the store's head: it runs until you stop it.",
+    ]
 )
 class SubscribeFactsCommand : Callable<Int> {
 
@@ -47,16 +50,17 @@ class SubscribeFactsCommand : Callable<Int> {
         var from: FromOption? = null
 
         @CommandLine.Option(
-            names = ["--after"],
-            description = ["Start after a specific Fact ID (UUID)"]
+            names = ["--continue-after"],
+            description = ["Continue after a known fact (UUID), exclusive; how a stopped subscription resumes"],
+            paramLabel = "<factId>",
         )
-        var after: UUID? = null
+        var continueAfter: UUID? = null
 
     }
 
     @CommandLine.Option(
         names = ["--output", "-o"],
-        description = ["Output format (default: \${DEFAULT-VALUE})"],
+        description = ["Output format: \${COMPLETION-CANDIDATES} (default: \${DEFAULT-VALUE})"],
         defaultValue = "table",
     )
     var outputFormat: OutputFormat = OutputFormat.Table
@@ -66,9 +70,9 @@ class SubscribeFactsCommand : Callable<Int> {
     override fun call(): Int = runBlocking {
         val storeName = configResolver.resolveStore(storeName)
         val fromValue = startPosition.from
-        val afterValue = startPosition.after
+        val continueAfterValue = startPosition.continueAfter
 
-        val subscribeStart = afterValue?.let { SubscribeStartPosition.AfterFact(afterValue.toString()) }
+        val subscribeStart = continueAfterValue?.let { SubscribeStartPosition.ContinueAfter(it.toString()) }
             ?: fromValue?.let { if (fromValue == FromOption.beginning) SubscribeStartPosition.Beginning else SubscribeStartPosition.End }
             ?: SubscribeStartPosition.Beginning
 

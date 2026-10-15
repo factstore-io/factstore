@@ -2,6 +2,9 @@ package io.factstore.memory
 
 import io.factstore.core.*
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.asFlow
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -128,45 +131,103 @@ class MemoryFactStore : FactStore {
         if (exists) ExistsByIdResult.Exists else ExistsByIdResult.DoesNotExist
     }
 
-    override suspend fun findInTimeRange(request: FindInTimeRangeRequest): FindInTimeRangeResult = lock.withLock {
-        val internalId = resolveId(request.storeName) ?: return FindInTimeRangeResult.StoreNotFound(request.storeName)
-        val start = request.timeRange.start
-        val end = request.timeRange.end
-        val foundFacts = facts[internalId]
-            ?.filter { (start == null || it.appendedAt >= start) && (end == null || it.appendedAt < end) }
-            ?.applyDirection(request.direction)
-            ?.applyLimit(request.limit)
-            ?: emptyList()
-        FindInTimeRangeResult.Found(foundFacts)
+
+
+
+    // ===== FactStreamer Implementation =====
+
+    override suspend fun streamFacts(request: StreamFactsRequest): StreamFactsResult = lock.withLock {
+        val internalId = resolveId(request.storeName) ?: return StreamFactsResult.StoreNotFound(request.storeName)
+        val store = facts[internalId] ?: return StreamFactsResult.StoreNotFound(request.storeName)
+        val continuation = request.continueAfter?.let {
+            store.continuationIndex(it) ?: return StreamFactsResult.ContinuationNotFound(it)
+        }
+        StreamFactsResult.FactStream(
+            store.pinnedStream(continuation, request.direction, request.limit) { true }
+        )
     }
 
-    override suspend fun findBySubject(request: FindBySubjectRequest): FindBySubjectResult = lock.withLock {
-        val internalId = resolveId(request.storeName) ?: return FindBySubjectResult.StoreNotFound(request.storeName)
-        val foundFacts = facts[internalId]
-            ?.filter { it.subject == request.subject }
-            ?.applyDirection(request.direction)
-            ?.applyLimit(request.limit)
-            ?: emptyList()
-        FindBySubjectResult.Found(foundFacts)
+    override suspend fun streamFactsBySubject(request: StreamFactsBySubjectRequest): StreamFactsBySubjectResult = lock.withLock {
+        val internalId = resolveId(request.storeName) ?: return StreamFactsBySubjectResult.StoreNotFound(request.storeName)
+        val store = facts[internalId] ?: return StreamFactsBySubjectResult.StoreNotFound(request.storeName)
+        val continuation = request.continueAfter?.let {
+            store.continuationIndex(it) ?: return StreamFactsBySubjectResult.ContinuationNotFound(it)
+        }
+        StreamFactsBySubjectResult.FactStream(
+            store.pinnedStream(continuation, request.direction, request.limit) { it.subject == request.subject }
+        )
     }
 
-    override suspend fun findByTags(request: FindByTagsRequest): FindByTagsResult = lock.withLock {
-        val internalId = resolveId(request.storeName) ?: return FindByTagsResult.StoreNotFound(request.storeName)
-        val foundFacts = facts[internalId]
-            ?.filter { fact -> request.tags.all { (key, value) -> fact.tags[key] == value } }
-            ?.applyDirection(request.direction)
-            ?.applyLimit(request.limit)
-            ?: emptyList()
-        FindByTagsResult.Found(foundFacts)
+    override suspend fun streamFactsByType(request: StreamFactsByTypeRequest): StreamFactsByTypeResult = lock.withLock {
+        val internalId = resolveId(request.storeName) ?: return StreamFactsByTypeResult.StoreNotFound(request.storeName)
+        val store = facts[internalId] ?: return StreamFactsByTypeResult.StoreNotFound(request.storeName)
+        val continuation = request.continueAfter?.let {
+            store.continuationIndex(it) ?: return StreamFactsByTypeResult.ContinuationNotFound(it)
+        }
+        StreamFactsByTypeResult.FactStream(
+            store.pinnedStream(continuation, request.direction, request.limit) { it.type == request.type }
+        )
     }
 
-    override suspend fun findByTagQuery(request: FindByTagQueryRequest): FindByTagQueryResult = lock.withLock {
-        val internalId = resolveId(request.storeName) ?: return FindByTagQueryResult.StoreNotFound(request.storeName)
-        val foundFacts = facts[internalId]?.filter { fact ->
-            request.query.queryItems.any { it.matches(fact) }
-        } ?: emptyList()
-        FindByTagQueryResult.Found(foundFacts)
+    override suspend fun streamFactsByTags(request: StreamFactsByTagsRequest): StreamFactsByTagsResult = lock.withLock {
+        val internalId = resolveId(request.storeName) ?: return StreamFactsByTagsResult.StoreNotFound(request.storeName)
+        val store = facts[internalId] ?: return StreamFactsByTagsResult.StoreNotFound(request.storeName)
+        val continuation = request.continueAfter?.let {
+            store.continuationIndex(it) ?: return StreamFactsByTagsResult.ContinuationNotFound(it)
+        }
+        StreamFactsByTagsResult.FactStream(
+            store.pinnedStream(continuation, request.direction, request.limit) { fact ->
+                request.tags.all { (key, value) -> fact.tags[key] == value }
+            }
+        )
     }
+
+    override suspend fun streamFactsByQuery(request: StreamFactsByQueryRequest): StreamFactsByQueryResult = lock.withLock {
+        val internalId = resolveId(request.storeName) ?: return StreamFactsByQueryResult.StoreNotFound(request.storeName)
+        val store = facts[internalId] ?: return StreamFactsByQueryResult.StoreNotFound(request.storeName)
+        val continuation = request.continueAfter?.let {
+            store.continuationIndex(it) ?: return StreamFactsByQueryResult.ContinuationNotFound(it)
+        }
+        StreamFactsByQueryResult.FactStream(
+            store.pinnedStream(continuation, request.direction, request.limit) { fact ->
+                request.query.matches(fact)
+            }
+        )
+    }
+
+    /**
+     * Pins the head of this store's facts when called, and reads the matching facts
+     * up to it only when collected.
+     *
+     * The list is append-only, so the facts up to the pinned head never change and
+     * every collection emits the same facts. Must be called while holding [lock].
+     */
+    private fun List<Fact>.pinnedStream(
+        continuation: Int?,
+        direction: ReadDirection,
+        limit: Limit,
+        predicate: (Fact) -> Boolean,
+    ): Flow<Fact> {
+        val head = size
+        // The facts still to read: those after the continuation reading forward, those before it
+        // reading backward.
+        val from = if (direction == ReadDirection.Forward) continuation?.plus(1) ?: 0 else 0
+        val to = if (direction == ReadDirection.Forward) head else continuation ?: head
+
+        return flow {
+            // Select under the lock, emit outside of it: a collector may append in between. The
+            // facts are visited in reading order, so the selection stops once the limit is reached
+            // instead of copying every match.
+            val selected = lock.withLock {
+                subList(from, to).inReadingOrder(direction).filter(predicate).limitedTo(limit).toList()
+            }
+            emitAll(selected.asFlow())
+        }
+    }
+
+    /** Where the fact sits among this store's facts, or `null` if the store does not hold it. */
+    private fun List<Fact>.continuationIndex(factId: FactId): Int? =
+        indexOfFirst { it.id == factId }.takeIf { it >= 0 }
 
     // ===== FactSubscriber Implementation =====
 
@@ -178,58 +239,36 @@ class MemoryFactStore : FactStore {
         val startIndex = when (val position = request.startPosition) {
             StartPosition.Beginning -> 0
             StartPosition.End -> store.size
-            is StartPosition.After -> {
+            is StartPosition.ContinueAfter -> {
                 val index = store.indexOfFirst { it.id == position.factId }
-                if (index == -1) return SubscribeResult.FactIdNotFound(position.factId)
+                if (index == -1) return SubscribeResult.ContinuationNotFound(position.factId)
                 index + 1
             }
         }
 
-        // No upper bound: the subscription follows the live tail indefinitely.
-        SubscribeResult.FactStream(scanFlow(internalId, startIndex, endIndex = null))
+        SubscribeResult.FactStream(scanFlow(internalId, startIndex))
     }
 
-    // ===== FactReplayer Implementation =====
 
-    override suspend fun replay(request: ReplayRequest): ReplayResult = lock.withLock {
-        val storeName = request.storeName
-        val internalId = resolveId(storeName) ?: return ReplayResult.StoreNotFound(storeName)
-        val store = facts[internalId] ?: return ReplayResult.StoreNotFound(storeName)
-
-        val startIndex = when (val start = request.start) {
-            ReplayStart.Beginning -> 0
-            is ReplayStart.After -> {
-                val index = store.indexOfFirst { it.id == start.factId }
-                if (index == -1) return ReplayResult.FactIdNotFound(start.factId)
-                index + 1
-            }
-        }
-
-        // Pin the end at replay start; the flow completes once it is reached.
-        ReplayResult.FactStream(scanFlow(internalId, startIndex, endIndex = store.size))
-    }
-
-    private fun scanFlow(internalId: UUID, startIndex: Int, endIndex: Int?) = flow<List<Fact>> {
+    /** Follows the store from [startIndex] onwards; a subscription never ends on its own. */
+    private fun scanFlow(internalId: UUID, startIndex: Int) = flow {
         var currentIndex = startIndex
         while (true) {
             val batch = lock.withLock {
                 val store = facts[internalId]
-                // A replay (endIndex != null) never reads past its pinned end.
-                val upperBound = endIndex ?: store?.size ?: 0
-                if (store != null && currentIndex < upperBound) {
-                    val newFacts = store.subList(currentIndex, upperBound).toList()
-                    currentIndex = upperBound
+                val head = store?.size ?: 0
+                if (store != null && currentIndex < head) {
+                    val newFacts = store.subList(currentIndex, head).toList()
+                    currentIndex = head
                     newFacts
                 } else {
                     emptyList()
                 }
             }
-            when {
-                batch.isNotEmpty() -> emit(batch)
-                // Replay reached its pinned end => complete.
-                endIndex != null -> return@flow
-                else -> delay(100.milliseconds)
-            }
+            if (batch.isEmpty()) delay(100.milliseconds)
+            // The subscription follows the store's order: each fact is emitted on its own, and
+            // batching is left to whoever transports it.
+            else batch.forEach { fact -> emit(fact) }
         }
     }
 
@@ -285,21 +324,14 @@ class MemoryFactStore : FactStore {
         return RemoveStoreResult.StoreRemoved(request.storeName)
     }
 
-    private fun List<Fact>.applyDirection(direction: ReadDirection): List<Fact> = when (direction) {
-        ReadDirection.Forward -> this
-        ReadDirection.Backward -> asReversed()
+    /** The facts in reading order, visited lazily and without copying them. */
+    private fun List<Fact>.inReadingOrder(direction: ReadDirection): Sequence<Fact> = when (direction) {
+        ReadDirection.Forward -> asSequence()
+        ReadDirection.Backward -> asReversed().asSequence()
     }
 
-    private fun List<Fact>.applyLimit(limit: Limit): List<Fact> = when (val cap = limit.value) {
+    private fun Sequence<Fact>.limitedTo(limit: Limit): Sequence<Fact> = when (val cap = limit.value) {
         null -> this
         else -> take(cap)
     }
-}
-
-/**
- * Extension for cleaner matching logic in the memory implementation
- */
-private fun TagQueryItem.matches(fact: Fact): Boolean = when (this) {
-    is TagTypeItem -> fact.type in this.types && this.tags.all { (k, v) -> fact.tags[k] == v }
-    is TagOnlyQueryItem -> this.tags.all { (k, v) -> fact.tags[k] == v }
 }

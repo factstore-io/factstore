@@ -21,7 +21,7 @@ import java.util.*
  * - **Tags** ([tags]) for classification, filtering, and efficient querying
  *
  * FactStore treats facts as opaque records. It is responsible for storing,
- * indexing, transporting, and replaying facts, but does not interpret the
+ * indexing, transporting, and streaming facts, but does not interpret the
  * semantic meaning of the payload, schema, or data format.
  *
  * @property id the globally unique identifier of the fact, assigned by the store

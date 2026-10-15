@@ -1,0 +1,113 @@
+package io.factstore.cli.command.fact
+
+import io.factstore.cli.command.OutputFormat
+import io.factstore.cli.command.print
+import io.factstore.cli.command.requirePositiveLimit
+import io.factstore.cli.converter.TagConverter
+import io.factstore.cli.converter.toTagFilter
+import io.factstore.cli.config.FactStoreConfigResolver
+import io.factstore.client.FactStoreClient
+import io.factstore.client.model.Fact
+import io.factstore.client.model.FactFilter
+import io.factstore.client.model.ReadDirection
+import jakarta.inject.Inject
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.runBlocking
+import picocli.CommandLine
+import picocli.CommandLine.Command
+import picocli.CommandLine.Option
+import java.util.UUID
+import java.util.concurrent.Callable
+
+@Command(
+    name = "stream",
+    description = [
+        "Stream the facts of a store, optionally filtered by subject, type and tags.",
+        "The filters describe one criterion: a fact must match any of the subjects, any of the",
+        "types and all of the tags. For several criteria at once use 'fact query'.",
+    ]
+)
+class StreamFactsCommand : Callable<Int> {
+
+    @Inject
+    lateinit var client: FactStoreClient
+
+    @Inject
+    lateinit var configResolver: FactStoreConfigResolver
+
+    @Option(
+        names = ["--store", "-s"],
+        description = ["The name of the store to read from (env: FACTSTORE_STORE, config: store)"],
+    )
+    var storeName: String? = null
+
+    @Option(
+        names = ["--subject"],
+        description = ["A subject to match, repeatable; the fact's subject must be one of them"],
+    )
+    var subjects: MutableList<String> = mutableListOf()
+
+    @Option(
+        names = ["--type"],
+        description = ["A type to match exactly, repeatable; the fact's type must be one of them"],
+    )
+    var types: MutableList<String> = mutableListOf()
+
+    @Option(
+        names = ["--tag", "-t"],
+        description = ["A tag the fact must carry, as key=value, repeatable; all of them must match"],
+        paramLabel = "<key=value>",
+        converter = [TagConverter::class],
+    )
+    var tags: MutableList<Pair<String, String>> = mutableListOf()
+
+    @Option(
+        names = ["--continue-after"],
+        description = ["Continue after this fact, exclusive and in reading order"],
+        paramLabel = "<factId>",
+    )
+    var continueAfter: UUID? = null
+
+    @Option(
+        names = ["--limit"],
+        description = ["Maximum number of facts to return, a positive number (default: all facts)"],
+    )
+    var limit: Int? = null
+
+    @Option(
+        names = ["--direction"],
+        description = ["Read direction: \${COMPLETION-CANDIDATES} (default: \${DEFAULT-VALUE})"],
+        defaultValue = "forward",
+    )
+    lateinit var direction: ReadDirection
+
+    @Option(
+        names = ["--output", "-o"],
+        description = ["Output format: \${COMPLETION-CANDIDATES} (default: \${DEFAULT-VALUE})"],
+        defaultValue = "table",
+    )
+    var outputFormat: OutputFormat = OutputFormat.Table
+
+    override fun call(): Int = runBlocking {
+        facts().print(outputFormat)
+        CommandLine.ExitCode.OK
+    }
+
+    private fun facts(): Flow<Fact> {
+        requirePositiveLimit(limit)
+        val storeName = configResolver.resolveStore(storeName)
+        val after = continueAfter?.toString()
+        // Without criteria the whole store is read. Any criteria form one filter, and the server
+        // chooses the cheapest read for it.
+        if (subjects.isEmpty() && types.isEmpty() && tags.isEmpty()) {
+            return client.facts.streamFacts(storeName, direction, limit, after)
+        }
+        return client.facts.streamFactsByQuery(
+            storeName = storeName,
+            filters = listOf(FactFilter(subjects = subjects, types = types, tags = tags.toTagFilter())),
+            direction = direction,
+            limit = limit,
+            continueAfter = after,
+        )
+    }
+}

@@ -13,9 +13,13 @@ import io.factstore.core.ReadDirection as CoreReadDirection
 
 internal fun Timestamp.toInstant(): Instant = Instant.ofEpochSecond(seconds, nanos.toLong())
 
+/** Every read states its direction: an unset or unknown direction is invalid input. */
 internal fun FactStoreProto.ReadDirection.toCore(): CoreReadDirection = when (this) {
-    FactStoreProto.ReadDirection.BACKWARD -> CoreReadDirection.Backward
-    else -> CoreReadDirection.Forward
+    FactStoreProto.ReadDirection.READ_DIRECTION_FORWARD -> CoreReadDirection.Forward
+    FactStoreProto.ReadDirection.READ_DIRECTION_BACKWARD -> CoreReadDirection.Backward
+    else -> throw IllegalArgumentException(
+        "A direction is required: READ_DIRECTION_FORWARD or READ_DIRECTION_BACKWARD, but was $this."
+    )
 }
 
 internal fun FactStoreProto.FactInput.toDomain(): FactInput = FactInput(
@@ -115,48 +119,70 @@ internal fun GrpcFactExistsRequest.toDomainRequest(): ExistsByIdRequest = parseR
     )
 }
 
-typealias GrpcFindBySubjectRequest = FactStoreProto.FindFactsBySubjectRequest
+typealias GrpcStreamFactsRequest = FactStoreProto.StreamFactsRequest
 
-internal fun GrpcFindBySubjectRequest.toDomainRequest(): FindBySubjectRequest = parseRequest {
-    FindBySubjectRequest(
+internal fun GrpcStreamFactsRequest.toDomainRequest(): StreamFactsRequest = parseRequest {
+    StreamFactsRequest(
         storeName = storeName.asStoreName(),
-        subject = subject.asSubject(),
-        limit = if (hasLimit()) Limit.of(limit) else Limit.None,
+        continueAfter = if (hasContinueAfterFactId()) continueAfterFactId.asFactId() else null,
         direction = direction.toCore(),
+        limit = if (hasLimit()) Limit.of(limit) else Limit.None,
     )
 }
 
-typealias GrpcFindByTagsRequest = FactStoreProto.FindFactsByTagsRequest
+internal fun FactStoreProto.FactFilter.toDomain(): FactFilter = FactFilter(
+    subjects = subjectsList.map { it.asSubject() }.toSet(),
+    types = typesList.map { it.asFactType() }.toSet(),
+    tags = tagsMap.asTags(),
+)
 
-internal fun GrpcFindByTagsRequest.toDomainRequest(): FindByTagsRequest = parseRequest {
-    FindByTagsRequest(
-        storeName = storeName.asStoreName(),
-        tags = tagsMap.asTags(),
-        limit = if (hasLimit()) Limit.of(limit) else Limit.None,
-        direction = direction.toCore(),
-    )
-}
+internal fun FactStoreProto.FactQuery.toDomain(): FactQuery = FactQuery(filtersList.map { it.toDomain() })
 
-typealias GrpcQueryFactsRequest = FactStoreProto.QueryFactsRequest
+typealias GrpcStreamFactsByQueryRequest = FactStoreProto.StreamFactsByQueryRequest
 
-internal fun GrpcQueryFactsRequest.toDomainRequest(): FindByTagQueryRequest = parseRequest {
-    FindByTagQueryRequest(
+internal fun GrpcStreamFactsByQueryRequest.toDomainRequest(): StreamFactsByQueryRequest = parseRequest {
+    StreamFactsByQueryRequest(
         storeName = storeName.asStoreName(),
         query = query.toDomain(),
+        continueAfter = if (hasContinueAfterFactId()) continueAfterFactId.asFactId() else null,
+        direction = direction.toCore(),
+        limit = if (hasLimit()) Limit.of(limit) else Limit.None,
     )
 }
 
-typealias GrpcFindInTimeRangeRequest = FactStoreProto.FindFactsInTimeRangeRequest
+typealias GrpcStreamFactsByTagsRequest = FactStoreProto.StreamFactsByTagsRequest
 
-internal fun GrpcFindInTimeRangeRequest.toDomainRequest(): FindInTimeRangeRequest = parseRequest {
-    FindInTimeRangeRequest(
+internal fun GrpcStreamFactsByTagsRequest.toDomainRequest(): StreamFactsByTagsRequest = parseRequest {
+    StreamFactsByTagsRequest(
         storeName = storeName.asStoreName(),
-        timeRange = TimeRange(
-            start = if (hasFrom()) from.toInstant() else null,
-            end = if (hasTo()) to.toInstant() else null,
-        ),
-        limit = if (hasLimit()) Limit.of(limit) else Limit.None,
+        tags = tagsMap.asTags(),
+        continueAfter = if (hasContinueAfterFactId()) continueAfterFactId.asFactId() else null,
         direction = direction.toCore(),
+        limit = if (hasLimit()) Limit.of(limit) else Limit.None,
+    )
+}
+
+typealias GrpcStreamFactsByTypeRequest = FactStoreProto.StreamFactsByTypeRequest
+
+internal fun GrpcStreamFactsByTypeRequest.toDomainRequest(): StreamFactsByTypeRequest = parseRequest {
+    StreamFactsByTypeRequest(
+        storeName = storeName.asStoreName(),
+        type = type.asFactType(),
+        continueAfter = if (hasContinueAfterFactId()) continueAfterFactId.asFactId() else null,
+        direction = direction.toCore(),
+        limit = if (hasLimit()) Limit.of(limit) else Limit.None,
+    )
+}
+
+typealias GrpcStreamFactsBySubjectRequest = FactStoreProto.StreamFactsBySubjectRequest
+
+internal fun GrpcStreamFactsBySubjectRequest.toDomainRequest(): StreamFactsBySubjectRequest = parseRequest {
+    StreamFactsBySubjectRequest(
+        storeName = storeName.asStoreName(),
+        subject = subject.asSubject(),
+        continueAfter = if (hasContinueAfterFactId()) continueAfterFactId.asFactId() else null,
+        direction = direction.toCore(),
+        limit = if (hasLimit()) Limit.of(limit) else Limit.None,
     )
 }
 
@@ -165,25 +191,14 @@ typealias GrpcSubscribeFactsRequest = FactStoreProto.SubscribeFactsRequest
 internal fun GrpcSubscribeFactsRequest.toDomainRequest(): SubscribeRequest = parseRequest {
     val startPosition = when (startPositionCase) {
         FactStoreProto.SubscribeFactsRequest.StartPositionCase.FROM_END -> StartPosition.End
-        FactStoreProto.SubscribeFactsRequest.StartPositionCase.AFTER_FACT_ID -> StartPosition.After(afterFactId.asFactId())
+        FactStoreProto.SubscribeFactsRequest.StartPositionCase.CONTINUE_AFTER_FACT_ID ->
+            StartPosition.ContinueAfter(continueAfterFactId.asFactId())
+
         else -> StartPosition.Beginning
     }
     SubscribeRequest(
         storeName = storeName.asStoreName(),
         startPosition = startPosition,
-    )
-}
-
-typealias GrpcReplayFactsRequest = FactStoreProto.ReplayFactsRequest
-
-internal fun GrpcReplayFactsRequest.toDomainRequest(): ReplayRequest = parseRequest {
-    val start = when (startCase) {
-        FactStoreProto.ReplayFactsRequest.StartCase.AFTER_FACT_ID -> ReplayStart.After(afterFactId.asFactId())
-        else -> ReplayStart.Beginning
-    }
-    ReplayRequest(
-        storeName = storeName.asStoreName(),
-        start = start,
     )
 }
 

@@ -2,6 +2,7 @@ package io.factstore.server.grpc
 
 import com.google.protobuf.ByteString
 import io.factstore.grpc.v1.*
+import io.factstore.grpc.v1.FactStoreProto.ReadDirection
 import io.grpc.Channel
 import io.quarkus.grpc.GrpcClient
 import io.quarkus.test.junit.QuarkusTest
@@ -201,162 +202,203 @@ class GrpcFactServiceTest {
         assertThat(response.storeNotFound.storeName).isEqualTo("ghost-store")
     }
 
-    // ─── FindFactsBySubject ───────────────────────────────────────────────────
+    // ─── StreamFactsBySubject ─────────────────────────────────────────────────
 
     @Test
     @Order(12)
-    @DisplayName("FindFactsBySubject - should return FactsFound with matching facts")
-    fun findFactsBySubject(): Unit = runBlocking {
-        val response = factService.findFactsBySubject(findFactsBySubjectRequest {
+    @DisplayName("StreamFactsBySubject - should stream the subject's facts in batches and complete")
+    fun streamFactsBySubject(): Unit = runBlocking {
+        // A bounded stream terminates on its own, so collecting the whole flow returns.
+        val responses = factService.streamFactsBySubject(streamFactsBySubjectRequest {
             storeName = STORE
             subject = SUBJECT
-        })
+            direction = ReadDirection.READ_DIRECTION_FORWARD
+        }).toList()
 
-        assertThat(response.hasFound()).isTrue()
-        assertThat(response.found.factsList).hasSize(1)
-        assertThat(response.found.factsList.first().subject).isEqualTo(SUBJECT)
+        assertThat(responses).allMatch { it.hasBatch() }
+        val facts = responses.flatMap { it.batch.factsList }
+        assertThat(facts).hasSize(1)
+        assertThat(facts.single().id).isEqualTo(seedFactId)
     }
 
     @Test
     @Order(13)
-    @DisplayName("FindFactsBySubject - should return StoreNotFound when store does not exist")
-    fun findFactsBySubjectStoreNotFound(): Unit = runBlocking {
-        val response = factService.findFactsBySubject(findFactsBySubjectRequest {
+    @DisplayName("StreamFactsBySubject - should emit a store_not_found message when the store does not exist")
+    fun streamFactsBySubjectStoreNotFound(): Unit = runBlocking {
+        val responses = factService.streamFactsBySubject(streamFactsBySubjectRequest {
             storeName = "ghost-store"
             subject = SUBJECT
-        })
+            direction = ReadDirection.READ_DIRECTION_FORWARD
+        }).toList()
 
-        assertThat(response.hasStoreNotFound()).isTrue()
+        assertThat(responses).hasSize(1)
+        assertThat(responses.single().hasStoreNotFound()).isTrue()
+        assertThat(responses.single().storeNotFound.storeName).isEqualTo("ghost-store")
     }
 
-    // ─── FindFactsByTags ──────────────────────────────────────────────────────
+    @Test
+    @Order(13)
+    @DisplayName("StreamFactsBySubject - should complete without messages for a subject without facts")
+    fun streamFactsBySubjectWithoutFacts(): Unit = runBlocking {
+        val responses = factService.streamFactsBySubject(streamFactsBySubjectRequest {
+            storeName = STORE
+            subject = "order-without-facts"
+            direction = ReadDirection.READ_DIRECTION_FORWARD
+        }).toList()
+
+        assertThat(responses).isEmpty()
+    }
 
     @Test
-    @Order(14)
-    @DisplayName("FindFactsByTags - should return FactsFound with facts matching the tags")
-    fun findFactsByTags(): Unit = runBlocking {
-        val response = factService.findFactsByTags(findFactsByTagsRequest {
+    @Order(13)
+    @DisplayName("StreamFactsBySubject - should continue after a fact, and report an unknown one")
+    fun streamFactsBySubjectContinued(): Unit = runBlocking {
+        // Continuing after the only fact of the subject leaves nothing to stream.
+        val responses = factService.streamFactsBySubject(streamFactsBySubjectRequest {
+            storeName = STORE
+            subject = SUBJECT
+            direction = ReadDirection.READ_DIRECTION_FORWARD
+            continueAfterFactId = seedFactId
+        }).toList()
+
+        assertThat(responses.flatMap { it.batch.factsList }).isEmpty()
+
+        val unknown = UUID.randomUUID().toString()
+        val missing = factService.streamFactsBySubject(streamFactsBySubjectRequest {
+            storeName = STORE
+            subject = SUBJECT
+            direction = ReadDirection.READ_DIRECTION_FORWARD
+            continueAfterFactId = unknown
+        }).toList()
+
+        assertThat(missing).hasSize(1)
+        assertThat(missing.single().hasContinuationNotFound()).isTrue()
+        assertThat(missing.single().continuationNotFound.factId).isEqualTo(unknown)
+    }
+
+    // ─── StreamFactsByType ────────────────────────────────────────────────────
+
+    @Test
+    @Order(13)
+    @DisplayName("StreamFactsByType - should stream the type's facts and complete")
+    fun streamFactsByType(): Unit = runBlocking {
+        val responses = factService.streamFactsByType(streamFactsByTypeRequest {
+            storeName = STORE
+            type = "order.created"
+            direction = ReadDirection.READ_DIRECTION_FORWARD
+        }).toList()
+
+        val facts = responses.flatMap { it.batch.factsList }
+        assertThat(facts).isNotEmpty()
+        assertThat(facts).allMatch { it.type == "order.created" }
+    }
+
+    @Test
+    @Order(13)
+    @DisplayName("StreamFactsByType - should emit a store_not_found message when the store does not exist")
+    fun streamFactsByTypeStoreNotFound(): Unit = runBlocking {
+        val responses = factService.streamFactsByType(streamFactsByTypeRequest {
+            storeName = "ghost-store"
+            type = "order.created"
+            direction = ReadDirection.READ_DIRECTION_FORWARD
+        }).toList()
+
+        assertThat(responses).hasSize(1)
+        assertThat(responses.single().hasStoreNotFound()).isTrue()
+    }
+
+    // ─── StreamFactsByQuery ───────────────────────────────────────────────────
+
+    @Test
+    @Order(13)
+    @DisplayName("StreamFactsByQuery - should stream the facts matching any filter, each once")
+    fun streamFactsByQuery(): Unit = runBlocking {
+        val responses = factService.streamFactsByQuery(streamFactsByQueryRequest {
+            storeName = STORE
+            direction = ReadDirection.READ_DIRECTION_FORWARD
+            query = factQuery {
+                // Both filters match the seeded fact: it must still be streamed once.
+                filters += factFilter { subjects += SUBJECT }
+                filters += factFilter { types += "order.created"; tags["region"] = "eu" }
+            }
+        }).toList()
+
+        val facts = responses.flatMap { it.batch.factsList }
+        assertThat(facts.map { it.id }).containsExactly(seedFactId)
+    }
+
+    @Test
+    @Order(13)
+    @DisplayName("StreamFactsByQuery - should emit a store_not_found message when the store does not exist")
+    fun streamFactsByQueryStoreNotFound(): Unit = runBlocking {
+        val responses = factService.streamFactsByQuery(streamFactsByQueryRequest {
+            storeName = "ghost-store"
+            direction = ReadDirection.READ_DIRECTION_FORWARD
+            query = factQuery { filters += factFilter { types += "order.created" } }
+        }).toList()
+
+        assertThat(responses).hasSize(1)
+        assertThat(responses.single().hasStoreNotFound()).isTrue()
+    }
+
+    // ─── StreamFactsByTags ────────────────────────────────────────────────────
+
+    @Test
+    @Order(13)
+    @DisplayName("StreamFactsByTags - should stream the facts carrying the tags and complete")
+    fun streamFactsByTags(): Unit = runBlocking {
+        val responses = factService.streamFactsByTags(streamFactsByTagsRequest {
             storeName = STORE
             tags["region"] = "eu"
-        })
+            direction = ReadDirection.READ_DIRECTION_FORWARD
+        }).toList()
 
-        assertThat(response.hasFound()).isTrue()
-        assertThat(response.found.factsList).isNotEmpty()
-        assertThat(response.found.factsList.first().tagsMap).containsEntry("region", "eu")
+        val facts = responses.flatMap { it.batch.factsList }
+        assertThat(facts).isNotEmpty()
+        assertThat(facts).allMatch { it.tagsMap["region"] == "eu" }
     }
 
     @Test
-    @Order(15)
-    @DisplayName("FindFactsByTags - should return StoreNotFound when store does not exist")
-    fun findFactsByTagsStoreNotFound(): Unit = runBlocking {
-        val response = factService.findFactsByTags(findFactsByTagsRequest {
+    @Order(13)
+    @DisplayName("StreamFactsByTags - should emit a store_not_found message when the store does not exist")
+    fun streamFactsByTagsStoreNotFound(): Unit = runBlocking {
+        val responses = factService.streamFactsByTags(streamFactsByTagsRequest {
             storeName = "ghost-store"
             tags["region"] = "eu"
-        })
+            direction = ReadDirection.READ_DIRECTION_FORWARD
+        }).toList()
 
-        assertThat(response.hasStoreNotFound()).isTrue()
+        assertThat(responses).hasSize(1)
+        assertThat(responses.single().hasStoreNotFound()).isTrue()
     }
 
-    // ─── QueryFacts ───────────────────────────────────────────────────────────
+    // ─── StreamFacts ──────────────────────────────────────────────────────────
 
     @Test
-    @Order(16)
-    @DisplayName("QueryFacts - should return FactsFound using a tag-only query")
-    fun queryFacts(): Unit = runBlocking {
-        val response = factService.queryFacts(queryFactsRequest {
+    @Order(13)
+    @DisplayName("StreamFacts - should stream the store's facts in batches and complete")
+    fun streamFacts(): Unit = runBlocking {
+        val responses = factService.streamFacts(streamFactsRequest {
             storeName = STORE
-            query = tagQuery {
-                items += tagQueryItem {
-                    tagOnly = tagOnlyItem { tags["region"] = "eu" }
-                }
-            }
-        })
+            direction = ReadDirection.READ_DIRECTION_FORWARD
+            limit = 1
+        }).toList()
 
-        assertThat(response.hasFound()).isTrue()
-        assertThat(response.found.factsList).isNotEmpty()
+        assertThat(responses).allMatch { it.hasBatch() }
+        assertThat(responses.flatMap { it.batch.factsList }.map { it.id }).containsExactly(seedFactId)
     }
 
     @Test
-    @Order(17)
-    @DisplayName("QueryFacts - should return StoreNotFound when store does not exist")
-    fun queryFactsStoreNotFound(): Unit = runBlocking {
-        val response = factService.queryFacts(queryFactsRequest {
+    @Order(13)
+    @DisplayName("StreamFacts - should emit a store_not_found message when the store does not exist")
+    fun streamFactsStoreNotFound(): Unit = runBlocking {
+        val responses = factService.streamFacts(streamFactsRequest {
             storeName = "ghost-store"
-            query = tagQuery {
-                items += tagQueryItem {
-                    tagOnly = tagOnlyItem { tags["region"] = "eu" }
-                }
-            }
-        })
+            direction = ReadDirection.READ_DIRECTION_BACKWARD
+        }).toList()
 
-        assertThat(response.hasStoreNotFound()).isTrue()
-    }
-
-    @Test
-    @Order(18)
-    @DisplayName("QueryFacts - should return FactsFound using a tag-type query")
-    fun queryFactsWithTagTypeItem(): Unit = runBlocking {
-        val response = factService.queryFacts(queryFactsRequest {
-            storeName = STORE
-            query = tagQuery {
-                items += tagQueryItem {
-                    tagType = tagTypeItem {
-                        types += "order.created"
-                        tags["region"] = "eu"
-                    }
-                }
-            }
-        })
-
-        assertThat(response.hasFound()).isTrue()
-        assertThat(response.found.factsList).isNotEmpty()
-        assertThat(response.found.factsList.first().type).isEqualTo("order.created")
-    }
-
-    @Test
-    @Order(19)
-    @DisplayName("QueryFacts - should return empty FactsFound when type does not match")
-    fun queryFactsWithTagTypeItemNoMatch(): Unit = runBlocking {
-        val response = factService.queryFacts(queryFactsRequest {
-            storeName = STORE
-            query = tagQuery {
-                items += tagQueryItem {
-                    tagType = tagTypeItem {
-                        types += "order.cancelled"
-                        tags["region"] = "eu"
-                    }
-                }
-            }
-        })
-
-        assertThat(response.hasFound()).isTrue()
-        assertThat(response.found.factsList).isEmpty()
-    }
-
-    // ─── FindFactsInTimeRange ─────────────────────────────────────────────────
-
-    @Test
-    @Order(20)
-    @DisplayName("FindFactsInTimeRange - should return FactsFound for an unbounded time range")
-    fun findFactsInTimeRange(): Unit = runBlocking {
-        val response = factService.findFactsInTimeRange(findFactsInTimeRangeRequest {
-            storeName = STORE
-            // no from/to — unbounded range matches all facts in the store
-        })
-
-        assertThat(response.hasFound()).isTrue()
-        assertThat(response.found.factsList).isNotEmpty()
-    }
-
-    @Test
-    @Order(21)
-    @DisplayName("FindFactsInTimeRange - should return StoreNotFound when store does not exist")
-    fun findFactsInTimeRangeStoreNotFound(): Unit = runBlocking {
-        val response = factService.findFactsInTimeRange(findFactsInTimeRangeRequest {
-            storeName = "ghost-store"
-        })
-
-        assertThat(response.hasStoreNotFound()).isTrue()
+        assertThat(responses).hasSize(1)
+        assertThat(responses.single().hasStoreNotFound()).isTrue()
     }
 
     // ─── SubscribeFacts ─────────────────────────────────────────────────────────
@@ -389,43 +431,19 @@ class GrpcFactServiceTest {
 
     @Test
     @Order(24)
-    @DisplayName("SubscribeFacts - should emit an after_fact_not_found message for an unknown cursor")
+    @DisplayName("SubscribeFacts - should emit a continuation_not_found message for an unknown cursor")
     fun subscribeFactsCursorNotFound(): Unit = runBlocking {
+        val unknown = UUID.randomUUID().toString()
+
         val responses = factService.subscribeFacts(subscribeFactsRequest {
             storeName = STORE
-            afterFactId = UUID.randomUUID().toString()
+            continueAfterFactId = unknown
         }).toList()
 
         assertThat(responses).hasSize(1)
-        assertThat(responses.first().hasAfterFactNotFound()).isTrue()
+        assertThat(responses.first().hasContinuationNotFound()).isTrue()
+        assertThat(responses.first().continuationNotFound.factId).isEqualTo(unknown)
     }
 
-    // ─── ReplayFacts ────────────────────────────────────────────────────────────
 
-    @Test
-    @Order(25)
-    @DisplayName("ReplayFacts - should emit existing facts up to the head and then complete")
-    fun replayFacts(): Unit = runBlocking {
-        // A bounded replay terminates on its own, so collecting the whole flow returns.
-        val responses = factService.replayFacts(replayFactsRequest {
-            storeName = STORE
-        }).toList()
-
-        assertThat(responses).isNotEmpty()
-        assertThat(responses.first().hasBatch()).isTrue()
-        assertThat(responses.first().batch.factsList.first().id).isEqualTo(seedFactId)
-    }
-
-    @Test
-    @Order(26)
-    @DisplayName("ReplayFacts - should emit a store_not_found message when the store does not exist")
-    fun replayFactsStoreNotFound(): Unit = runBlocking {
-        val responses = factService.replayFacts(replayFactsRequest {
-            storeName = "ghost-store"
-        }).toList()
-
-        assertThat(responses).hasSize(1)
-        assertThat(responses.first().hasStoreNotFound()).isTrue()
-        assertThat(responses.first().storeNotFound.storeName).isEqualTo("ghost-store")
-    }
 }
