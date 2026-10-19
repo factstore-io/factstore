@@ -11,6 +11,7 @@ alias factstore="java -jar $(pwd)/factstore-cli-clikt/build/quarkus-app/quarkus-
 
 factstore store create orders          # also: store list (ls), store remove (rm)
 factstore fact append --type OrderPlaced --subject order/1 '{"total":5}'
+factstore fact append --type OrderPlaced --subject order/2 --idempotency-key "$(uuidgen)" '{"total":9}'
 factstore fact stream --store orders --tag region=eu
 factstore fact query --store orders --filter '{"types":["OrderPlaced"]}'
 factstore fact subscribe --store orders
@@ -133,6 +134,14 @@ fails on start-up with `MissingForeignRegistrationError: Cannot perform downcall
 GraalVM wants FFM downcalls declared in `reachability-metadata.json`. The GraalVM FFI backend
 exists precisely to avoid that, but it only gets its turn when FFM is absent.
 
+Choosing the FFM backend is not enough on its own: it only loads for a module that is allowed
+native access, and a CLI cannot ask its user to pass `--enable-native-access=ALL-UNNAMED`. So
+the runner jar asks for it in its own manifest instead (`quarkus.package.jar.manifest.attributes`
+in `application.yaml`), which JDK 24 and later honour for an executable jar. Without it Mordant
+silently falls back to its dumb backend, which claims to be a terminal that is always 79 columns
+wide: `factstore store list > stores.txt` would write escape sequences into the file, and a table
+would never use the width it actually has.
+
 ## Deliberate differences from the Picocli CLI
 
 - **`fact subscribe` starts at the store's end**, not its beginning: the command promises
@@ -140,14 +149,16 @@ exists precisely to avoid that, but it only gets its turn when FFM is absent.
   replays. The specification's own default stays `Beginning`, for projections.
 - **`-t` is `--tag` everywhere.** In the Picocli CLI `-t` meant `--type` for `fact append` and
   `--tag` for `fact stream`; `--type` now has no short form.
-- **Machine-readable output does not go through the terminal.** `json` and `ndjson` are written
-  to a buffered standard output, because Clikt's terminal is Mordant and Mordant reads every
+- **A bounded read does not go through the terminal**, in any shape. Output is written to a
+  buffered standard output, because Clikt's terminal is Mordant and Mordant reads every
   character on the way past to style and size it: streaming 105k facts through it cost 1.2 s of
-  a 2.9 s run. Tables still go through the terminal, which is what needs its width and theme.
-- **Tables are Mordant's**, so columns size themselves. A table is rendered to the width
-  Mordant reports, which falls back to 79 columns when it cannot see a terminal — narrow enough
-  to cut a fact's id, which is what `-o ndjson` is for in a pipeline (`COLUMNS` widens it on the
-  way to a pager).
+  a 2.9 s run. The terminal is asked for its width, and nothing else.
+- **Tables are written a row at a time**, with plain fixed-width columns settled from that
+  width before the first row — not from the facts, which would mean holding a whole history in
+  memory before printing any of it. A fact id is never cut, being what the next command is
+  given; the type, subject and payload share what is left of the line and are cut with an `…`
+  when they do not fit. The whole row fits an 80-column terminal and no narrower one, so
+  `-o ndjson` remains the answer in a pipeline (`COLUMNS` widens a table on the way to a pager).
 - **Exit codes**: every `CliktError` exits 1, where Picocli used 2 for usage errors. Re-assert 2
   if anything depends on it.
 - **`~/.factstore/config` is read as contexts**, so the old flat `url` / `store` keys no longer

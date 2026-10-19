@@ -10,9 +10,5 @@ enum class OutputFormat(val cliName: String) {
     Json("json"),
 
     /** One compact JSON object per line, as the HTTP API streams them. */
-    Ndjson("ndjson");
-
-    companion object {
-        val choices: String = entries.joinToString(", ") { it.cliName }
-    }
+    Ndjson("ndjson"),
 }

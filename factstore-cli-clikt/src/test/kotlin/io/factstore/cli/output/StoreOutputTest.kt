@@ -1,6 +1,8 @@
 package io.factstore.cli.output
 
+import com.github.ajalt.mordant.rendering.AnsiLevel
 import com.github.ajalt.mordant.terminal.Terminal
+import com.github.ajalt.mordant.terminal.TerminalRecorder
 import io.factstore.client.model.StoreInfo
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
@@ -11,7 +13,11 @@ class StoreOutputTest {
 
     // A terminal of its own, so the assertions do not depend on the width or colours of
     // whatever runs the tests.
-    private val terminal = Terminal(width = 100, ansiLevel = com.github.ajalt.mordant.rendering.AnsiLevel.NONE)
+    private val recorder = TerminalRecorder(ansiLevel = AnsiLevel.NONE)
+    private val terminal = Terminal(terminalInterface = recorder, width = 100)
+
+    // The JSON shapes go to a plain sink rather than the terminal, so the tests hand one in.
+    private val out = StringBuilder()
 
     @Test
     fun `renders a row per store, with the creation time in the given zone`() {
@@ -33,6 +39,32 @@ class StoreOutputTest {
 
         assertThat(rendered.lines().first { it.contains("NAME") })
             .contains("NAME", "CREATED AT", "STORE ID")
+    }
+
+    @Test
+    fun `json is one array of stores, ndjson one object per line`() {
+        val stores = listOf(store(name = "orders"), store(name = "payments"))
+
+        stores.writeTo(terminal, OutputFormat.Json, out)
+
+        assertThat(out.toString().trim()).startsWith("[").endsWith("]")
+        assertThat(out.toString()).contains("\"name\": \"orders\"", "\"name\": \"payments\"")
+
+        out.clear()
+        stores.writeTo(terminal, OutputFormat.Ndjson, out)
+
+        val lines = out.toString().trim().lines()
+        assertThat(lines).hasSize(2)
+        assertThat(lines.first()).startsWith("{").contains("\"name\":\"orders\"")
+    }
+
+    @Test
+    fun `no stores at all is a sentence in a table, and an empty array in JSON`() {
+        emptyList<StoreInfo>().writeTo(terminal, OutputFormat.Table, out)
+        assertThat(recorder.output()).contains("No stores found.")
+
+        emptyList<StoreInfo>().writeTo(terminal, OutputFormat.Json, out)
+        assertThat(out.toString().trim()).isEqualTo("[]")
     }
 
     private fun store(

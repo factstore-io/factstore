@@ -1,37 +1,22 @@
 package io.factstore.cli.output
 
-import com.github.ajalt.mordant.table.table
 import com.github.ajalt.mordant.terminal.Terminal
 import io.factstore.client.model.Fact
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.toList
-import kotlinx.serialization.json.Json
-import java.io.BufferedWriter
-import java.io.Flushable
-import java.io.OutputStreamWriter
 
 private const val PAYLOAD_PREVIEW = 40
-private const val BUFFER_BYTES = 64 * 1024
-
-private val compactJson = Json { prettyPrint = false }
-private val prettyJson = Json { prettyPrint = true }
 
 /**
  * Writes the facts of a bounded read.
  *
- * A table goes through the terminal, which sizes and styles it for whoever is watching. The JSON
- * shapes go straight to [out] instead, by default a buffered standard output: machine-readable
- * output has to stay exactly what the reader asked for, and a terminal renderer reads every
- * character on the way past -- about a second of it for a stream of 100k facts.
+ * Every shape is written as the facts arrive, so a long history can be piped onwards -- or read
+ * -- while it is still being fetched, and a store larger than memory is no harder to read than a
+ * small one.
  *
- * Both JSON shapes are written as the facts arrive, so a long history can be piped onwards while
- * it is still being read. A table cannot: its columns are only as wide as its widest row, which
- * is known once the last fact is in.
- *
- * A table is rendered to the width Mordant reports, which is 79 columns when it cannot see a
- * terminal -- narrow enough to cut a fact's id. That is the reason `ndjson` exists for pipelines,
- * and `COLUMNS` widens a table on the way to a pager.
+ * Nothing goes through the terminal. Machine-readable output has to stay exactly what the reader
+ * asked for, and a terminal renderer reads every character on the way past -- about a second of
+ * it for a stream of 100k facts. The terminal is asked for its width and nothing else.
  */
 internal suspend fun Flow<Fact>.writeTo(
     terminal: Terminal,
@@ -43,7 +28,7 @@ internal suspend fun Flow<Fact>.writeTo(
     // silently truncated file.
     try {
         when (format) {
-            OutputFormat.Table -> terminal.println(toList().toFactTable())
+            OutputFormat.Table -> writeTable(FactColumns(terminal.size.width), out)
             OutputFormat.Json -> writeJsonArray(out)
             OutputFormat.Ndjson -> collect { out.appendLine(compactJson.encodeToString(it)) }
         }
@@ -59,9 +44,12 @@ internal suspend fun Fact.writeTo(
 ): Unit = flowOf(this).writeTo(terminal, format, out)
 
 /**
- * Writes the facts of a subscription, which has no last fact: every shape is written one fact at
- * a time, a table included -- as a line each, the way `tail -f` writes lines -- and flushed, so a
- * follower sees a fact the moment it arrives.
+ * Writes the facts of a subscription, which has no last fact: each one is written and flushed as
+ * it arrives -- a table as a line each, the way `tail -f` writes lines -- so a follower sees a
+ * fact the moment it is appended.
+ *
+ * A subscription never ends, so there is no point at which a JSON array could be closed; that is
+ * why `fact subscribe` offers [OutputFormat.Table] and [OutputFormat.Ndjson] and nothing else.
  */
 internal suspend fun Flow<Fact>.followTo(
     terminal: Terminal,
@@ -69,33 +57,98 @@ internal suspend fun Flow<Fact>.followTo(
     out: Appendable = bufferedStdout(),
 ): Unit = when (format) {
     OutputFormat.Table -> collect { terminal.println(it.toLine()) }
-    OutputFormat.Json -> collect { out.appendLine(prettyJson.encodeToString(it)).flushIfPossible() }
     OutputFormat.Ndjson -> collect { out.appendLine(compactJson.encodeToString(it)).flushIfPossible() }
-}
-
-internal fun List<Fact>.toFactTable() = table {
-    header { row("ID", "TYPE", "SUBJECT", "APPENDED AT", "PAYLOAD") }
-    body {
-        for (fact in this@toFactTable) {
-            row(fact.id, fact.type, fact.subject, fact.appendedAt.toTableCell(), fact.payloadPreview())
-        }
-    }
+    OutputFormat.Json -> error("a followed stream cannot be one JSON array")
 }
 
 /** One fact on one line, for a stream a reader is watching go by. */
 internal fun Fact.toLine(): String =
-    "[${appendedAt.toTableCell()}] ${type.padEnd(15)} | ${payloadPreview()}"
+    "[${appendedAt.toTableCell()}] ${type.padEnd(15)} | ${payloadText().cutTo(PAYLOAD_PREVIEW)}"
+
+/** A header, a rule, and then a row per fact as it arrives. */
+private suspend fun Flow<Fact>.writeTable(columns: FactColumns, out: Appendable) {
+    out.appendLine(columns.header()).appendLine(columns.rule())
+    collect { out.appendLine(columns.row(it)) }
+}
 
 /**
- * The payload as text, cut to one short line.
+ * The widths of a fact table's columns, settled before the first row is written.
+ *
+ * Columns sized to the facts would read better, but their widths are only known once the last
+ * fact is in -- which means holding a whole history in memory before printing any of it. These
+ * are worked out from the terminal's width instead, so a row can be written the moment it
+ * arrives.
+ *
+ * An id is never cut, being what the next command is given, and a timestamp has a width of its
+ * own. What is left of the line is shared out between the other three, and the payload takes the
+ * remainder as the column that can best use it.
+ */
+private class FactColumns(terminalWidth: Int) {
+
+    private val free = (terminalWidth - ID_WIDTH - TIME_WIDTH - GAP.length * 4).coerceAtLeast(MIN * 3)
+
+    private val type = (free * 3 / 10).coerceIn(MIN, TYPE_MAX)
+    private val subject = (free * 3 / 10).coerceIn(MIN, SUBJECT_MAX)
+    private val payload = free - type - subject
+
+    fun header(): String = line("ID", "TYPE", "SUBJECT", "APPENDED AT", "PAYLOAD")
+
+    fun rule(): String = "-".repeat(ID_WIDTH + type + subject + TIME_WIDTH + payload + GAP.length * 4)
+
+    fun row(fact: Fact): String = line(
+        fact.id,
+        fact.type,
+        fact.subject,
+        fact.appendedAt.toTableCell(),
+        fact.payloadText(),
+    )
+
+    private fun line(id: String, type: String, subject: String, time: String, payload: String): String =
+        listOf(
+            id.fit(ID_WIDTH),
+            type.fit(this.type),
+            subject.fit(this.subject),
+            time.fit(TIME_WIDTH),
+            payload.fit(this.payload),
+        ).joinToString(GAP).trimEnd()
+
+    /** A cell cut down to its column, then padded out to it. */
+    private fun String.fit(width: Int): String = cutTo(width).padEnd(width)
+
+    private companion object {
+        /** A fact id is a UUID, which is always this wide. */
+        const val ID_WIDTH = 36
+
+        /** `yyyy-MM-dd HH:mm:ss`, as [toTableCell] writes it. */
+        const val TIME_WIDTH = 19
+
+        const val GAP = "  "
+
+        /**
+         * The narrowest a shared column is allowed to get.
+         *
+         * At 5 the whole row fits an 80-column terminal, which is as narrow as a table with a
+         * full fact id in it can be; below that the terminal wraps the row, and `-o ndjson`
+         * is the better answer anyway.
+         */
+        const val MIN = 5
+        const val TYPE_MAX = 30
+        const val SUBJECT_MAX = 40
+    }
+}
+
+/**
+ * The payload as one line of text.
  *
  * A payload is opaque bytes that may hold anything, including newlines and more of them than a
- * terminal can show, and a table that wraps a whole document is unreadable.
+ * terminal can show, and a row that wraps a whole document is unreadable.
  */
-private fun Fact.payloadPreview(limit: Int = PAYLOAD_PREVIEW): String {
-    val text = String(payload.data, Charsets.UTF_8).replace(Regex("\\s+"), " ").trim()
-    return if (text.length <= limit) text else text.take(limit) + "…"
-}
+private fun Fact.payloadText(): String =
+    String(payload.data, Charsets.UTF_8).replace(Regex("\\s+"), " ").trim()
+
+/** Cut to [width], with the cut marked, unless it already fits. */
+private fun String.cutTo(width: Int): String =
+    if (length <= width) this else take(width - 1) + "…"
 
 /** The facts as one JSON array, written as they arrive. */
 private suspend fun Flow<Fact>.writeJsonArray(out: Appendable) {
@@ -107,9 +160,3 @@ private suspend fun Flow<Fact>.writeJsonArray(out: Appendable) {
     }
     if (first) out.appendLine("[]") else out.appendLine().appendLine("]")
 }
-
-/** Standard output, buffered: a fact at a time would be a write to the connection at a time. */
-private fun bufferedStdout(): Appendable =
-    BufferedWriter(OutputStreamWriter(System.out, Charsets.UTF_8), BUFFER_BYTES)
-
-private fun Appendable.flushIfPossible() = (this as? Flushable)?.flush()

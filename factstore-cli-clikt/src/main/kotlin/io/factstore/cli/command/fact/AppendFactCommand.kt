@@ -3,17 +3,18 @@ package io.factstore.cli.command.fact
 import com.github.ajalt.clikt.core.Context
 import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.arguments.optional
+import com.github.ajalt.clikt.parameters.options.convert
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
 import io.factstore.cli.command.StoreScopedCommand
 import io.factstore.cli.command.tagOption
 import io.factstore.cli.command.usageError
+import io.factstore.cli.command.uuid
 import io.factstore.cli.connection.FactStoreClients
 import io.factstore.client.model.AppendOutcome
 import io.factstore.client.model.FactInput
 import io.factstore.client.model.FactPayload
 import jakarta.enterprise.context.Dependent
-import java.util.UUID
 
 /** `factstore fact append <payload>` */
 @Dependent
@@ -29,6 +30,18 @@ class AppendFactCommand(clients: FactStoreClients) : StoreScopedCommand(name = "
     )
     private val payload by argument("payload", help = "The fact's payload; read from stdin when absent").optional()
 
+    /**
+     * `--idempotency-key`: what makes an append safe to repeat.
+     *
+     * Without one the server makes a key up, which is as good as none: a retry after an
+     * ambiguous timeout appends the fact a second time. The same key twice appends it once.
+     */
+    private val idempotencyKey by option(
+        "--idempotency-key",
+        metavar = "<uuid>",
+        help = "Append at most once for this key, so a retry cannot duplicate the fact",
+    ).convert { uuid("an idempotency key", it) }
+
     override suspend fun run() {
         val outcome = client.facts.append(
             storeName = storeName,
@@ -40,7 +53,7 @@ class AppendFactCommand(clients: FactStoreClients) : StoreScopedCommand(name = "
                     tags = tags.toMap(),
                 )
             ),
-            idempotencyKey = UUID.randomUUID().toString(),
+            idempotencyKey = idempotencyKey,
         )
         echo(outcome.describe())
     }

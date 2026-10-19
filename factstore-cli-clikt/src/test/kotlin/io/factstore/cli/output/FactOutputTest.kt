@@ -5,6 +5,7 @@ import com.github.ajalt.mordant.terminal.Terminal
 import com.github.ajalt.mordant.terminal.TerminalRecorder
 import io.factstore.client.model.Fact
 import io.factstore.client.model.FactPayload
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import org.assertj.core.api.Assertions.assertThat
@@ -16,7 +17,8 @@ class FactOutputTest {
     private val recorder = TerminalRecorder(ansiLevel = AnsiLevel.NONE)
     private val terminal = Terminal(terminalInterface = recorder, width = 200)
 
-    // The JSON shapes write to a plain sink rather than the terminal, so the tests hand one in.
+    // A bounded read writes to a plain sink rather than the terminal, so the tests hand one in;
+    // the terminal is only asked for the width to size the table's columns to.
     private val out = StringBuilder()
 
     private val fact = fact(type = "OrderPlaced", payload = """{"total":5}""")
@@ -25,7 +27,7 @@ class FactOutputTest {
     fun `a table names every column and holds a row per fact`(): Unit = runBlocking {
         flowOf(fact, fact(type = "OrderPaid")).writeTo(terminal, OutputFormat.Table, out)
 
-        val output = recorder.output()
+        val output = out.toString()
         assertThat(output.lines().first { "ID" in it })
             .contains("ID", "TYPE", "SUBJECT", "APPENDED AT", "PAYLOAD")
         assertThat(output).contains("OrderPlaced", "OrderPaid", """{"total":5}""")
@@ -35,7 +37,33 @@ class FactOutputTest {
     fun `an empty read still prints its table header`(): Unit = runBlocking {
         flowOf<Fact>().writeTo(terminal, OutputFormat.Table, out)
 
-        assertThat(recorder.output()).contains("ID", "TYPE")
+        assertThat(out.toString()).contains("ID", "TYPE")
+    }
+
+    @Test
+    fun `a table is written as the facts arrive, not once they are all in`(): Unit = runBlocking {
+        // Sizing the columns to the facts would mean holding a whole history before the first
+        // row, which is how a large store runs the CLI out of memory.
+        val rowsBeforeTheLastFact = StringBuilder()
+        val facts = flow {
+            emit(fact)
+            rowsBeforeTheLastFact.append(out)
+            emit(fact(type = "OrderPaid"))
+        }
+
+        facts.writeTo(terminal, OutputFormat.Table, out)
+
+        assertThat(rowsBeforeTheLastFact).contains("OrderPlaced")
+        assertThat(rowsBeforeTheLastFact).doesNotContain("OrderPaid")
+    }
+
+    @Test
+    fun `columns are sized to the terminal, and an id is never cut`(): Unit = runBlocking {
+        flowOf(fact).writeTo(Terminal(terminalInterface = recorder, width = 100), OutputFormat.Table, out)
+
+        val row = out.toString().lines().first { "OrderPlaced" in it }
+        assertThat(row).startsWith(fact.id)
+        assertThat(row.length).isLessThanOrEqualTo(100)
     }
 
     @Test
@@ -58,9 +86,9 @@ class FactOutputTest {
 
         flowOf(long).writeTo(terminal, OutputFormat.Table, out)
 
-        val row = recorder.output().lines().first { "OrderPlaced" in it }
+        val row = out.toString().lines().first { "OrderPlaced" in it }
         assertThat(row).contains("…")
-        assertThat(recorder.output().lines().count { "OrderPlaced" in it }).isEqualTo(1)
+        assertThat(out.toString().lines().count { "OrderPlaced" in it }).isEqualTo(1)
     }
 
     @Test

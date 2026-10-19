@@ -13,6 +13,9 @@ quarkus:
   package:
     jar:
       enabled: true
+      manifest:
+        attributes:
+          "Enable-Native-Access": ALL-UNNAMED
   grpc:
     # This application is a gRPC client only. Quarkus still prepares a gRPC server in dev
     # mode, which warns about its own default unless it is told to share the HTTP server.

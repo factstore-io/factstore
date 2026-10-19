@@ -13,6 +13,7 @@ import io.factstore.cli.command.StoreScopedCommand
 import io.factstore.cli.command.factId
 import io.factstore.cli.command.outputOption
 import io.factstore.cli.connection.FactStoreClients
+import io.factstore.cli.output.OutputFormat
 import io.factstore.cli.output.followTo
 import io.factstore.client.model.SubscribeStartPosition
 import jakarta.enterprise.context.Dependent
@@ -48,7 +49,7 @@ class SubscribeFactsCommand(clients: FactStoreClients) : StoreScopedCommand(name
         name = "Start position",
     ).single().default(SubscribeStartPosition.End)
 
-    private val output by outputOption()
+    private val output by outputOption(OutputFormat.Table, OutputFormat.Ndjson)
 
     override suspend fun run() {
         client.facts.subscribe(storeName, startPosition).followTo(terminal, output)

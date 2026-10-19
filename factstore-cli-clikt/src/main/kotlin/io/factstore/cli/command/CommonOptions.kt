@@ -8,6 +8,7 @@ import com.github.ajalt.clikt.parameters.options.multiple
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.validate
 import com.github.ajalt.clikt.parameters.transform.TransformContext
+import com.github.ajalt.clikt.parameters.types.choice
 import com.github.ajalt.clikt.parameters.types.enum
 import com.github.ajalt.clikt.parameters.types.int
 import io.factstore.cli.output.OutputFormat
@@ -23,23 +24,26 @@ import java.util.UUID
  */
 
 /**
- * Fails unless [value] is a fact id.
+ * Fails unless [value] is a UUID, [what] naming what it was meant to be.
  *
  * Ids travel as strings, the way the client library takes them; this only rejects what cannot be
  * one, so a typo is a usage error rather than a round trip to the server.
  */
-fun TransformContext.factId(value: String): String {
+fun TransformContext.uuid(what: String, value: String): String {
     if (runCatching { UUID.fromString(value) }.isFailure) {
-        fail("expected a fact id (a UUID), but was '$value'")
+        fail("expected $what (a UUID), but was '$value'")
     }
     return value
 }
 
-/** `-o`: the shape facts are written in. */
-fun ParameterHolder.outputOption() = option(
+/** Fails unless [value] is a fact id. */
+fun TransformContext.factId(value: String): String = uuid("a fact id", value)
+
+/** `-o`: the shape the output is written in, out of the [formats] the command offers. */
+fun ParameterHolder.outputOption(vararg formats: OutputFormat = OutputFormat.entries.toTypedArray()) = option(
     "--output", "-o",
-    help = "How to write the facts: ${OutputFormat.choices}",
-).enum<OutputFormat>(key = { it.cliName }).default(OutputFormat.Table)
+    help = "How to write the output",
+).choice(formats.associateBy { it.cliName }).default(OutputFormat.Table)
 
 /**
  * Fails unless [value] is a tag, which is a key and a value with an `=` between them.
