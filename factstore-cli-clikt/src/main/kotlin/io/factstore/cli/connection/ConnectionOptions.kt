@@ -3,6 +3,7 @@ package io.factstore.cli.connection
 import com.github.ajalt.clikt.parameters.groups.OptionGroup
 import com.github.ajalt.clikt.parameters.options.convert
 import com.github.ajalt.clikt.parameters.options.option
+import com.github.ajalt.clikt.parameters.options.validate
 import java.net.URI
 
 internal val DEFAULT_URL: URI = URI.create("http://localhost:8080")
@@ -25,7 +26,11 @@ class ConnectionOptions(
         metavar = "<name>",
         envvar = "FACTSTORE_CONTEXT",
         help = "The context in ~/.factstore/config to use (default: its current-context)",
-    )
+    ).validate { name ->
+        // An unknown name would otherwise resolve to no url and no store, and the defaults would
+        // send a command meant for another server to the local one.
+        require(contexts.defines(name)) { "no context '$name' in ~/.factstore/config" }
+    }
 
     private val url by option(
         "--url",

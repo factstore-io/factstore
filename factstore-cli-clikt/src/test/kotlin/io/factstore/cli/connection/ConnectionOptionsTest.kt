@@ -65,6 +65,18 @@ class ConnectionOptionsTest {
     }
 
     @Test
+    fun `a context the config file does not define is a usage error`(): Unit = runBlocking {
+        // Resolving it to nothing would send the command to the built-in default instead -- a
+        // mistyped --context prod would quietly talk to localhost.
+        val contexts = contexts("current-context = prod\ncontext.prod.url = https://facts.example.com")
+
+        val result = command(contexts).test("--context prodd")
+
+        assertThat(result.statusCode).isEqualTo(1)
+        assertThat(result.stderr).contains("--context", "prodd")
+    }
+
+    @Test
     fun `a url without a host is a usage error`(): Unit = runBlocking {
         val result = command(FactStoreContexts.Empty).test("--url not-a-url")
 

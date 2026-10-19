@@ -1,13 +1,13 @@
 package io.factstore.cli.command
 
 import com.github.ajalt.clikt.core.ParameterHolder
-import com.github.ajalt.clikt.parameters.transform.TransformContext
 import com.github.ajalt.clikt.parameters.options.check
 import com.github.ajalt.clikt.parameters.options.convert
 import com.github.ajalt.clikt.parameters.options.default
-import com.github.ajalt.clikt.parameters.options.option
-import com.github.ajalt.clikt.parameters.options.splitPair
 import com.github.ajalt.clikt.parameters.options.multiple
+import com.github.ajalt.clikt.parameters.options.option
+import com.github.ajalt.clikt.parameters.options.validate
+import com.github.ajalt.clikt.parameters.transform.TransformContext
 import com.github.ajalt.clikt.parameters.types.enum
 import com.github.ajalt.clikt.parameters.types.int
 import io.factstore.cli.output.OutputFormat
@@ -41,12 +41,38 @@ fun ParameterHolder.outputOption() = option(
     help = "How to write the facts: ${OutputFormat.choices}",
 ).enum<OutputFormat>(key = { it.cliName }).default(OutputFormat.Table)
 
-/** `--tag`: a tag a fact must carry, repeatable. */
-fun ParameterHolder.tagOption(help: String) = option(
+/**
+ * Fails unless [value] is a tag, which is a key and a value with an `=` between them.
+ *
+ * Without the `=` there is nothing to take as the value, and taking the empty string instead
+ * would turn `--tag region` into a filter nothing matches, or into a fact carrying a tag whose
+ * value is missing.
+ */
+fun TransformContext.tag(value: String): Pair<String, String> {
+    val key = value.substringBefore('=')
+    if ('=' !in value || key.isBlank()) {
+        fail("expected a tag as key=value, but was '$value'")
+    }
+    return key to value.substringAfter('=')
+}
+
+/**
+ * `--tag`: a tag, repeatable.
+ *
+ * A fact carries one value per key, so a key can only be given once. What to do instead differs
+ * between asking for tags and writing them, which is what [duplicateHint] says; both are checked
+ * while the command line is parsed, so the error names the option that caused it.
+ */
+fun ParameterHolder.tagOption(help: String, duplicateHint: String) = option(
     "--tag", "-t",
     metavar = "<key=value>",
     help = help,
-).splitPair().multiple()
+).convert { tag(it) }.multiple().validate { tags ->
+    val duplicate = tags.groupBy { (key, _) -> key }.entries.firstOrNull { (_, given) -> given.size > 1 }
+    if (duplicate != null) {
+        fail("tag '${duplicate.key}' is given more than once; $duplicateHint")
+    }
+}
 
 /** `--continue-after`: where a read picks up, exclusive and in reading order. */
 fun ParameterHolder.continueAfterOption() = option(

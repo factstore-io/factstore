@@ -29,7 +29,10 @@ class StreamFactsCommand(clients: FactStoreClients) : StoreScopedCommand(name = 
 
     private val subjects by option("--subject", metavar = "<subject>", help = "A subject to match, repeatable").multiple()
     private val types by option("--type", metavar = "<type>", help = "A type to match exactly, repeatable").multiple()
-    private val tags by tagOption("A tag a fact must carry, as key=value, repeatable")
+    private val tags by tagOption(
+        help = "A tag a fact must carry, as key=value, repeatable",
+        duplicateHint = "to match any of several values use 'fact query'",
+    )
     private val continueAfter by continueAfterOption()
     private val direction by directionOption()
     private val limit by limitOption()
@@ -46,7 +49,7 @@ class StreamFactsCommand(clients: FactStoreClients) : StoreScopedCommand(name = 
         } else {
             streamFactsByQuery(
                 storeName = storeName,
-                filters = listOf(FactFilter(subjects = subjects, types = types, tags = tags.toTagFilter())),
+                filters = listOf(FactFilter(subjects = subjects, types = types, tags = tags.toMap())),
                 direction = direction,
                 limit = limit,
                 continueAfter = continueAfter,

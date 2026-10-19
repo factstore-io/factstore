@@ -38,12 +38,18 @@ internal suspend fun Flow<Fact>.writeTo(
     format: OutputFormat,
     out: Appendable = bufferedStdout(),
 ) {
-    when (format) {
-        OutputFormat.Table -> terminal.println(toList().toFactTable())
-        OutputFormat.Json -> writeJsonArray(out)
-        OutputFormat.Ndjson -> collect { out.appendLine(compactJson.encodeToString(it)) }
+    // Flushed even when the read fails part-way: whatever arrived before the failure has been
+    // written already, and dropping a bufferful of it would leave the reader an error and a
+    // silently truncated file.
+    try {
+        when (format) {
+            OutputFormat.Table -> terminal.println(toList().toFactTable())
+            OutputFormat.Json -> writeJsonArray(out)
+            OutputFormat.Ndjson -> collect { out.appendLine(compactJson.encodeToString(it)) }
+        }
+    } finally {
+        out.flushIfPossible()
     }
-    out.flushIfPossible()
 }
 
 internal suspend fun Fact.writeTo(

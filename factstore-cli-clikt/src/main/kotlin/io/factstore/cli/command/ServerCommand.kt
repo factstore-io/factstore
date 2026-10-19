@@ -1,7 +1,6 @@
 package io.factstore.cli.command
 
 import com.github.ajalt.clikt.command.SuspendingCliktCommand
-import com.github.ajalt.clikt.core.UsageError
 import com.github.ajalt.clikt.parameters.groups.provideDelegate
 import com.github.ajalt.clikt.parameters.options.option
 import io.factstore.cli.connection.ConnectionOptions
@@ -47,7 +46,7 @@ abstract class StoreScopedCommand(
     )
 
     protected val storeName: String
-        get() = store ?: contextStore ?: throw UsageError(
+        get() = store ?: contextStore ?: throw usageError(
             "no store given: pass --store, set FACTSTORE_STORE, " +
                 "or give the context a store in ~/.factstore/config"
         )

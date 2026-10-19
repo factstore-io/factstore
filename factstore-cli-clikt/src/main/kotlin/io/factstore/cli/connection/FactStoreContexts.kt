@@ -31,10 +31,14 @@ data class FactStoreContext(
  * context.prod.url = https://facts.internal:443
  * ```
  *
- * A missing file, a missing context or a missing key is not an error: each one simply leaves the
- * setting unset, for the caller's default to fill in.
+ * A missing file or a missing key is not an error: each one simply leaves the setting unset, for
+ * the caller's default to fill in. A context the file does not define is a different matter, and
+ * [defines] is how a caller that was given a name can say so.
  */
 class FactStoreContexts(private val values: Map<String, String>) {
+
+    /** Whether the file defines a context called [name]. */
+    fun defines(name: String): Boolean = values.keys.any { it.startsWith("context.$name.") }
 
     /** The context called [name], or the file's `current-context` when [name] is `null`. */
     fun context(name: String? = null): FactStoreContext {
@@ -58,7 +62,17 @@ class FactStoreContexts(private val values: Map<String, String>) {
             return FactStoreContexts(properties.entries.associate { (k, v) -> "$k".trim() to "$v".trim() })
         }
 
-        fun fromUserHome(): FactStoreContexts = from(Path.of(userHome(), ".factstore", "config"))
+        /**
+         * The user's own contexts, read once.
+         *
+         * Every command of the tree is built before one of them runs, each with its own
+         * connection options, and they all read the same file.
+         */
+        fun fromUserHome(): FactStoreContexts = userHomeContexts
+
+        private val userHomeContexts: FactStoreContexts by lazy {
+            from(Path.of(userHome(), ".factstore", "config"))
+        }
 
         /**
          * The home directory as the shell means it by `~`.
