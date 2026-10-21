@@ -37,13 +37,7 @@ class ConnectionOptions(
         metavar = "<url>",
         envvar = "FACTSTORE_URL",
         help = "The FactStore server to talk to (default: the context's url, or $DEFAULT_URL)",
-    ).convert { value ->
-        val url = runCatching { URI.create(value) }.getOrNull()
-        if (url?.host == null || url.scheme == null) {
-            fail("expected a URL with a scheme and a host, like http://localhost:8080, but was '$value'")
-        }
-        url
-    }
+    ).convert { value -> serverUrlOrNull(value) ?: fail(notAServerUrl(value)) }
 
     private val context: FactStoreContext by lazy { contexts.context(contextName) }
 

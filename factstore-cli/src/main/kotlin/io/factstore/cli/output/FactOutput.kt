@@ -7,6 +7,9 @@ import kotlinx.coroutines.flow.flowOf
 
 private const val PAYLOAD_PREVIEW = 40
 
+/** A run of whitespace, compiled once rather than for every row of a stream. */
+private val WHITESPACE = Regex("\\s+")
+
 /**
  * Writes the facts of a bounded read.
  *
@@ -144,7 +147,7 @@ private class FactColumns(terminalWidth: Int) {
  * terminal can show, and a row that wraps a whole document is unreadable.
  */
 private fun Fact.payloadText(): String =
-    String(payload.data, Charsets.UTF_8).replace(Regex("\\s+"), " ").trim()
+    String(payload.data, Charsets.UTF_8).replace(WHITESPACE, " ").trim()
 
 /** Cut to [width], with the cut marked, unless it already fits. */
 private fun String.cutTo(width: Int): String =

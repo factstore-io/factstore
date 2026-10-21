@@ -16,9 +16,15 @@ plugins {
 //                first -- and its downcalls would then need registering in
 //                reachability-metadata.json, which the GraalVM one does not.
 //
-// Keyed on the property the native build is invoked with, so neither mode needs a special
-// command line of its own.
-val nativeBuild = providers.systemProperty("quarkus.native.enabled").orNull == "true"
+// Keyed on the setting the native build is invoked with, so neither mode needs a special
+// command line of its own. Quarkus takes it as a system property, a Gradle property or an
+// environment variable, and so does this: a native image that missed the exclusion would build
+// fine and then fail on every command. Its config file is left out, since Gradle cannot read it
+// here -- and set there, every build would be native, tests and dev mode included.
+val nativeBuild = providers.systemProperty("quarkus.native.enabled")
+    .orElse(providers.gradleProperty("quarkus.native.enabled"))
+    .orElse(providers.environmentVariable("QUARKUS_NATIVE_ENABLED"))
+    .orNull == "true"
 
 dependencies {
     implementation(enforcedPlatform(libs.io.quarkus.platform.quarkus.bom))

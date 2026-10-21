@@ -1,6 +1,7 @@
 package io.factstore.cli.command.fact
 
 import com.github.ajalt.clikt.core.Context
+import com.github.ajalt.clikt.core.terminal
 import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.arguments.optional
 import com.github.ajalt.clikt.parameters.options.convert
@@ -71,8 +72,13 @@ class AppendFactCommand(clients: FactStoreClients) : StoreScopedCommand(name = "
         return text
     }
 
-    /** Whether the user is sitting at a terminal rather than piping this command's input. */
-    private fun interactive(): Boolean = System.console()?.isTerminal() == true
+    /**
+     * Whether this command's input is a terminal rather than a pipe or a file.
+     *
+     * Asked of stdin alone. `System.console()` is only a terminal when stdin and stdout both
+     * are, so `> out.log` or `| jq` would make it say no and send the read to the keyboard.
+     */
+    private fun interactive(): Boolean = terminal.terminalInfo.inputInteractive
 
     private fun AppendOutcome.describe(): String = when (this) {
         is AppendOutcome.Appended -> "✅ Fact appended. Id: ${factIds.single()}"

@@ -6,11 +6,18 @@ import com.github.ajalt.clikt.command.parse
 import io.factstore.cli.command.FactStoreCommand
 import io.factstore.client.exceptions.FactStoreException
 import io.quarkus.runtime.QuarkusApplication
+import io.quarkus.runtime.ShutdownEvent
 import io.quarkus.runtime.annotations.QuarkusMain
+import jakarta.enterprise.event.Observes
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.runBlocking
 
 private const val EXIT_OK = 0
 private const val EXIT_FAILURE = 1
+
+/** What a shell reports for a process stopped by Ctrl+C: 128 + SIGINT. */
+private const val EXIT_INTERRUPTED = 130
 
 /**
  * The process: Quarkus starts the container, hands the arguments over, and exits with what
@@ -24,9 +31,27 @@ class FactStoreCli(
     private val factStoreCommand: FactStoreCommand,
 ) : QuarkusApplication {
 
+    /** The command being run, which a shutdown cancels. */
+    private val execution = Job()
+
     // The one place a coroutine is started: every command below is a suspending function.
-    override fun run(vararg args: String): Int = runBlocking {
-        factStoreCommand.execute(args.asList())
+    override fun run(vararg args: String): Int =
+        try {
+            runBlocking(execution) { factStoreCommand.execute(args.asList()) }
+        } catch (_: CancellationException) {
+            EXIT_INTERRUPTED
+        }
+
+    /**
+     * Cancels the running command when the application shuts down underneath it.
+     *
+     * Ctrl+C shuts the JVM down while a command may still be running -- `fact subscribe` always
+     * is. Quarkus fires this from its shutdown hook before it destroys the beans, so cancelling
+     * here ends the in-flight call before its channel is closed: the user asked to quit, which
+     * is not an error to report, and the channel need not wait for a stream that never ends.
+     */
+    fun onShutdown(@Observes event: ShutdownEvent) {
+        execution.cancel()
     }
 
 }

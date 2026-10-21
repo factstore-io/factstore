@@ -8,6 +8,19 @@ private const val HTTPS_PORT = 443
 private const val HTTP_PORT = 80
 
 /**
+ * [value] as the URL of a server, or `null` if it is not one.
+ *
+ * A connection needs a scheme and a host, and [URI] accepts far less: `facts.internal:443`
+ * parses, with `facts.internal` as its scheme and no host at all.
+ */
+internal fun serverUrlOrNull(value: String): URI? =
+    runCatching { URI.create(value) }.getOrNull()?.takeIf { it.scheme != null && it.host != null }
+
+/** Why [value] was refused by [serverUrlOrNull]. */
+internal fun notAServerUrl(value: String): String =
+    "expected a URL with a scheme and a host, like http://localhost:8080, but was '$value'"
+
+/**
  * A FactStore server to talk to.
  *
  * The scheme decides whether the connection is encrypted, and a URL without a port falls back to

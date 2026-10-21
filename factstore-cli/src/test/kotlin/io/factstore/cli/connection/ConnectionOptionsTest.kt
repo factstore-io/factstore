@@ -77,11 +77,35 @@ class ConnectionOptionsTest {
     }
 
     @Test
+    fun `a current-context the config file does not define is an error`(): Unit = runBlocking {
+        // The same mistake as a mistyped --context, made in the file instead.
+        val contexts = contexts("current-context = prod\ncontext.production.url = https://facts.example.com")
+
+        val result = command(contexts, connect = true).test(emptyList())
+
+        assertThat(result.statusCode).isEqualTo(1)
+        assertThat(result.stderr).contains("current-context", "'prod'")
+    }
+
+    @Test
     fun `a url without a host is a usage error`(): Unit = runBlocking {
         val result = command(FactStoreContexts.Empty).test("--url not-a-url")
 
         assertThat(result.statusCode).isEqualTo(1)
         assertThat(result.stderr).contains("--url", "scheme and a host")
+    }
+
+    @Test
+    fun `a context url without a host is an error, not a crash`(): Unit = runBlocking {
+        // URI accepts both: the first with 'facts.internal' as its scheme, the second not at all.
+        for (url in listOf("facts.internal:443", "http://my host")) {
+            val contexts = contexts("current-context = prod\ncontext.prod.url = $url")
+
+            val result = command(contexts, connect = true).test(emptyList())
+
+            assertThat(result.statusCode).isEqualTo(1)
+            assertThat(result.stderr).contains("context.prod.url", "scheme and a host", url)
+        }
     }
 
     private fun contexts(config: String): FactStoreContexts {
@@ -103,10 +127,13 @@ class ConnectionOptionsTest {
         return command.connectionOptions
     }
 
-    private fun command(contexts: FactStoreContexts) =
+    /** A command with the connection options; with [connect], it resolves the connection when run. */
+    private fun command(contexts: FactStoreContexts, connect: Boolean = false) =
         object : SuspendingCliktCommand(name = "probe") {
             val connectionOptions by ConnectionOptions(contexts)
 
-            override suspend fun run() = Unit
+            override suspend fun run() {
+                if (connect) connectionOptions.connection
+            }
         }
 }

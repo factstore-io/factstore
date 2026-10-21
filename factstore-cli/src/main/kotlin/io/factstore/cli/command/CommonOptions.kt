@@ -43,7 +43,7 @@ fun TransformContext.factId(value: String): String = uuid("a fact id", value)
 fun ParameterHolder.outputOption(vararg formats: OutputFormat = OutputFormat.entries.toTypedArray()) = option(
     "--output", "-o",
     help = "How to write the output",
-).choice(formats.associateBy { it.cliName }).default(OutputFormat.Table)
+).choice(formats.associateBy { it.cliName }, ignoreCase = true).default(OutputFormat.Table)
 
 /**
  * Fails unless [value] is a tag, which is a key and a value with an `=` between them.
@@ -51,13 +51,16 @@ fun ParameterHolder.outputOption(vararg formats: OutputFormat = OutputFormat.ent
  * Without the `=` there is nothing to take as the value, and taking the empty string instead
  * would turn `--tag region` into a filter nothing matches, or into a fact carrying a tag whose
  * value is missing.
+ *
+ * Both sides are trimmed: `--tag 'region = eu'` means `region=eu`, and kept as given it would
+ * write a key no filter on `region` matches, or ask for one no fact carries.
  */
 fun TransformContext.tag(value: String): Pair<String, String> {
-    val key = value.substringBefore('=')
-    if ('=' !in value || key.isBlank()) {
+    val key = value.substringBefore('=').trim()
+    if ('=' !in value || key.isEmpty()) {
         fail("expected a tag as key=value, but was '$value'")
     }
-    return key to value.substringAfter('=')
+    return key to value.substringAfter('=').trim()
 }
 
 /**
@@ -66,9 +69,12 @@ fun TransformContext.tag(value: String): Pair<String, String> {
  * A fact carries one value per key, so a key can only be given once. What to do instead differs
  * between asking for tags and writing them, which is what [duplicateHint] says; both are checked
  * while the command line is parsed, so the error names the option that caused it.
+ *
+ * There is no short form: `-t` meant `--type` for `fact append` under Picocli, and could pass
+ * for either. Spelling both out leaves nothing to mistake.
  */
 fun ParameterHolder.tagOption(help: String, duplicateHint: String) = option(
-    "--tag", "-t",
+    "--tag",
     metavar = "<key=value>",
     help = help,
 ).convert { tag(it) }.multiple().validate { tags ->

@@ -27,6 +27,24 @@ class TagOptionTest {
     }
 
     @Test
+    fun `spaces around the key and the value are trimmed`(): Unit = runBlocking {
+        // Kept, they would make 'region ' a key no filter on 'region' matches.
+        val command = command()
+
+        command.test(listOf("--tag", " region = eu "))
+
+        assertThat(command.tags).containsExactly("region" to "eu")
+    }
+
+    @Test
+    fun `a key of only spaces is a usage error`(): Unit = runBlocking {
+        val result = command().test(listOf("--tag", "  =eu"))
+
+        assertThat(result.statusCode).isEqualTo(1)
+        assertThat(result.stderr).contains("--tag", "key=value")
+    }
+
+    @Test
     fun `a tag without an '=' is a usage error`(): Unit = runBlocking {
         // Taking the value as empty instead would quietly ask for tags nothing carries.
         val result = command().test("--tag region")
@@ -50,6 +68,14 @@ class TagOptionTest {
 
         assertThat(result.statusCode).isEqualTo(1)
         assertThat(result.stderr).contains("'region'", "more than once", "do it differently")
+    }
+
+    @Test
+    fun `there is no -t, which could pass for --type as well`(): Unit = runBlocking {
+        val result = command().test("-t region=eu")
+
+        assertThat(result.statusCode).isEqualTo(1)
+        assertThat(result.stderr).contains("no such option", "-t")
     }
 
     private fun command() = object : SuspendingCliktCommand(name = "probe") {

@@ -193,8 +193,8 @@ The CLI was rewritten on Clikt in place of Picocli. What a user of the previous 
   before the flag was parsed.
 - **`~/.factstore/config` holds contexts**, so the old flat `url` / `store` keys no longer apply.
 - **`fact subscribe` starts at the store's end**, not its beginning. `--from beginning` replays.
-- **`-t` is `--tag` everywhere.** It used to mean `--type` for `fact append`; `--type` now has no
-  short form.
+- **`-t` is gone.** It used to mean `--type` for `fact append`; spell out `--type` or `--tag`,
+  neither of which has a short form.
 - **`store list` takes `-o`**, and `fact append` takes `--idempotency-key`.
 - **`fact subscribe` no longer offers `-o json`**: a subscription never ends, so its facts can
   never form one array. Use `ndjson`.

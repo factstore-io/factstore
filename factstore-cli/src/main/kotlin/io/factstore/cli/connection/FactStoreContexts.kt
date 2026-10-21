@@ -1,5 +1,6 @@
 package io.factstore.cli.connection
 
+import com.github.ajalt.clikt.core.CliktError
 import java.net.URI
 import java.nio.file.Path
 import java.util.Properties
@@ -32,22 +33,40 @@ data class FactStoreContext(
  * ```
  *
  * A missing file or a missing key is not an error: each one simply leaves the setting unset, for
- * the caller's default to fill in. A context the file does not define is a different matter, and
- * [defines] is how a caller that was given a name can say so.
+ * the caller's default to fill in. A context the file does not define is a different matter: it
+ * would resolve to no url and no store, and the defaults would send a command meant for another
+ * server to the local one. [defines] is how a caller that was given a name can say so, and a
+ * `current-context` naming no context is an error when it is read, as is a url that is not one.
  */
 class FactStoreContexts(private val values: Map<String, String>) {
 
     /** Whether the file defines a context called [name]. */
     fun defines(name: String): Boolean = values.keys.any { it.startsWith("context.$name.") }
 
-    /** The context called [name], or the file's `current-context` when [name] is `null`. */
+    /**
+     * The context called [name], or the file's `current-context` when [name] is `null`.
+     *
+     * @throws CliktError if `current-context` names no context, or the context's url is not the
+     *   URL of a server.
+     */
     fun context(name: String? = null): FactStoreContext {
-        val selected = name ?: values[CURRENT_CONTEXT] ?: return FactStoreContext.Unset
+        val selected = name ?: currentContext() ?: return FactStoreContext.Unset
         return FactStoreContext(
             name = selected,
-            url = values["context.$selected.url"]?.let(URI::create),
+            url = url(key = "context.$selected.url"),
             store = values["context.$selected.store"],
         )
+    }
+
+    private fun currentContext(): String? = values[CURRENT_CONTEXT]?.also { name ->
+        if (!defines(name)) {
+            throw CliktError("Error: current-context in ~/.factstore/config is '$name', but there is no such context")
+        }
+    }
+
+    // Not a UsageError: Clikt would print the usage line above it, and the command line is fine.
+    private fun url(key: String): URI? = values[key]?.let { value ->
+        serverUrlOrNull(value) ?: throw CliktError("Error: $key in ~/.factstore/config: ${notAServerUrl(value)}")
     }
 
     companion object {
