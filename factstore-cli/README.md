@@ -96,8 +96,8 @@ factstore fact append --store orders --type ORDER_PLACED --subject order/12345 \
   --tag region=eu --tag env=prod \
   '{"orderId": "12345", "amount": 100.0}'
 
-# The payload may be piped in instead
-cat order.json | factstore fact append --store orders --type ORDER_PLACED --subject order/12345
+# Or read from stdin, by passing - as the payload
+cat order.json | factstore fact append --store orders --type ORDER_PLACED --subject order/12345 -
 ```
 
 A tag is `key=value`, and a fact carries one value per key. Without an idempotency key, retrying
@@ -193,6 +193,8 @@ The CLI was rewritten on Clikt in place of Picocli. What a user of the previous 
   before the flag was parsed.
 - **`~/.factstore/config` holds contexts**, so the old flat `url` / `store` keys no longer apply.
 - **`fact subscribe` starts at the store's end**, not its beginning. `--from beginning` replays.
+- **A piped payload needs `-`**: `cat order.json | factstore fact append … -`. Without an
+  argument the command no longer guesses whether stdin is a pipe.
 - **`-t` is gone.** It used to mean `--type` for `fact append`; spell out `--type` or `--tag`,
   neither of which has a short form.
 - **`store list` takes `-o`**, and `fact append` takes `--idempotency-key`.

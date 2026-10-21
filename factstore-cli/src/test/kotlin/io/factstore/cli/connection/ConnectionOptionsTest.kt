@@ -88,6 +88,17 @@ class ConnectionOptionsTest {
     }
 
     @Test
+    fun `a context is not defined by another whose name it begins`(): Unit = runBlocking {
+        // Matched on a prefix, 'prod' would count as defined, and resolve to no url at all.
+        val contexts = contexts("current-context = prod\ncontext.prod.eu.url = https://facts.example.com")
+
+        assertThat(command(contexts).test("--context prod").statusCode).isEqualTo(1)
+        assertThat(command(contexts, connect = true).test(emptyList()).stderr).contains("current-context", "'prod'")
+        assertThat(resolve("--context", "prod.eu", contexts = contexts).connection.url)
+            .isEqualTo(URI.create("https://facts.example.com"))
+    }
+
+    @Test
     fun `a url without a host is a usage error`(): Unit = runBlocking {
         val result = command(FactStoreContexts.Empty).test("--url not-a-url")
 

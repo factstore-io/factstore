@@ -40,8 +40,13 @@ data class FactStoreContext(
  */
 class FactStoreContexts(private val values: Map<String, String>) {
 
-    /** Whether the file defines a context called [name]. */
-    fun defines(name: String): Boolean = values.keys.any { it.startsWith("context.$name.") }
+    /**
+     * Whether the file defines a context called [name], by giving it a url or a store.
+     *
+     * Matched on those keys exactly, not on a `context.<name>.` prefix: names may contain dots,
+     * and `context.prod.eu.url` defines `prod.eu`, not `prod`.
+     */
+    fun defines(name: String): Boolean = SETTINGS.any { key(name, it) in values }
 
     /**
      * The context called [name], or the file's `current-context` when [name] is `null`.
@@ -53,8 +58,8 @@ class FactStoreContexts(private val values: Map<String, String>) {
         val selected = name ?: currentContext() ?: return FactStoreContext.Unset
         return FactStoreContext(
             name = selected,
-            url = url(key = "context.$selected.url"),
-            store = values["context.$selected.store"],
+            url = url(key(selected, URL)),
+            store = values[key(selected, STORE)],
         )
     }
 
@@ -71,6 +76,11 @@ class FactStoreContexts(private val values: Map<String, String>) {
 
     companion object {
         private const val CURRENT_CONTEXT = "current-context"
+        private const val URL = "url"
+        private const val STORE = "store"
+        private val SETTINGS = listOf(URL, STORE)
+
+        private fun key(context: String, setting: String) = "context.$context.$setting"
 
         val Empty = FactStoreContexts(emptyMap())
 

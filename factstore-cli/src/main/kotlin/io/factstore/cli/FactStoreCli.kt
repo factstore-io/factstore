@@ -11,13 +11,19 @@ import io.quarkus.runtime.annotations.QuarkusMain
 import jakarta.enterprise.event.Observes
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.time.Duration.Companion.milliseconds
 
 private const val EXIT_OK = 0
 private const val EXIT_FAILURE = 1
 
 /** What a shell reports for a process stopped by Ctrl+C: 128 + SIGINT. */
 private const val EXIT_INTERRUPTED = 130
+
+/** How long a shutdown waits for the cancelled command to finish. */
+private val CANCELLATION_GRACE = 500.milliseconds
 
 /**
  * The process: Quarkus starts the container, hands the arguments over, and exits with what
@@ -38,20 +44,28 @@ class FactStoreCli(
     override fun run(vararg args: String): Int =
         try {
             runBlocking(execution) { factStoreCommand.execute(args.asList()) }
-        } catch (_: CancellationException) {
+        } catch (e: CancellationException) {
+            // Only a shutdown is the user quitting. Any other cancellation -- a timeout, a
+            // cancelled future -- is a defect, and is left to propagate like one.
+            if (!execution.isCancelled) throw e
             EXIT_INTERRUPTED
         }
 
     /**
-     * Cancels the running command when the application shuts down underneath it.
+     * Cancels the running command when the application shuts down underneath it, and waits for
+     * it to finish.
      *
      * Ctrl+C shuts the JVM down while a command may still be running -- `fact subscribe` always
-     * is. Quarkus fires this from its shutdown hook before it destroys the beans, so cancelling
-     * here ends the in-flight call before its channel is closed: the user asked to quit, which
-     * is not an error to report, and the channel need not wait for a stream that never ends.
+     * is. Quarkus fires this from its shutdown hook before it destroys the beans, so the
+     * in-flight call ends here, before its channel is closed: the user asked to quit, which is
+     * not an error to report, and the channel need not wait for a stream that never ends.
+     *
+     * Cancelling alone would only ask: the hook would go on to close the channel while the
+     * command unwinds, and the stream could still fail as if the server were gone. The wait is
+     * bounded, because a blocking read of stdin does not answer to cancellation.
      */
     fun onShutdown(@Observes event: ShutdownEvent) {
-        execution.cancel()
+        runBlocking { withTimeoutOrNull(CANCELLATION_GRACE) { execution.cancelAndJoin() } }
     }
 
 }

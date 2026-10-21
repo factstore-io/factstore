@@ -1,9 +1,7 @@
 package io.factstore.cli.command.fact
 
 import com.github.ajalt.clikt.core.Context
-import com.github.ajalt.clikt.core.terminal
 import com.github.ajalt.clikt.parameters.arguments.argument
-import com.github.ajalt.clikt.parameters.arguments.optional
 import com.github.ajalt.clikt.parameters.options.convert
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
@@ -17,6 +15,9 @@ import io.factstore.client.model.FactInput
 import io.factstore.client.model.FactPayload
 import jakarta.enterprise.context.Dependent
 
+/** The payload argument that stands for stdin. */
+private const val STDIN = "-"
+
 /** `factstore fact append <payload>` */
 @Dependent
 class AppendFactCommand(clients: FactStoreClients) : StoreScopedCommand(name = "append", clients = clients) {
@@ -29,7 +30,7 @@ class AppendFactCommand(clients: FactStoreClients) : StoreScopedCommand(name = "
         help = "A tag to carry, as key=value, repeatable",
         duplicateHint = "a fact carries one value per key",
     )
-    private val payload by argument("payload", help = "The fact's payload; read from stdin when absent").optional()
+    private val payload by argument("payload", help = "The fact's payload, or - to read it from stdin")
 
     /**
      * `--idempotency-key`: what makes an append safe to repeat.
@@ -50,7 +51,7 @@ class AppendFactCommand(clients: FactStoreClients) : StoreScopedCommand(name = "
                 FactInput(
                     type = type,
                     subject = subject,
-                    payload = FactPayload(payload.orStdin().toByteArray()),
+                    payload = FactPayload(payloadText().toByteArray()),
                     tags = tags.toMap(),
                 )
             ),
@@ -60,25 +61,19 @@ class AppendFactCommand(clients: FactStoreClients) : StoreScopedCommand(name = "
     }
 
     /**
-     * The payload given on the command line, or everything piped in.
+     * The payload given on the command line, or everything on stdin for `-`.
      *
-     * Stdin is only read when something is feeding it. Reading it from an interactive terminal
-     * would leave the command sitting there with no prompt, looking hung, until the user found
-     * Ctrl-D -- so with neither an argument nor a pipe, this says what was missing instead.
+     * Stdin is read only when asked for, as `cat -` and `kubectl apply -f -` do. Reading it
+     * whenever the argument is missing would need to know whether stdin is a terminal, or the
+     * command would sit waiting on the keyboard with no prompt -- and nothing answers that
+     * reliably: `System.console()` asks about stdout as well, and Mordant answers yes whenever
+     * none of its native backends could load, which is every run without native access.
      */
-    private fun String?.orStdin(): String {
-        val text = this ?: if (interactive()) "" else System.`in`.bufferedReader().readText()
-        if (text.isBlank()) throw usageError("no payload given: pass it as an argument or pipe it into stdin")
+    private fun payloadText(): String {
+        val text = if (payload == STDIN) System.`in`.bufferedReader().readText() else payload
+        if (text.isBlank()) throw usageError("the payload is empty")
         return text
     }
-
-    /**
-     * Whether this command's input is a terminal rather than a pipe or a file.
-     *
-     * Asked of stdin alone. `System.console()` is only a terminal when stdin and stdout both
-     * are, so `> out.log` or `| jq` would make it say no and send the read to the keyboard.
-     */
-    private fun interactive(): Boolean = terminal.terminalInfo.inputInteractive
 
     private fun AppendOutcome.describe(): String = when (this) {
         is AppendOutcome.Appended -> "✅ Fact appended. Id: ${factIds.single()}"
