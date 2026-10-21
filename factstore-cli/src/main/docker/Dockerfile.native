@@ -8,7 +8,8 @@
 #
 #   ./gradlew :factstore-cli:build \
 #     -Dquarkus.native.enabled=true \
-#     -Dquarkus.package.jar.enabled=false
+#     -Dquarkus.package.jar.enabled=false \
+#     -Dquarkus.native.container-build=true
 #
 # Then build the image from this module's directory:
 #
@@ -42,7 +43,7 @@ COPY --chown=1001:root --chmod=0755 build/*-runner /work/factstore
 
 USER 1001
 
-# A plain ENTRYPOINT is what lets arguments after the image name reach picocli
+# A plain ENTRYPOINT is what lets arguments after the image name reach Clikt
 # unchanged, so the image behaves like the executable it wraps.
 ENTRYPOINT [ "./factstore" ]
 

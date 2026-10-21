@@ -1,45 +1,20 @@
 package io.factstore.cli.command.store
 
-import io.factstore.client.FactStoreClient
-import io.factstore.client.model.StoreInfo
-import jakarta.inject.Inject
-import kotlinx.coroutines.runBlocking
-import picocli.CommandLine.Command
-import java.time.LocalDateTime
-import java.time.ZoneOffset
+import com.github.ajalt.clikt.core.Context
+import com.github.ajalt.clikt.core.terminal
+import io.factstore.cli.command.ServerCommand
+import io.factstore.cli.command.outputOption
+import io.factstore.cli.connection.FactStoreClients
+import io.factstore.cli.output.writeTo
+import jakarta.enterprise.context.Dependent
 
-@Command(
-    name = "list",
-    aliases = [ "ls" ],
-    description = ["List all available logical stores"]
-)
-class ListStoresCommand : Runnable {
+/** `factstore store list` (or `ls`) */
+@Dependent
+class ListStoresCommand(clients: FactStoreClients) : ServerCommand(name = "list", clients = clients) {
 
-    @Inject
-    lateinit var client: FactStoreClient
+    override fun help(context: Context) = "List all stores"
 
-    override fun run() = runBlocking {
-        val metadata = client.stores.list()
+    private val output by outputOption()
 
-        if (metadata.isEmpty()) {
-            println("No stores found.")
-        } else {
-            metadata.print()
-        }
-    }
-
-    private fun List<StoreInfo>.print() {
-        // Table Header
-        println("%-25s %-25s %-36s".format("NAME", "CREATED AT", "STORE ID"))
-        println("-".repeat(90))
-
-        // Table Rows
-        forEach { store ->
-            println("%-25s %-25s %-36s".format(
-                store.name,
-                LocalDateTime.ofInstant(store.createdAt, ZoneOffset.systemDefault()),
-                store.id
-            ))
-        }
-    }
+    override suspend fun run() = client.stores.list().writeTo(terminal, output)
 }

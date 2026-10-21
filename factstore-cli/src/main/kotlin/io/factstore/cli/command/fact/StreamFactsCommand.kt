@@ -1,113 +1,59 @@
 package io.factstore.cli.command.fact
 
-import io.factstore.cli.command.OutputFormat
-import io.factstore.cli.command.print
-import io.factstore.cli.command.requirePositiveLimit
-import io.factstore.cli.converter.TagConverter
-import io.factstore.cli.converter.toTagFilter
-import io.factstore.cli.config.FactStoreConfigResolver
-import io.factstore.client.FactStoreClient
+import com.github.ajalt.clikt.core.Context
+import com.github.ajalt.clikt.core.terminal
+import com.github.ajalt.clikt.parameters.options.multiple
+import com.github.ajalt.clikt.parameters.options.option
+import io.factstore.cli.command.StoreScopedCommand
+import io.factstore.cli.command.continueAfterOption
+import io.factstore.cli.command.directionOption
+import io.factstore.cli.command.limitOption
+import io.factstore.cli.command.outputOption
+import io.factstore.cli.command.tagOption
+import io.factstore.cli.connection.FactStoreClients
+import io.factstore.cli.output.writeTo
 import io.factstore.client.model.Fact
 import io.factstore.client.model.FactFilter
-import io.factstore.client.model.ReadDirection
-import jakarta.inject.Inject
+import jakarta.enterprise.context.Dependent
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.runBlocking
-import picocli.CommandLine
-import picocli.CommandLine.Command
-import picocli.CommandLine.Option
-import java.util.UUID
-import java.util.concurrent.Callable
 
-@Command(
-    name = "stream",
-    description = [
-        "Stream the facts of a store, optionally filtered by subject, type and tags.",
-        "The filters describe one criterion: a fact must match any of the subjects, any of the",
-        "types and all of the tags. For several criteria at once use 'fact query'.",
-    ]
-)
-class StreamFactsCommand : Callable<Int> {
+/** `factstore fact stream` */
+@Dependent
+class StreamFactsCommand(clients: FactStoreClients) : StoreScopedCommand(name = "stream", clients = clients) {
 
-    @Inject
-    lateinit var client: FactStoreClient
+    override fun help(context: Context) = "Stream the facts of a store, up to its head"
 
-    @Inject
-    lateinit var configResolver: FactStoreConfigResolver
+    override fun helpEpilog(context: Context) =
+        "The filters describe one criterion: a fact must match any of the subjects, any of the " +
+            "types and all of the tags. For several criteria at once use 'fact query'."
 
-    @Option(
-        names = ["--store", "-s"],
-        description = ["The name of the store to read from (env: FACTSTORE_STORE, config: store)"],
+    private val subjects by option("--subject", metavar = "<subject>", help = "A subject to match, repeatable").multiple()
+    private val types by option("--type", metavar = "<type>", help = "A type to match exactly, repeatable").multiple()
+    private val tags by tagOption(
+        help = "A tag a fact must carry, as key=value, repeatable",
+        duplicateHint = "to match any of several values use 'fact query'",
     )
-    var storeName: String? = null
+    private val continueAfter by continueAfterOption()
+    private val direction by directionOption()
+    private val limit by limitOption()
+    private val output by outputOption()
 
-    @Option(
-        names = ["--subject"],
-        description = ["A subject to match, repeatable; the fact's subject must be one of them"],
-    )
-    var subjects: MutableList<String> = mutableListOf()
-
-    @Option(
-        names = ["--type"],
-        description = ["A type to match exactly, repeatable; the fact's type must be one of them"],
-    )
-    var types: MutableList<String> = mutableListOf()
-
-    @Option(
-        names = ["--tag", "-t"],
-        description = ["A tag the fact must carry, as key=value, repeatable; all of them must match"],
-        paramLabel = "<key=value>",
-        converter = [TagConverter::class],
-    )
-    var tags: MutableList<Pair<String, String>> = mutableListOf()
-
-    @Option(
-        names = ["--continue-after"],
-        description = ["Continue after this fact, exclusive and in reading order"],
-        paramLabel = "<factId>",
-    )
-    var continueAfter: UUID? = null
-
-    @Option(
-        names = ["--limit"],
-        description = ["Maximum number of facts to return, a positive number (default: all facts)"],
-    )
-    var limit: Int? = null
-
-    @Option(
-        names = ["--direction"],
-        description = ["Read direction: \${COMPLETION-CANDIDATES} (default: \${DEFAULT-VALUE})"],
-        defaultValue = "forward",
-    )
-    lateinit var direction: ReadDirection
-
-    @Option(
-        names = ["--output", "-o"],
-        description = ["Output format: \${COMPLETION-CANDIDATES} (default: \${DEFAULT-VALUE})"],
-        defaultValue = "table",
-    )
-    var outputFormat: OutputFormat = OutputFormat.Table
-
-    override fun call(): Int = runBlocking {
-        facts().print(outputFormat)
-        CommandLine.ExitCode.OK
+    override suspend fun run() {
+        facts().writeTo(terminal, output)
     }
 
-    private fun facts(): Flow<Fact> {
-        requirePositiveLimit(limit)
-        val storeName = configResolver.resolveStore(storeName)
-        val after = continueAfter?.toString()
-        // Without criteria the whole store is read. Any criteria form one filter, and the server
-        // chooses the cheapest read for it.
+    /** Without a criterion the whole store is read; any criteria form one filter. */
+    private fun facts(): Flow<Fact> = with(client.facts) {
         if (subjects.isEmpty() && types.isEmpty() && tags.isEmpty()) {
-            return client.facts.streamFacts(storeName, direction, limit, after)
+            streamFacts(storeName, direction, limit, continueAfter)
+        } else {
+            streamFactsByQuery(
+                storeName = storeName,
+                filters = listOf(FactFilter(subjects = subjects, types = types, tags = tags.toMap())),
+                direction = direction,
+                limit = limit,
+                continueAfter = continueAfter,
+            )
         }
-        return client.facts.streamFactsByQuery(
-            storeName = storeName,
-            filters = listOf(FactFilter(subjects = subjects, types = types, tags = tags.toTagFilter())),
-            direction = direction,
-            limit = limit,
-            continueAfter = after,
-        )
     }
 }

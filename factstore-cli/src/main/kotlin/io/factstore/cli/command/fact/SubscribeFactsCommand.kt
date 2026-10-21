@@ -1,98 +1,57 @@
 package io.factstore.cli.command.fact
 
-import io.factstore.cli.command.OutputFormat
-import io.factstore.cli.command.printSingle
-import io.factstore.cli.config.FactStoreConfigResolver
-import io.factstore.client.FactStoreClient
+import com.github.ajalt.clikt.core.Context
+import com.github.ajalt.clikt.core.terminal
+import com.github.ajalt.clikt.parameters.groups.default
+import com.github.ajalt.clikt.parameters.groups.mutuallyExclusiveOptions
+import com.github.ajalt.clikt.parameters.groups.provideDelegate
+import com.github.ajalt.clikt.parameters.groups.single
+import com.github.ajalt.clikt.parameters.options.convert
+import com.github.ajalt.clikt.parameters.options.option
+import com.github.ajalt.clikt.parameters.types.enum
+import io.factstore.cli.command.StoreScopedCommand
+import io.factstore.cli.command.factId
+import io.factstore.cli.command.outputOption
+import io.factstore.cli.connection.FactStoreClients
+import io.factstore.cli.output.OutputFormat
+import io.factstore.cli.output.followTo
 import io.factstore.client.model.SubscribeStartPosition
-import jakarta.inject.Inject
-import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.runBlocking
-import picocli.CommandLine
-import java.util.*
-import java.util.concurrent.Callable
+import jakarta.enterprise.context.Dependent
 
-@CommandLine.Command(
-    name = "subscribe",
-    description = [
-        "Subscribe to a store and stream its facts in real time (similar to tail -f).",
-        "Every fact of the store is streamed, and unlike 'fact stream' a subscription does not " +
-            "stop at the store's head: it runs until you stop it.",
-    ]
-)
-class SubscribeFactsCommand : Callable<Int> {
+/** Where a subscription starts, as the command line says it. */
+private enum class From(val position: SubscribeStartPosition) {
+    Beginning(SubscribeStartPosition.Beginning),
+    End(SubscribeStartPosition.End),
+}
 
-    @Inject
-    lateinit var client: FactStoreClient
+/** `factstore fact subscribe` */
+@Dependent
+class SubscribeFactsCommand(clients: FactStoreClients) : StoreScopedCommand(name = "subscribe", clients = clients) {
 
-    @Inject
-    lateinit var configResolver: FactStoreConfigResolver
+    override fun help(context: Context) = "Follow a store's facts as they are appended, like tail -f"
 
-    @CommandLine.Option(
-        names = ["--store", "-s"],
-        description = ["The name of the store to subscribe to (env: FACTSTORE_STORE, config: store)"],
-    )
-    var storeName: String? = null
+    override fun helpEpilog(context: Context) =
+        "Every fact of the store is followed; subscriptions take no filters yet. " +
+            "Press Ctrl+C to stop."
 
-    @CommandLine.ArgGroup(
-        exclusive = true,
-        heading = "Start position options:%n"
-    )
-    var startPosition = StartPosition()
+    /**
+     * Where to start, which is one choice: from an end of the store, or after a known fact.
+     *
+     * The default is the store's end, because a subscription is `tail -f` and `tail -f` does not
+     * print the whole file first. Pass `--from beginning` for a deliberate replay.
+     */
+    private val startPosition by mutuallyExclusiveOptions(
+        option("--from", help = "Start at the store's beginning or its end")
+            .enum<From>(key = { it.name.lowercase() })
+            .convert { it.position },
+        option("--continue-after", metavar = "<factId>", help = "Continue after a known fact, exclusive")
+            .convert { SubscribeStartPosition.ContinueAfter(factId(it)) },
+        name = "Start position",
+    ).single().default(SubscribeStartPosition.End)
 
-    class StartPosition {
+    private val output by outputOption(OutputFormat.Table, OutputFormat.Ndjson)
 
-        @CommandLine.Option(
-            names = ["--from"],
-            description = ["Start from: 'beginning' or 'end'"],
-            showDefaultValue = CommandLine.Help.Visibility.ALWAYS,
-        )
-        var from: FromOption? = null
-
-        @CommandLine.Option(
-            names = ["--continue-after"],
-            description = ["Continue after a known fact (UUID), exclusive; how a stopped subscription resumes"],
-            paramLabel = "<factId>",
-        )
-        var continueAfter: UUID? = null
-
+    override suspend fun run() {
+        client.facts.subscribe(storeName, startPosition).followTo(terminal, output)
     }
-
-    @CommandLine.Option(
-        names = ["--output", "-o"],
-        description = ["Output format: \${COMPLETION-CANDIDATES} (default: \${DEFAULT-VALUE})"],
-        defaultValue = "table",
-    )
-    var outputFormat: OutputFormat = OutputFormat.Table
-
-    enum class FromOption { beginning, end }
-
-    override fun call(): Int = runBlocking {
-        val storeName = configResolver.resolveStore(storeName)
-        val fromValue = startPosition.from
-        val continueAfterValue = startPosition.continueAfter
-
-        val subscribeStart = continueAfterValue?.let { SubscribeStartPosition.ContinueAfter(it.toString()) }
-            ?: fromValue?.let { if (fromValue == FromOption.beginning) SubscribeStartPosition.Beginning else SubscribeStartPosition.End }
-            ?: SubscribeStartPosition.Beginning
-
-        client.facts.subscribe(storeName, subscribeStart)
-            .catch { cause -> if (!jvmIsShuttingDown()) throw cause }
-            .collect { fact -> fact.printSingle(outputFormat) }
-
-        CommandLine.ExitCode.OK
-    }
-
-    // Ctrl+C triggers JVM shutdown, during which Quarkus closes the gRPC channel and the in-flight
-    // stream fails. That's the user asking to quit, not an error, so terminate quietly. The JVM
-    // rejects (de)registering shutdown hooks once shutdown is in progress; use that to detect it.
-    // Reliable here because the channel is closed from within a shutdown hook, so shutdown is
-    // already in progress by the time the failure reaches us.
-    private fun jvmIsShuttingDown(): Boolean =
-        runCatching {
-            val probe = Thread {}
-            Runtime.getRuntime().addShutdownHook(probe)
-            Runtime.getRuntime().removeShutdownHook(probe)
-        }.isFailure
-
 }
