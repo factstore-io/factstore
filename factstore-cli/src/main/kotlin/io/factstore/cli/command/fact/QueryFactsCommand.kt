@@ -1,105 +1,62 @@
 package io.factstore.cli.command.fact
 
-import io.factstore.cli.command.OutputFormat
-import io.factstore.cli.command.print
-import io.factstore.cli.command.requirePositiveLimit
-import io.factstore.cli.exception.CliUsageException
-import io.factstore.cli.config.FactStoreConfigResolver
-import io.factstore.client.FactStoreClient
+import com.github.ajalt.clikt.core.Context
+import com.github.ajalt.clikt.core.terminal
+import com.github.ajalt.clikt.parameters.options.convert
+import com.github.ajalt.clikt.parameters.options.multiple
+import com.github.ajalt.clikt.parameters.options.option
+import com.github.ajalt.clikt.parameters.types.file
+import io.factstore.cli.command.StoreScopedCommand
+import io.factstore.cli.command.continueAfterOption
+import io.factstore.cli.command.directionOption
+import io.factstore.cli.command.limitOption
+import io.factstore.cli.command.outputOption
+import io.factstore.cli.command.usageError
+import io.factstore.cli.connection.FactStoreClients
+import io.factstore.cli.output.writeTo
 import io.factstore.client.model.FactFilter
-import io.factstore.client.model.ReadDirection
-import jakarta.inject.Inject
-import io.factstore.client.model.Fact
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.runBlocking
-import picocli.CommandLine
-import picocli.CommandLine.Command
-import picocli.CommandLine.Option
-import java.io.File
-import java.util.UUID
-import java.util.concurrent.Callable
+import jakarta.enterprise.context.Dependent
 
-@Command(
-    name = "query",
-    description = [
-        "Stream the facts matching a query: a fact matches when it matches any of its filters.",
-        "Each filter is JSON; for a single filter 'fact stream' is the simpler command.",
-    ]
-)
-class QueryFactsCommand : Callable<Int> {
+/** `factstore fact query` */
+@Dependent
+class QueryFactsCommand(clients: FactStoreClients) : StoreScopedCommand(name = "query", clients = clients) {
 
-    @Inject
-    lateinit var client: FactStoreClient
+    override fun help(context: Context) = "Stream the facts matching a query, up to the store's head"
 
-    @Inject
-    lateinit var configResolver: FactStoreConfigResolver
+    override fun helpEpilog(context: Context) =
+        "A fact matches when it matches any of the query's filters. For a single filter " +
+            "'fact stream' is the simpler command."
 
-    @Option(
-        names = ["--store", "-s"],
-        description = ["The name of the store to query (env: FACTSTORE_STORE, config: store)"],
-    )
-    var storeName: String? = null
+    private val filters by option(
+        "--filter",
+        metavar = "<json>",
+        help = """A filter as JSON, repeatable, e.g. '{"types":["OrderPlaced"],"tags":{"region":"eu"}}'""",
+    ).convert { it.toFactFilter() }.multiple()
 
-    @Option(
-        names = ["--filter"],
-        description = ["A filter as JSON, repeatable, e.g. '{\"types\":[\"OrderPlaced\"],\"tags\":{\"region\":\"eu\"}}'"],
-    )
-    var filters: MutableList<String> = mutableListOf()
+    private val queryFile by option(
+        "--query-file",
+        metavar = "<file>",
+        help = """A file holding the whole query as JSON: {"filters":[…]}""",
+    ).file().convert { it.toFactFilters() }
 
-    @Option(
-        names = ["--query-file"],
-        description = ["A file holding the query as JSON: {\"filters\":[…]}"],
-    )
-    var queryFile: File? = null
+    private val continueAfter by continueAfterOption()
+    private val direction by directionOption()
+    private val limit by limitOption()
+    private val output by outputOption()
 
-    @Option(
-        names = ["--continue-after"],
-        description = ["Continue after this fact, exclusive and in reading order"],
-        paramLabel = "<factId>",
-    )
-    var continueAfter: UUID? = null
-
-    @Option(
-        names = ["--limit"],
-        description = ["Maximum number of facts to return, a positive number (default: all facts)"],
-    )
-    var limit: Int? = null
-
-    @Option(
-        names = ["--direction"],
-        description = ["Read direction: \${COMPLETION-CANDIDATES} (default: \${DEFAULT-VALUE})"],
-        defaultValue = "forward",
-    )
-    lateinit var direction: ReadDirection
-
-    @Option(
-        names = ["--output", "-o"],
-        description = ["Output format: \${COMPLETION-CANDIDATES} (default: \${DEFAULT-VALUE})"],
-        defaultValue = "table",
-    )
-    var outputFormat: OutputFormat = OutputFormat.Table
-
-    override fun call(): Int = runBlocking {
-        requirePositiveLimit(limit)
-        val storeName = configResolver.resolveStore(storeName)
-        val filters = collectFilters()
-        if (filters.isEmpty()) {
-            throw CliUsageException("A query needs at least one filter: use --filter or --query-file.")
-        }
-
-        val facts: Flow<Fact> = client.facts.streamFactsByQuery(
+    override suspend fun run() {
+        client.facts.streamFactsByQuery(
             storeName = storeName,
-            filters = filters,
+            filters = query(),
             direction = direction,
             limit = limit,
-            continueAfter = continueAfter?.toString(),
-        )
-
-        facts.print(outputFormat)
-
-        CommandLine.ExitCode.OK
+            continueAfter = continueAfter,
+        ).writeTo(terminal, output)
     }
 
-    private fun collectFilters(): List<FactFilter> =
-        filters.map(::parseFilter) + queryFile?.let(::readQueryFile).orEmpty()
+    private fun query(): List<FactFilter> {
+        val query = filters + queryFile.orEmpty()
+        if (query.isEmpty()) throw usageError("a query needs at least one filter: use --filter or --query-file")
+        return query
+    }
 }

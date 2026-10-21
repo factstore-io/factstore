@@ -1,105 +1,81 @@
 package io.factstore.cli.command.fact
 
-import io.factstore.cli.config.FactStoreConfigResolver
-import io.factstore.client.FactStoreClient
+import com.github.ajalt.clikt.core.Context
+import com.github.ajalt.clikt.parameters.arguments.argument
+import com.github.ajalt.clikt.parameters.arguments.optional
+import com.github.ajalt.clikt.parameters.options.convert
+import com.github.ajalt.clikt.parameters.options.option
+import com.github.ajalt.clikt.parameters.options.required
+import io.factstore.cli.command.StoreScopedCommand
+import io.factstore.cli.command.tagOption
+import io.factstore.cli.command.usageError
+import io.factstore.cli.command.uuid
+import io.factstore.cli.connection.FactStoreClients
 import io.factstore.client.model.AppendOutcome
 import io.factstore.client.model.FactInput
 import io.factstore.client.model.FactPayload
-import jakarta.inject.Inject
-import kotlinx.coroutines.runBlocking
-import picocli.CommandLine
-import picocli.CommandLine.Command
-import picocli.CommandLine.Option
-import picocli.CommandLine.Parameters
-import picocli.CommandLine.Spec
-import java.util.UUID
-import java.util.concurrent.Callable
+import jakarta.enterprise.context.Dependent
 
-@Command(
-    name = "append",
-    description = ["Append a fact to a store"]
-)
-class AppendFactCommand : Callable<Int> {
+/** `factstore fact append <payload>` */
+@Dependent
+class AppendFactCommand(clients: FactStoreClients) : StoreScopedCommand(name = "append", clients = clients) {
 
-    @Inject
-    lateinit var client: FactStoreClient
+    override fun help(context: Context) = "Append a fact to a store"
 
-    @Inject
-    lateinit var configResolver: FactStoreConfigResolver
-
-    @Spec
-    lateinit var spec: CommandLine.Model.CommandSpec
-
-    @Option(
-        names = ["--store", "-s"],
-        description = ["The name of the store to append to (env: FACTSTORE_STORE, config: store)"],
+    private val type by option("--type", metavar = "<type>", help = "What happened, e.g. ORDER_PLACED").required()
+    private val subject by option("--subject", metavar = "<subject>", help = "The entity it happened to, e.g. order/12345").required()
+    private val tags by tagOption(
+        help = "A tag to carry, as key=value, repeatable",
+        duplicateHint = "a fact carries one value per key",
     )
-    var storeName: String? = null
+    private val payload by argument("payload", help = "The fact's payload; read from stdin when absent").optional()
 
-    @Option(
-        names = ["--type", "-t"],
-        description = ["The type of the fact (e.g. ORDER_PLACED, USER_CREATED)"],
-        required = true,
-    )
-    lateinit var type: String
+    /**
+     * `--idempotency-key`: what makes an append safe to repeat.
+     *
+     * Without one the server makes a key up, which is as good as none: a retry after an
+     * ambiguous timeout appends the fact a second time. The same key twice appends it once.
+     */
+    private val idempotencyKey by option(
+        "--idempotency-key",
+        metavar = "<uuid>",
+        help = "Append at most once for this key, so a retry cannot duplicate the fact",
+    ).convert { uuid("an idempotency key", it) }
 
-    @Option(
-        names = ["--subject"],
-        description = ["The subject the fact is associated with (e.g. order/12345)"],
-        required = true,
-    )
-    lateinit var subject: String
-
-    @Option(
-        names = ["--tag"],
-        description = ["Tag in key=value format (e.g. region=eu). Repeatable."],
-    )
-    var tags: Map<String, String> = emptyMap()
-
-    @Parameters(
-        index = "0",
-        arity = "0..1",
-        paramLabel = "<payload>",
-        description = ["Payload of the fact. Reads from stdin if not provided."],
-    )
-    var payload: String? = null
-
-    override fun call(): Int = runBlocking {
-        val storeName = configResolver.resolveStore(storeName)
-        val resolvedPayload = resolvePayload() ?: return@runBlocking CommandLine.ExitCode.SOFTWARE
+    override suspend fun run() {
         val outcome = client.facts.append(
             storeName = storeName,
             facts = listOf(
-                resolvedPayload.toFactInput()
+                FactInput(
+                    type = type,
+                    subject = subject,
+                    payload = FactPayload(payload.orStdin().toByteArray()),
+                    tags = tags.toMap(),
+                )
             ),
-            idempotencyKey = UUID.randomUUID().toString(),
-            condition = null
+            idempotencyKey = idempotencyKey,
         )
-        when (outcome) {
-            is AppendOutcome.Appended ->
-                println("✅ Fact appended successfully. Id: ${outcome.factIds.single()}")
-            AppendOutcome.AlreadyApplied ->
-                println("ℹ️ Append already applied; nothing was added.")
-        }
-        CommandLine.ExitCode.OK
+        echo(outcome.describe())
     }
 
-    private fun String.toFactInput(): FactInput = FactInput(
-        type = type,
-        subject = subject,
-        payload = FactPayload(data = toByteArray(Charsets.UTF_8)),
-        tags = this@AppendFactCommand.tags,
-    )
-
-    private fun resolvePayload(): String? {
-        val raw = payload ?: System.`in`.bufferedReader().readText()
-        if (raw.isBlank()) {
-            spec.commandLine().err.println(
-                "❌ No payload provided. Pass a JSON argument or pipe data via stdin."
-            )
-            return null
-        }
-        return raw
+    /**
+     * The payload given on the command line, or everything piped in.
+     *
+     * Stdin is only read when something is feeding it. Reading it from an interactive terminal
+     * would leave the command sitting there with no prompt, looking hung, until the user found
+     * Ctrl-D -- so with neither an argument nor a pipe, this says what was missing instead.
+     */
+    private fun String?.orStdin(): String {
+        val text = this ?: if (interactive()) "" else System.`in`.bufferedReader().readText()
+        if (text.isBlank()) throw usageError("no payload given: pass it as an argument or pipe it into stdin")
+        return text
     }
 
+    /** Whether the user is sitting at a terminal rather than piping this command's input. */
+    private fun interactive(): Boolean = System.console()?.isTerminal() == true
+
+    private fun AppendOutcome.describe(): String = when (this) {
+        is AppendOutcome.Appended -> "✅ Fact appended. Id: ${factIds.single()}"
+        AppendOutcome.AlreadyApplied -> "ℹ️ Append already applied; nothing was added."
+    }
 }

@@ -1,30 +1,21 @@
 package io.factstore.cli.command.store
 
-import io.factstore.client.FactStoreClient
-import jakarta.inject.Inject
-import kotlinx.coroutines.runBlocking
-import picocli.CommandLine.Command
-import picocli.CommandLine.Parameters
+import com.github.ajalt.clikt.core.Context
+import com.github.ajalt.clikt.parameters.arguments.argument
+import io.factstore.cli.command.ServerCommand
+import io.factstore.cli.connection.FactStoreClients
+import jakarta.enterprise.context.Dependent
 
-@Command(
-    name = "remove",
-    aliases = [ "rm" ],
-    description = ["Remove a store"]
-)
-class RemoveStoreCommand : Runnable {
+/** `factstore store remove <name>` (or `rm`) */
+@Dependent
+class RemoveStoreCommand(clients: FactStoreClients) : ServerCommand(name = "remove", clients = clients) {
 
-    @Inject
-    lateinit var client: FactStoreClient
+    override fun help(context: Context) = "Remove a store and every fact in it"
 
-    @Parameters(
-        index = "0",
-        arity = "1",
-        description = ["The name of the store"]
-    )
-    lateinit var storeName: String
+    private val storeName by argument("name", help = "The name of the store")
 
-    override fun run() = runBlocking {
+    override suspend fun run() {
         client.stores.delete(storeName)
-        println("✅ Store '$storeName' removed successfully.")
+        echo("✅ Store '$storeName' removed.")
     }
 }

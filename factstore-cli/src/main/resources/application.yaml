@@ -1,6 +1,8 @@
 quarkus:
   banner:
     enabled: false
+  # A CLI writes its own output: anything the framework logs is noise unless it
+  # is a warning, and it belongs on one line.
   log:
     level: WARN
     category:
@@ -11,30 +13,15 @@ quarkus:
   package:
     jar:
       enabled: true
+      manifest:
+        attributes:
+          "Enable-Native-Access": ALL-UNNAMED
   grpc:
+    # This application is a gRPC client only. Quarkus still prepares a gRPC server in dev
+    # mode, which warns about its own default unless it is told to share the HTTP server.
     server:
       use-separate-server: false
-    clients:
-      factstore:
-        host: localhost
-        port: 8080
-        #use-quarkus-grpc-client: true
+  # No HTTP server: this application is a command, not a service.
   http:
     host-enabled: false
 
-"%dev":
-  quarkus:
-    log:
-      level: INFO
-      category:
-        "io.factstore.cli":
-          level: DEBUG
-      console:
-        format: "%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] (%t) %s%e%n"
-    rest-client:
-      logging:
-        scope: request-response
-        body-limit: 100
-      extensions-api:
-        logging:
-          scope: all

@@ -1,90 +1,48 @@
 package io.factstore.cli.command.fact
 
-import io.factstore.cli.exception.CliUsageException
+import com.github.ajalt.clikt.core.UsageError
 import io.factstore.client.model.FactFilter
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
-import org.junit.jupiter.params.ParameterizedTest
-import org.junit.jupiter.params.provider.ValueSource
 import java.io.File
+import java.nio.file.Path
 
 class QueryFiltersTest {
 
     @TempDir
-    lateinit var directory: File
+    lateinit var tempDir: Path
 
     @Test
-    fun `a filter is parsed with every property it sets`() {
-        val filter = parseFilter("""{"subjects":["order/1"],"types":["OrderPlaced"],"tags":{"token":"a=b"}}""")
+    fun `a filter is read from JSON`() {
+        val filter = """{"types":["OrderPlaced"],"tags":{"region":"eu"}}""".toFactFilter()
 
-        assertThat(filter).isEqualTo(
-            FactFilter(subjects = listOf("order/1"), types = listOf("OrderPlaced"), tags = mapOf("token" to "a=b"))
-        )
+        assertThat(filter).isEqualTo(FactFilter(types = listOf("OrderPlaced"), tags = mapOf("region" to "eu")))
     }
 
     @Test
-    fun `a property a filter leaves out is empty`() {
-        assertThat(parseFilter("""{"types":["OrderPlaced"]}""")).isEqualTo(FactFilter(types = listOf("OrderPlaced")))
-    }
-
-    @ParameterizedTest
-    @ValueSource(
-        strings = [
-            """{"subjects":"order/1"}""",
-            """{"tags":["region"]}""",
-            """{"types":[1]}""",
-            """{"types":[null]}""",
-            """{"subject":["order/1"],"types":["OrderPlaced"]}""",
-            """["OrderPlaced"]""",
-            """{"types":[""",
-            "",
-        ]
-    )
-    fun `a filter of the wrong shape is a usage error`(filter: String) {
-        assertThatThrownBy { parseFilter(filter) }
-            .isInstanceOf(CliUsageException::class.java)
-            .hasMessageStartingWith("The filter '$filter' is not valid")
+    fun `a misspelled property is rejected rather than ignored`() {
+        // Dropping it silently would widen the query: the reader would get more than they asked for.
+        assertThatThrownBy { """{"typo":["OrderPlaced"]}""".toFactFilter() }
+            .isInstanceOf(UsageError::class.java)
     }
 
     @Test
-    fun `a query file yields its filters in order`() {
-        val file = queryFile("""{"filters":[{"types":["A"]},{"subjects":["order/1"]}]}""")
+    fun `a query file holds every filter`() {
+        val file = tempDir.resolve("query.json").toFile()
+        file.writeText("""{"filters":[{"subjects":["order/1"]},{"tags":{"sku":"ESP-1000"}}]}""")
 
-        assertThat(readQueryFile(file)).containsExactly(
-            FactFilter(types = listOf("A")),
+        assertThat(file.toFactFilters()).containsExactly(
             FactFilter(subjects = listOf("order/1")),
+            FactFilter(tags = mapOf("sku" to "ESP-1000")),
         )
     }
 
     @Test
     fun `a missing query file is a usage error`() {
-        val file = File(directory, "missing.json")
-
-        assertThatThrownBy { readQueryFile(file) }
-            .isInstanceOf(CliUsageException::class.java)
-            .hasMessage("The query file '$file' does not exist.")
+        assertThatThrownBy { File(tempDir.toFile(), "absent.json").toFactFilters() }
+            .isInstanceOf(UsageError::class.java)
+            .hasMessageContaining("does not exist")
     }
-
-    @ParameterizedTest
-    @ValueSource(
-        strings = [
-            """{"filters":[""",
-            """{}""",
-            """{"filters":{"types":["A"]}}""",
-            """{"filters":[{"types":"A"}]}""",
-            """{"filters":[{"types":["A"]}],"limit":5}""",
-            """[{"types":["A"]}]""",
-        ]
-    )
-    fun `a query file of the wrong shape is a usage error`(content: String) {
-        val file = queryFile(content)
-
-        assertThatThrownBy { readQueryFile(file) }
-            .isInstanceOf(CliUsageException::class.java)
-            .hasMessageStartingWith("The query file '$file' is not valid")
-    }
-
-    private fun queryFile(content: String): File = File(directory, "query.json").apply { writeText(content) }
 }

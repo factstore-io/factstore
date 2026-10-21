@@ -1,41 +1,32 @@
 package io.factstore.cli.command
 
+import com.github.ajalt.clikt.command.SuspendingNoOpCliktCommand
+import com.github.ajalt.clikt.core.Context
+import com.github.ajalt.clikt.core.subcommands
+import com.github.ajalt.clikt.parameters.options.versionOption
 import io.factstore.cli.command.fact.FactCommand
 import io.factstore.cli.command.store.StoreCommand
-import io.quarkus.picocli.runtime.annotations.TopCommand
-import kotlinx.coroutines.Runnable
-import picocli.CommandLine.Command
-import picocli.CommandLine.Model.CommandSpec
-import picocli.CommandLine.Option
-import picocli.CommandLine.ScopeType.INHERIT
-import picocli.CommandLine.Spec
+import jakarta.enterprise.context.Dependent
+import org.eclipse.microprofile.config.inject.ConfigProperty
 
-@TopCommand
-@Command(
-    name = "factstore",
-    mixinStandardHelpOptions = true,
-    version = ["0.1.0"],
-    description = ["FactStore Command Line Interface"],
-    subcommands = [
-        StoreCommand::class,
-        FactCommand::class,
-    ]
-)
-class FactStoreCommand : Runnable {
+/** The root command: it only groups the others and reports the version. */
+@Dependent
+class FactStoreCommand(
+    @ConfigProperty(name = "quarkus.application.version") version: String,
+    storeCommand: StoreCommand,
+    factCommand: FactCommand,
+) : SuspendingNoOpCliktCommand(name = "factstore") {
 
-    @Option(
-        names = ["--url"],
-        scope = INHERIT,
-        description = ["Server URL (env: FACTSTORE_URL, config: url)"]
-    )
-    var url: String? = null
-
-    @Spec
-    lateinit var spec: CommandSpec
-
-    override fun run() {
-        // print help menu
-        spec.commandLine().usage(System.err)
+    init {
+        versionOption(version)
+        subcommands(storeCommand, factCommand)
     }
+
+    override fun help(context: Context) = "FactStore command line interface"
+
+    override fun aliases() = mapOf(
+        "stores" to listOf("store"),
+        "facts" to listOf("fact"),
+    )
 
 }

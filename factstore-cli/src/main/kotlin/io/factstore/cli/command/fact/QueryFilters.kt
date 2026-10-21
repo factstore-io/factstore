@@ -1,6 +1,6 @@
 package io.factstore.cli.command.fact
 
-import io.factstore.cli.exception.CliUsageException
+import com.github.ajalt.clikt.core.UsageError
 import io.factstore.client.model.FactFilter
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
@@ -28,24 +28,24 @@ private data class FilterJson(
 private data class QueryJson(val filters: List<FilterJson>)
 
 /** Parses one `--filter`; anything but a well-formed filter is a usage error. */
-internal fun parseFilter(text: String): FactFilter =
+internal fun String.toFactFilter(): FactFilter =
     try {
-        Json.decodeFromString<FilterJson>(text).toFactFilter()
+        Json.decodeFromString<FilterJson>(this).toFactFilter()
     } catch (e: SerializationException) {
-        throw CliUsageException("The filter '$text' is not valid: ${e.message}")
+        throw UsageError("the filter '$this' is not valid: ${e.message}")
     }
 
 /** Reads the filters of a `--query-file`; a missing or malformed file is a usage error. */
-internal fun readQueryFile(file: File): List<FactFilter> {
-    if (!file.isFile) throw CliUsageException("The query file '$file' does not exist.")
+internal fun File.toFactFilters(): List<FactFilter> {
+    if (!isFile) throw UsageError("the query file '$this' does not exist")
     val text = try {
-        file.readText()
+        readText()
     } catch (e: IOException) {
-        throw CliUsageException("The query file '$file' cannot be read: ${e.message}")
+        throw UsageError("the query file '$this' cannot be read: ${e.message}")
     }
     return try {
         Json.decodeFromString<QueryJson>(text).filters.map { it.toFactFilter() }
     } catch (e: SerializationException) {
-        throw CliUsageException("The query file '$file' is not valid: ${e.message}")
+        throw UsageError("the query file '$this' is not valid: ${e.message}")
     }
 }

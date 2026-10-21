@@ -1,15 +1,27 @@
 package io.factstore.cli.command.store
 
-import picocli.CommandLine
+import com.github.ajalt.clikt.command.SuspendingNoOpCliktCommand
+import com.github.ajalt.clikt.core.Context
+import com.github.ajalt.clikt.core.subcommands
+import jakarta.enterprise.context.Dependent
 
-@CommandLine.Command(
-    name = "store",
-    aliases = [ "stores" ],
-    description = ["Manage stores"],
-    subcommands = [
-        CreateStoreCommand::class,
-        ListStoresCommand::class,
-        RemoveStoreCommand::class,
-    ]
-)
-class StoreCommand
+/** `factstore store …`: everything that acts on stores rather than on facts. */
+@Dependent
+class StoreCommand(
+    createStoreCommand: CreateStoreCommand,
+    listStoresCommand: ListStoresCommand,
+    removeStoreCommand: RemoveStoreCommand,
+) : SuspendingNoOpCliktCommand(name = "store") {
+
+    init {
+        subcommands(createStoreCommand, listStoresCommand, removeStoreCommand)
+    }
+
+    override fun help(context: Context) = "Manage stores"
+
+    // Clikt resolves aliases on the parent of the command they stand for.
+    override fun aliases() = mapOf(
+        "ls" to listOf("list"),
+        "rm" to listOf("remove"),
+    )
+}

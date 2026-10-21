@@ -9,6 +9,5 @@ include(
     "factstore-memory",
     "factstore-server",
     "factstore-cli",
-    "factstore-cli-clikt",
     "factstore-client-kotlin",
 )
