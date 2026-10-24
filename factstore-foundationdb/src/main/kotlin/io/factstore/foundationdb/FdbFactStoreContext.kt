@@ -8,7 +8,6 @@ import com.apple.foundationdb.Transaction
 import com.apple.foundationdb.subspace.Subspace
 import com.apple.foundationdb.tuple.Tuple
 import com.apple.foundationdb.tuple.Versionstamp
-import com.github.avrokotlin.avro4k.Avro
 import io.factstore.core.FactId
 import io.factstore.core.StoreId
 import io.factstore.core.StoreName
@@ -17,8 +16,6 @@ import io.factstore.core.IdempotencyKey
 import io.factstore.core.Subject
 import io.factstore.core.TagKey
 import io.factstore.core.TagValue
-import kotlinx.serialization.decodeFromByteArray
-import kotlinx.serialization.encodeToByteArray
 import java.util.concurrent.CompletableFuture
 
 data class FdbFactStoreContext(

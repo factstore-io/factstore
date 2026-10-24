@@ -47,7 +47,7 @@ class QueryResourceTest {
     @Test
     @Order(2)
     @DisplayName("GET /v1/stores/{name}/facts?subject - Should stream the subject's facts as NDJSON")
-    fun streamFactsBySubject() {
+    fun streamFactsOfASubject() {
         val body = given()
             .pathParam("storeName", storeName)
             .queryParam("subject", subject)
@@ -69,7 +69,7 @@ class QueryResourceTest {
     @Test
     @Order(2)
     @DisplayName("GET /v1/stores/{name}/facts?subject - Should return 404 ApiError when the store does not exist")
-    fun streamFactsBySubjectOfMissingStore() {
+    fun streamFactsOfMissingStore() {
         val error = given()
             .queryParam("subject", subject)
             .queryParam("direction", "forward")
@@ -86,7 +86,7 @@ class QueryResourceTest {
     @Test
     @Order(2)
     @DisplayName("GET /v1/stores/{name}/facts?type - Should stream the type's facts as NDJSON")
-    fun streamFactsByType() {
+    fun streamFactsOfAType() {
         val body = given()
             .pathParam("storeName", storeName)
             .queryParam("type", "test.type")
@@ -107,14 +107,14 @@ class QueryResourceTest {
     @Test
     @Order(2)
     @DisplayName("POST /v1/stores/{name}/facts:query - Should stream the matching facts as NDJSON")
-    fun streamFactsByQuery() {
+    fun queryFacts() {
         // RestAssured percent-encodes `:` by default, and `facts%3Aquery` is a different path.
         val body = given()
             .urlEncodingEnabled(false)
             .contentType(JSON)
             .body(
                 mapOf(
-                    "filters" to listOf(
+                    "items" to listOf(
                         mapOf("subjects" to listOf(subject)),
                         mapOf("types" to listOf("test.type"), "tags" to mapOf("region" to "europe")),
                     ),
@@ -137,11 +137,11 @@ class QueryResourceTest {
     @Test
     @Order(2)
     @DisplayName("POST /v1/stores/{name}/facts:query - Should return 404 ApiError when the store does not exist")
-    fun streamFactsByQueryOfMissingStore() {
+    fun queryFactsOfMissingStore() {
         val error = given()
             .urlEncodingEnabled(false)
             .contentType(JSON)
-            .body(mapOf("filters" to listOf(mapOf("types" to listOf("test.type")))))
+            .body(mapOf("items" to listOf(mapOf("types" to listOf("test.type")))))
             .`when`()
             .post("/api/v1/stores/missing-store/facts:query")
             .then()
@@ -209,9 +209,9 @@ class QueryResourceTest {
 
     @Test
     @Order(4)
-    @DisplayName("GET /v1/stores/{name}/facts - Should combine subject, type and tags into one filter")
-    fun streamFactsByFilter() {
-        val store = "filter-test-store"
+    @DisplayName("GET /v1/stores/{name}/facts - Should combine subject, type and tags into one query item")
+    fun streamFactsOfOneQueryItem() {
+        val store = "query-item-test-store"
         seedFact("sub-1", tags = mapOf("region" to "eu"), store = store)
         seedFact("sub-2", tags = mapOf("region" to "eu"), store = store)
 
@@ -240,8 +240,8 @@ class QueryResourceTest {
 
     @Test
     @Order(4)
-    @DisplayName("GET /v1/stores/{name}/facts - Should stream facts filtered by tags as NDJSON")
-    fun streamFactsByTags() {
+    @DisplayName("GET /v1/stores/{name}/facts - Should stream the facts carrying the tags as NDJSON")
+    fun streamFactsOfTags() {
         // Seeding a specific tagged fact
         seedFact("tagged-sub", mapOf("region" to "europe"))
 

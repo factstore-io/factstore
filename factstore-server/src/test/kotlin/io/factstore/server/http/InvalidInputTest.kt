@@ -89,31 +89,31 @@ class InvalidInputTest {
             case("stream the facts of an invalid subject") {
                 forward().queryParam("subject", "order 1").get(FACTS)
             },
-            case("query facts without filters") {
-                jsonToOperation(mapOf("filters" to emptyList<Any>())).post("$FACTS:query")
+            case("query facts without items") {
+                jsonToOperation(mapOf("items" to emptyList<Any>())).post("$FACTS:query")
             },
-            case("query facts with a filter without predicates") {
-                jsonToOperation(mapOf("filters" to listOf(emptyMap<String, Any>()))).post("$FACTS:query")
+            case("query facts with an item without predicates") {
+                jsonToOperation(mapOf("items" to listOf(emptyMap<String, Any>()))).post("$FACTS:query")
             },
-            case("query facts with a null filter") { jsonToOperation("""{"filters":[null]}""").post("$FACTS:query") },
+            case("query facts with a null item") { jsonToOperation("""{"items":[null]}""").post("$FACTS:query") },
             case("query facts with a null subject") {
-                jsonToOperation("""{"filters":[{"subjects":[null]}]}""").post("$FACTS:query")
+                jsonToOperation("""{"items":[{"subjects":[null]}]}""").post("$FACTS:query")
             },
             case("query facts with a null type") {
-                jsonToOperation("""{"filters":[{"types":[null]}]}""").post("$FACTS:query")
+                jsonToOperation("""{"items":[{"types":[null]}]}""").post("$FACTS:query")
             },
             case("query facts with a null tag value") {
-                jsonToOperation("""{"filters":[{"tags":{"region":null}}]}""").post("$FACTS:query")
+                jsonToOperation("""{"items":[{"tags":{"region":null}}]}""").post("$FACTS:query")
             },
             case("query facts with an invalid type") {
-                jsonToOperation(mapOf("filters" to listOf(mapOf("types" to listOf("order created"))))).post("$FACTS:query")
+                jsonToOperation(mapOf("items" to listOf(mapOf("types" to listOf("order created"))))).post("$FACTS:query")
             },
             case("query facts in an unknown direction") {
-                jsonToOperation(mapOf("filters" to listOf(mapOf("types" to listOf("T"))), "direction" to "sideways"))
+                jsonToOperation(mapOf("items" to listOf(mapOf("types" to listOf("T"))), "direction" to "sideways"))
                     .post("$FACTS:query")
             },
             case("query facts with limit 0") {
-                jsonToOperation(mapOf("filters" to listOf(mapOf("types" to listOf("T"))), "limit" to 0)).post("$FACTS:query")
+                jsonToOperation(mapOf("items" to listOf(mapOf("types" to listOf("T"))), "limit" to 0)).post("$FACTS:query")
             },
             case("stream the facts of an invalid type") {
                 forward().queryParam("type", "order created").get(FACTS)
@@ -128,7 +128,7 @@ class InvalidInputTest {
             case("query facts continued after an id that is not a UUID") {
                 jsonToOperation(
                     mapOf(
-                        "filters" to listOf(mapOf("types" to listOf("T"))),
+                        "items" to listOf(mapOf("types" to listOf("T"))),
                         "continueAfter" to "not-a-uuid",
                     )
                 ).post("$FACTS:query")

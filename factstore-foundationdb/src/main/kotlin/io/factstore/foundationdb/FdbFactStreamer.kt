@@ -22,8 +22,8 @@ import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.transform
 import java.util.concurrent.CompletableFuture
 
-const val DEFAULT_BATCH_SIZE = 10_000
-const val RAW_CHANNEL_CAPACITY = 4
+private const val DEFAULT_BATCH_SIZE = 10_000
+private const val RAW_CHANNEL_CAPACITY = 4
 
 /**
  * The number of entries a [FactStreamer] stream reads per transaction.
@@ -32,7 +32,7 @@ const val RAW_CHANNEL_CAPACITY = 4
  * limit: even at the largest fact the specification allows, about 75 kB, a batch loads
  * less than 20 MB.
  */
-const val STREAM_BATCH_SIZE = 256
+internal const val STREAM_BATCH_SIZE = 256
 
 /**
  * The number of batches a [FactStreamer] stream reads ahead of its consumer.
@@ -41,7 +41,7 @@ const val STREAM_BATCH_SIZE = 256
  * The batches read ahead wait in memory: with the batch being processed, a stream holds at
  * most 5 batches, which is about 96 MB at the largest fact size and a few MB for typical facts.
  */
-const val STREAM_PREFETCH_BATCHES = 4
+private const val STREAM_PREFETCH_BATCHES = 4
 
 /** Turns the entries of a batch into the serialized facts behind them, within the batch's transaction. */
 private typealias BatchLoader = (ReadTransaction, List<KeyValue>) -> CompletableFuture<List<ByteArray>>
@@ -80,10 +80,32 @@ class FdbFactStreamer(
             is Pinned.Resolved -> pinned
         }
         val head = pinned.head ?: return StreamFactsResult.FactStream(emptyFlow())
+        val query = request.query ?: return StreamFactsResult.FactStream(allFacts(pinned, head, request))
 
-        // The facts themselves are stored in position order, so they are their own index.
+        val source = { with(sources) { query.toSource(pinned.storeId, head, request.direction) } }
+
+        // A query that comes down to a single index range needs nothing combined: the range is
+        // scanned as it is, reading index entries and facts together. That is the case for one
+        // subject, one type, one tag, or one type and tag.
+        val range = source() as? PositionCursor
+        val facts = if (range != null) {
+            scanPinned(
+                keys = range.keys,
+                // The continuation marks a position, and needs no entry of its own in this index.
+                continueAfterKey = pinned.continueAfter?.let(range.keyOf),
+                limit = request.limit,
+            ) { tr, entries -> loadFacts(tr, pinned.storeId, entries.map { range.positionOf(it.key) }) }
+        } else {
+            positionsOf { source().continuingAfter(pinned.continueAfter) }.loadFacts(pinned.storeId, request.limit)
+        }
+
+        return StreamFactsResult.FactStream(facts)
+    }
+
+    /** Every fact of the store up to [head]: the facts are stored in position order, so they are their own index. */
+    private fun allFacts(pinned: Pinned.Resolved, head: FactPosition, request: StreamFactsRequest): Flow<Fact> {
         val factSubspace = store.context.factSubspace
-        val facts = scanPinned(
+        return scanPinned(
             keys = PinnedKeys(
                 range = factSubspace.getRange(pinned.storeId),
                 pinnedEndKey = factSubspace.getFactKey(pinned.storeId, head),
@@ -92,99 +114,6 @@ class FdbFactStreamer(
             continueAfterKey = pinned.continueAfter?.let { factSubspace.getFactKey(pinned.storeId, it) },
             limit = request.limit,
         ) { _, entries -> CompletableFuture.completedFuture(entries.map { it.value }) }
-
-        return StreamFactsResult.FactStream(facts)
-    }
-
-    override suspend fun streamFactsBySubject(request: StreamFactsBySubjectRequest): StreamFactsBySubjectResult {
-        val pinned = when (val pinned = pin(request.storeName, request.continueAfter)) {
-            Pinned.StoreMissing -> return StreamFactsBySubjectResult.StoreNotFound(request.storeName)
-            is Pinned.ContinuationMissing -> return StreamFactsBySubjectResult.ContinuationNotFound(pinned.factId)
-            is Pinned.Resolved -> pinned
-        }
-        val head = pinned.head ?: return StreamFactsBySubjectResult.FactStream(emptyFlow())
-
-        val subjectIndex = store.context.subjectIndexSubspace
-        val facts = scanPinned(
-            keys = subjectIndex.pinnedKeys(pinned.storeId, request.subject, head, request.direction),
-            // The continuation marks a position, and needs no entry of its own in this index.
-            continueAfterKey = pinned.continueAfter?.let { subjectIndex.getKey(pinned.storeId, request.subject, it) },
-            limit = request.limit,
-        ) { tr, entries -> loadFacts(tr, pinned.storeId, entries.map { subjectIndex.unpackPosition(it.key) }) }
-
-        return StreamFactsBySubjectResult.FactStream(facts)
-    }
-
-    override suspend fun streamFactsByType(request: StreamFactsByTypeRequest): StreamFactsByTypeResult {
-        val pinned = when (val pinned = pin(request.storeName, request.continueAfter)) {
-            Pinned.StoreMissing -> return StreamFactsByTypeResult.StoreNotFound(request.storeName)
-            is Pinned.ContinuationMissing -> return StreamFactsByTypeResult.ContinuationNotFound(pinned.factId)
-            is Pinned.Resolved -> pinned
-        }
-        val head = pinned.head ?: return StreamFactsByTypeResult.FactStream(emptyFlow())
-
-        val typeIndex = store.context.eventTypeIndexSubspace
-        val facts = scanPinned(
-            keys = typeIndex.pinnedKeys(pinned.storeId, request.type, head, request.direction),
-            continueAfterKey = pinned.continueAfter?.let { typeIndex.getKey(pinned.storeId, request.type, it) },
-            limit = request.limit,
-        ) { tr, entries -> loadFacts(tr, pinned.storeId, entries.map { typeIndex.unpackPosition(it.key) }) }
-
-        return StreamFactsByTypeResult.FactStream(facts)
-    }
-
-    override suspend fun streamFactsByTags(request: StreamFactsByTagsRequest): StreamFactsByTagsResult {
-        val pinned = when (val pinned = pin(request.storeName, request.continueAfter)) {
-            Pinned.StoreMissing -> return StreamFactsByTagsResult.StoreNotFound(request.storeName)
-            is Pinned.ContinuationMissing -> return StreamFactsByTagsResult.ContinuationNotFound(pinned.factId)
-            is Pinned.Resolved -> pinned
-        }
-        val head = pinned.head ?: return StreamFactsByTagsResult.FactStream(emptyFlow())
-
-        val tagsIndex = store.context.tagsIndexSubspace
-        val tags = request.tags.map { (key, value) -> key to value }
-
-        // One tag is a plain scan of its index; several are an intersection of their scans.
-        val facts = if (tags.size == 1) {
-            scanPinned(
-                keys = tagsIndex.pinnedKeys(pinned.storeId, tags.single(), head, request.direction),
-                continueAfterKey = pinned.continueAfter?.let { tagsIndex.getKey(pinned.storeId, tags.single(), it) },
-                limit = request.limit,
-            ) { tr, entries -> loadFacts(tr, pinned.storeId, entries.map { tagsIndex.unpackPosition(it.key) }) }
-        } else {
-            positionsOf {
-                AllOf(tags.map { sources.tagCursor(pinned.storeId, it, head, request.direction) }, request.direction)
-                    .continuingAfter(pinned.continueAfter)
-            }.loadFacts(pinned.storeId, request.limit)
-        }
-
-        return StreamFactsByTagsResult.FactStream(facts)
-    }
-
-    override suspend fun streamFactsByQuery(request: StreamFactsByQueryRequest): StreamFactsByQueryResult {
-        val pinned = when (val pinned = pin(request.storeName, request.continueAfter)) {
-            Pinned.StoreMissing -> return StreamFactsByQueryResult.StoreNotFound(request.storeName)
-            is Pinned.ContinuationMissing -> return StreamFactsByQueryResult.ContinuationNotFound(pinned.factId)
-            is Pinned.Resolved -> pinned
-        }
-        val head = pinned.head ?: return StreamFactsByQueryResult.FactStream(emptyFlow())
-
-        val source = { with(sources) { request.query.toSource(pinned.storeId, head, request.direction) } }
-
-        // A query that comes down to a single index range needs nothing combined: the range is
-        // scanned as for a single subject, type or tag, reading index entries and facts together.
-        val range = source() as? PositionCursor
-        val facts = if (range != null) {
-            scanPinned(
-                keys = range.keys,
-                continueAfterKey = pinned.continueAfter?.let(range.keyOf),
-                limit = request.limit,
-            ) { tr, entries -> loadFacts(tr, pinned.storeId, entries.map { range.positionOf(it.key) }) }
-        } else {
-            positionsOf { source().continuingAfter(pinned.continueAfter) }.loadFacts(pinned.storeId, request.limit)
-        }
-
-        return StreamFactsByQueryResult.FactStream(facts)
     }
 
     /**
@@ -326,7 +255,7 @@ class FdbFactStreamer(
         val futures = positions.map { position ->
             with(tr) { store.context.factSubspace.findFact(storeId, position) }.thenApply { fact ->
                 // An index entry and its fact are written, and removed, in the same transaction.
-                fact ?: throw IllegalStateException("Store $storeId has an index entry at $position without a fact.")
+                fact ?: error("Store $storeId has an index entry at $position without a fact.")
             }
         }
         return CompletableFuture.allOf(*futures.toTypedArray()).thenApply { futures.map { it.resultNow() } }

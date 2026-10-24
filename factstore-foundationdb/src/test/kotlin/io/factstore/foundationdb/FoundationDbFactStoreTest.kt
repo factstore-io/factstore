@@ -6,7 +6,8 @@ import com.apple.foundationdb.tuple.ByteArrayUtil
 import com.apple.foundationdb.subspace.Subspace
 import com.apple.foundationdb.tuple.Tuple
 import com.apple.foundationdb.tuple.Versionstamp
-import io.factstore.core.FactFilter
+import io.factstore.core.append
+import io.factstore.core.FactQueryItem
 import io.factstore.core.FactQuery
 import io.factstore.core.ReadDirection
 import io.factstore.core.StoreId
@@ -56,24 +57,24 @@ class FactStoreTest : AbstractFactStoreTest() {
         @Container
         val testFdbCluster = FoundationDBContainer(DockerImageName.parse("foundationdb/foundationdb:$FDB_VERSION"))
 
-        private fun query(vararg filters: FactFilter) = FactQuery(filters.toList())
+        private fun query(vararg items: FactQueryItem) = FactQuery(items.toList())
 
         private val region = TagKey("region") to TagValue("eu")
         private val tier = TagKey("tier") to TagValue("gold")
 
         @JvmStatic
         fun singleRangeQueries(): List<Arguments> = listOf(
-            arguments("one subject", query(FactFilter(subjects = setOf(Subject("order/1")))), true),
-            arguments("one type", query(FactFilter(types = setOf(FactType("T")))), true),
-            arguments("one tag", query(FactFilter(tags = mapOf(region))), true),
-            arguments("one type and one tag", query(FactFilter(types = setOf(FactType("T")), tags = mapOf(region))), true),
-            arguments("two subjects", query(FactFilter(subjects = setOf(Subject("order/1"), Subject("order/2")))), false),
-            arguments("two tags", query(FactFilter(tags = mapOf(region, tier))), false),
-            arguments("a subject and a type", query(FactFilter(subjects = setOf(Subject("order/1")), types = setOf(FactType("T")))), false),
-            arguments("one type and two tags", query(FactFilter(types = setOf(FactType("T")), tags = mapOf(region, tier))), false),
+            arguments("one subject", query(FactQueryItem(subjects = setOf(Subject("order/1")))), true),
+            arguments("one type", query(FactQueryItem(types = setOf(FactType("T")))), true),
+            arguments("one tag", query(FactQueryItem(tags = mapOf(region))), true),
+            arguments("one type and one tag", query(FactQueryItem(types = setOf(FactType("T")), tags = mapOf(region))), true),
+            arguments("two subjects", query(FactQueryItem(subjects = setOf(Subject("order/1"), Subject("order/2")))), false),
+            arguments("two tags", query(FactQueryItem(tags = mapOf(region, tier))), false),
+            arguments("a subject and a type", query(FactQueryItem(subjects = setOf(Subject("order/1")), types = setOf(FactType("T")))), false),
+            arguments("one type and two tags", query(FactQueryItem(types = setOf(FactType("T")), tags = mapOf(region, tier))), false),
             arguments(
-                "two filters of one subject each",
-                query(FactFilter(subjects = setOf(Subject("order/1"))), FactFilter(subjects = setOf(Subject("order/2")))),
+                "two items of one subject each",
+                query(FactQueryItem(subjects = setOf(Subject("order/1"))), FactQueryItem(subjects = setOf(Subject("order/2")))),
                 false,
             ),
         )

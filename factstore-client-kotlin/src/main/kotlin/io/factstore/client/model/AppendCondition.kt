@@ -1,23 +1,23 @@
 package io.factstore.client.model
 
-sealed class AppendCondition {
+sealed interface AppendCondition {
 
     data class ExpectedLastFact(
         val subject: String,
         val expectedLastFactId: String? = null,
-    ) : AppendCondition()
+    ) : AppendCondition
 
     /**
-     * Fails the append if a fact matching any of [filters] was appended after [afterFactId], the
-     * last fact the decision read, or, without it, if any fact matches at all.
+     * Fails the append if a fact matching [query] was appended after [afterFactId], the last fact
+     * the decision read, or, without it, if any fact matches at all.
      *
      * An [afterFactId] the store does not have fails the append with
      * [io.factstore.client.exceptions.AfterFactNotFoundException].
      */
     data class NoneMatch(
-        val filters: List<FactFilter>,
+        val query: FactQuery,
         val afterFactId: String? = null,
-    ) : AppendCondition()
+    ) : AppendCondition
 
     /**
      * Composite condition: all nested conditions must be satisfied (logical AND).
@@ -26,5 +26,5 @@ sealed class AppendCondition {
      */
     data class All(
         val conditions: List<AppendCondition>,
-    ) : AppendCondition()
+    ) : AppendCondition
 }

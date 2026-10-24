@@ -8,48 +8,56 @@ import org.junit.jupiter.api.assertThrows
 class FactQueryValidationTest {
 
     @Test
-    @DisplayName("A query requires at least one filter")
-    fun filtersMustNotBeEmpty() {
+    @DisplayName("A query requires at least one item")
+    fun itemsMustNotBeEmpty() {
         val ex = assertThrows<IllegalArgumentException> { FactQuery(emptyList()) }
 
-        assertThat(ex.message).isEqualTo("A query must contain at least one filter.")
+        assertThat(ex.message).isEqualTo("A query must contain at least one item.")
     }
 
     @Test
-    @DisplayName("A query is limited in the number of filters")
-    fun filtersAreLimited() {
-        val filters = (1..FactQuery.MAX_FILTERS + 1).map { FactFilter(types = setOf(FactType("T$it"))) }
+    @DisplayName("A query is limited in the number of items")
+    fun itemsAreLimited() {
+        val items = (1..FactQuery.MAX_ITEMS + 1).map { FactQueryItem(types = setOf(FactType("T$it"))) }
 
-        val ex = assertThrows<IllegalArgumentException> { FactQuery(filters) }
+        val ex = assertThrows<IllegalArgumentException> { FactQuery(items) }
 
-        assertThat(ex.message).contains("not contain more than ${FactQuery.MAX_FILTERS} filters")
+        assertThat(ex.message).contains("not contain more than ${FactQuery.MAX_ITEMS} items")
     }
 
     @Test
-    @DisplayName("A filter must constrain something")
-    fun filterMustConstrainAPredicate() {
-        val ex = assertThrows<IllegalArgumentException> { FactFilter() }
+    @DisplayName("A query item must constrain something")
+    fun itemMustConstrainAPredicate() {
+        val ex = assertThrows<IllegalArgumentException> { FactQueryItem() }
 
-        assertThat(ex.message).isEqualTo("A filter must constrain at least one of subjects, types or tags.")
+        assertThat(ex.message).isEqualTo("A query item must constrain at least one of subjects, types or tags.")
     }
 
     @Test
-    @DisplayName("A filter is limited in subjects, types and tags")
+    @DisplayName("A query item is limited in subjects, types and tags")
     fun predicatesAreLimited() {
-        val subjects = (1..FactFilter.MAX_SUBJECTS + 1).map { Subject("subject/$it") }.toSet()
-        val types = (1..FactFilter.MAX_TYPES + 1).map { FactType("TYPE_$it") }.toSet()
+        val subjects = (1..FactQueryItem.MAX_SUBJECTS + 1).map { Subject("subject/$it") }.toSet()
+        val types = (1..FactQueryItem.MAX_TYPES + 1).map { FactType("TYPE_$it") }.toSet()
         val tags = (1..FactInput.MAX_TAGS + 1).associate { TagKey("key$it") to TagValue("value") }
 
-        assertThat(assertThrows<IllegalArgumentException> { FactFilter(subjects = subjects) }.message)
-            .contains("not match more than ${FactFilter.MAX_SUBJECTS} subjects")
-        assertThat(assertThrows<IllegalArgumentException> { FactFilter(types = types) }.message)
-            .contains("not match more than ${FactFilter.MAX_TYPES} types")
-        assertThat(assertThrows<IllegalArgumentException> { FactFilter(tags = tags) }.message)
+        assertThat(assertThrows<IllegalArgumentException> { FactQueryItem(subjects = subjects) }.message)
+            .contains("not match more than ${FactQueryItem.MAX_SUBJECTS} subjects")
+        assertThat(assertThrows<IllegalArgumentException> { FactQueryItem(types = types) }.message)
+            .contains("not match more than ${FactQueryItem.MAX_TYPES} types")
+        assertThat(assertThrows<IllegalArgumentException> { FactQueryItem(tags = tags) }.message)
             .contains("At most ${FactInput.MAX_TAGS} tags")
     }
 
     @Test
-    @DisplayName("A filter matches a fact only when every predicate it sets holds")
+    @DisplayName("A query item accepts as many tags as a fact can carry")
+    fun maximumTagsAreAccepted() {
+        val tags = (1..FactInput.MAX_TAGS).associate { TagKey("key$it") to TagValue("value") }
+
+        assertThat(FactQueryItem(tags = tags).tags).hasSize(FactInput.MAX_TAGS)
+    }
+
+    @Test
+    @DisplayName("A query item matches a fact only when every predicate it sets holds")
     fun matchesEveryPredicate() {
         val fact = Fact(
             id = FactId.generate(),
@@ -60,9 +68,9 @@ class FactQueryValidationTest {
             tags = mapOf(TagKey("role") to TagValue("admin")),
         )
 
-        assertThat(FactFilter(subjects = setOf(Subject("user/1"))).matches(fact)).isTrue()
-        assertThat(FactFilter(types = setOf(FactType("USER_CREATED")), tags = mapOf(TagKey("role") to TagValue("admin"))).matches(fact)).isTrue()
-        assertThat(FactFilter(types = setOf(FactType("USER_LOCKED"))).matches(fact)).isFalse()
-        assertThat(FactFilter(subjects = setOf(Subject("user/1")), tags = mapOf(TagKey("role") to TagValue("user"))).matches(fact)).isFalse()
+        assertThat(FactQueryItem(subjects = setOf(Subject("user/1"))).matches(fact)).isTrue()
+        assertThat(FactQueryItem(types = setOf(FactType("USER_CREATED")), tags = mapOf(TagKey("role") to TagValue("admin"))).matches(fact)).isTrue()
+        assertThat(FactQueryItem(types = setOf(FactType("USER_LOCKED"))).matches(fact)).isFalse()
+        assertThat(FactQueryItem(subjects = setOf(Subject("user/1")), tags = mapOf(TagKey("role") to TagValue("user"))).matches(fact)).isFalse()
     }
 }

@@ -14,7 +14,7 @@ import io.factstore.client.model.AppendCondition
 import io.factstore.client.model.AppendFactsBuilder
 import io.factstore.client.model.AppendOutcome
 import io.factstore.client.model.Fact
-import io.factstore.client.model.FactFilter
+import io.factstore.client.model.FactQuery
 import io.factstore.client.model.FactInput
 import io.factstore.client.model.ReadDirection
 import io.factstore.client.model.SubscribeStartPosition
@@ -24,11 +24,6 @@ import io.factstore.grpc.v1.factExistsRequest
 import io.factstore.grpc.v1.fromBeginning
 import io.factstore.grpc.v1.fromEnd
 import io.factstore.grpc.v1.getFactRequest
-import io.factstore.grpc.v1.streamFactsBySubjectRequest
-import io.factstore.grpc.v1.factQuery
-import io.factstore.grpc.v1.streamFactsByQueryRequest
-import io.factstore.grpc.v1.streamFactsByTagsRequest
-import io.factstore.grpc.v1.streamFactsByTypeRequest
 import io.factstore.grpc.v1.streamFactsRequest
 import io.factstore.grpc.v1.subscribeFactsRequest
 import kotlinx.coroutines.flow.Flow
@@ -103,136 +98,25 @@ class FactOperations internal constructor(
     }
 
     /**
-     * Streams all facts of a store, up to the newest fact at the time of the call, then completes.
+     * Streams the facts of a store, all of them or those matching [query], up to the newest fact
+     * at the time of the call, then completes.
      *
-     * Throws [StoreNotFoundException] when collected if the store does not exist.
+     * A fact matches a query when it matches any of its items, and a fact matching several of
+     * them is streamed once. Throws [StoreNotFoundException] when collected if the store does not
+     * exist.
      *
+     * @param query the facts to stream, or `null` for every fact of the store
      * @param limit the maximum number of facts to emit, or `null` for all of them
      */
     fun streamFacts(
         storeName: String,
         direction: ReadDirection,
+        query: FactQuery? = null,
         limit: Int? = null,
         continueAfter: String? = null,
     ): Flow<Fact> = stub.streamFacts(streamFactsRequest {
         this.storeName = storeName
-        this.direction = direction.toProto()
-        limit?.let { this.limit = it }
-        continueAfter?.let { this.continueAfterFactId = it }
-    }).toFactFlow { response ->
-        when {
-            response.hasBatch() -> response.batch.factsList.forEach { emit(it.toDomain()) }
-            response.hasStoreNotFound() -> throw StoreNotFoundException(storeName)
-            response.hasContinuationNotFound() -> throw ContinuationNotFoundException(response.continuationNotFound.factId)
-            else -> error("Unexpected stream message: $response")
-        }
-    }
-
-    /**
-     * Streams the facts of a subject, up to the newest fact at the time of the call, then completes.
-     *
-     * Throws [StoreNotFoundException] when collected if the store does not exist.
-     *
-     * @param limit the maximum number of facts to emit, or `null` for all of them
-     */
-    fun streamFactsBySubject(
-        storeName: String,
-        subject: String,
-        direction: ReadDirection,
-        limit: Int? = null,
-        continueAfter: String? = null,
-    ): Flow<Fact> = stub.streamFactsBySubject(streamFactsBySubjectRequest {
-        this.storeName = storeName
-        this.subject = subject
-        this.direction = direction.toProto()
-        limit?.let { this.limit = it }
-        continueAfter?.let { this.continueAfterFactId = it }
-    }).toFactFlow { response ->
-        when {
-            response.hasBatch() -> response.batch.factsList.forEach { emit(it.toDomain()) }
-            response.hasStoreNotFound() -> throw StoreNotFoundException(storeName)
-            response.hasContinuationNotFound() -> throw ContinuationNotFoundException(response.continuationNotFound.factId)
-            else -> error("Unexpected stream message: $response")
-        }
-    }
-
-    /**
-     * Streams the facts of one type, up to the newest fact at the time of the call, then completes.
-     *
-     * The type is matched exactly. Throws [StoreNotFoundException] when collected if the store
-     * does not exist.
-     *
-     * @param limit the maximum number of facts to emit, or `null` for all of them
-     */
-    fun streamFactsByType(
-        storeName: String,
-        type: String,
-        direction: ReadDirection,
-        limit: Int? = null,
-        continueAfter: String? = null,
-    ): Flow<Fact> = stub.streamFactsByType(streamFactsByTypeRequest {
-        this.storeName = storeName
-        this.type = type
-        this.direction = direction.toProto()
-        limit?.let { this.limit = it }
-        continueAfter?.let { this.continueAfterFactId = it }
-    }).toFactFlow { response ->
-        when {
-            response.hasBatch() -> response.batch.factsList.forEach { emit(it.toDomain()) }
-            response.hasStoreNotFound() -> throw StoreNotFoundException(storeName)
-            response.hasContinuationNotFound() -> throw ContinuationNotFoundException(response.continuationNotFound.factId)
-            else -> error("Unexpected stream message: $response")
-        }
-    }
-
-    /**
-     * Streams the facts carrying all of the given tags, up to the newest fact at the time of the
-     * call, then completes.
-     *
-     * Throws [StoreNotFoundException] when collected if the store does not exist.
-     *
-     * @param tags the tags a fact must carry, all of them; at least one
-     * @param limit the maximum number of facts to emit, or `null` for all of them
-     */
-    fun streamFactsByTags(
-        storeName: String,
-        tags: Map<String, String>,
-        direction: ReadDirection,
-        limit: Int? = null,
-        continueAfter: String? = null,
-    ): Flow<Fact> = stub.streamFactsByTags(streamFactsByTagsRequest {
-        this.storeName = storeName
-        this.tags.putAll(tags)
-        this.direction = direction.toProto()
-        limit?.let { this.limit = it }
-        continueAfter?.let { this.continueAfterFactId = it }
-    }).toFactFlow { response ->
-        when {
-            response.hasBatch() -> response.batch.factsList.forEach { emit(it.toDomain()) }
-            response.hasStoreNotFound() -> throw StoreNotFoundException(storeName)
-            response.hasContinuationNotFound() -> throw ContinuationNotFoundException(response.continuationNotFound.factId)
-            else -> error("Unexpected stream message: $response")
-        }
-    }
-
-    /**
-     * Streams the facts matching [filters], up to the newest fact at the time of the call, then
-     * completes.
-     *
-     * A fact matches when it matches any of the filters, and a fact matching several of them is
-     * streamed once. Throws [StoreNotFoundException] when collected if the store does not exist.
-     *
-     * @param limit the maximum number of facts to emit, or `null` for all of them
-     */
-    fun streamFactsByQuery(
-        storeName: String,
-        filters: List<FactFilter>,
-        direction: ReadDirection,
-        limit: Int? = null,
-        continueAfter: String? = null,
-    ): Flow<Fact> = stub.streamFactsByQuery(streamFactsByQueryRequest {
-        this.storeName = storeName
-        this.query = factQuery { this.filters += filters.map { it.toProto() } }
+        query?.let { this.query = it.toProto() }
         this.direction = direction.toProto()
         limit?.let { this.limit = it }
         continueAfter?.let { this.continueAfterFactId = it }

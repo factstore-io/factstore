@@ -34,23 +34,21 @@ class QueryResource(
     @Path("/facts:query")
     @Operation(
         summary = "Stream the facts matching a query",
-        description = "A fact matches when it matches any of the query's filters, and a fact matching " +
+        description = "A fact matches when it matches any of the query's items, and a fact matching " +
             "several of them is streamed once. " + FACT_STREAM_DESCRIPTION,
     )
-    fun streamFactsByQuery(
+    fun queryFacts(
         @PathParam("storeName") storeName: String,
-        request: StreamFactsByQueryHttpRequest,
+        request: QueryFactsHttpRequest,
     ): Multi<FactStreamLineHttp> =
         streamOfLines { request.toDomainRequest(storeName).publishTo(store).toResponse() }
-
-
 
     @GET
     @Produces(APPLICATION_NDJSON)
     @RestStreamElementType(APPLICATION_JSON)
     @Path("/facts")
     @Operation(
-        summary = "Stream the facts of a store, optionally filtered by subject, type and tags",
+        summary = "Stream the facts of a store, all of them or those of one subject, type and tag selection",
         description = FACT_STREAM_DESCRIPTION,
     )
     fun streamFacts(
@@ -62,14 +60,9 @@ class QueryResource(
         @QueryParam("direction") @Parameter(schema = Schema(enumeration = ["forward", "backward"], defaultValue = "forward")) direction: String? = null,
         @QueryParam("limit") @Parameter(schema = Schema(type = SchemaType.INTEGER, minimum = "1")) limit: String? = null,
     ): Multi<FactStreamLineHttp> = streamOfLines {
-        // Without criteria the whole store is read. Any criteria form one filter, and the store
-        // chooses the cheapest read for it.
-        if (subjects.isEmpty() && types.isEmpty() && tags.isEmpty()) {
-            streamFactsRequest(storeName, continueAfter, direction, limit).publishTo(store).toResponse()
-        } else {
-            streamFactsByFilterRequest(storeName, subjects, types, tags, continueAfter, direction, limit)
-                .publishTo(store).toResponse()
-        }
+        // Without criteria the whole store is read. Any criteria form one query item, and the
+        // store chooses the cheapest read for it.
+        streamFactsRequest(storeName, subjects, types, tags, continueAfter, direction, limit).publishTo(store).toResponse()
     }
 
     private companion object {

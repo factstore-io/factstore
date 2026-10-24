@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from "~/components/ui/select"
 import { FactTable } from "~/components/FactTable"
-import { queryFacts, type Fact, type FactFilter } from "~/lib/api"
+import { queryFacts, type Fact, type FactQueryItem } from "~/lib/api"
 
 export function meta({ params }: Route.MetaArgs) {
   return [{ title: `Facts — ${params.storeName} — FactStore Explorer` }]
@@ -23,7 +23,7 @@ export function meta({ params }: Route.MetaArgs) {
 type QueryMode = "all" | "tags" | "subject" | "type" | "query"
 
 
-type QueryFilterInput = { id: number; subjects: string; types: string; tags: string }
+type QueryItemInput = { id: number; subjects: string; types: string; tags: string }
 
 const MODE_LABELS: Record<QueryMode, string> = {
   all: "All Facts",
@@ -33,30 +33,30 @@ const MODE_LABELS: Record<QueryMode, string> = {
   query: "Query",
 }
 
-/** Turns the comma-separated inputs of one filter into the shape the API expects. */
-function toFactFilter(input: QueryFilterInput): FactFilter {
+/** Turns the comma-separated inputs of one query item into the shape the API expects. */
+function toFactQueryItem(input: QueryItemInput): FactQueryItem {
   const values = (raw: string) => raw.split(",").map((value) => value.trim()).filter(Boolean)
-  const filter: FactFilter = {}
+  const item: FactQueryItem = {}
 
   const subjects = values(input.subjects)
-  if (subjects.length > 0) filter.subjects = subjects
+  if (subjects.length > 0) item.subjects = subjects
 
   const types = values(input.types)
-  if (types.length > 0) filter.types = types
+  if (types.length > 0) item.types = types
 
   const tags = values(input.tags).map(toTag)
   if (tags.length > 0) {
     const keys = new Set<string>()
     for (const [key] of tags) {
       if (keys.has(key)) {
-        throw new Error(`Tag '${key}' is given more than once. To match any of several values, add a filter.`)
+        throw new Error(`Tag '${key}' is given more than once. To match any of several values, add an item.`)
       }
       keys.add(key)
     }
-    filter.tags = Object.fromEntries(tags)
+    item.tags = Object.fromEntries(tags)
   }
 
-  return filter
+  return item
 }
 
 /** Splits `key=value` at the first `=`, so that the value may contain one itself. */
@@ -85,9 +85,9 @@ export default function FactsPage() {
   // type
   const [type, setType] = useState("")
 
-  // query: each filter matches subjects, types and tags; a fact matches when any filter does
-  const filterIdRef = useRef(1)
-  const [queryFilters, setQueryFilters] = useState<QueryFilterInput[]>([
+  // query: each item matches subjects, types and tags; a fact matches when any item does
+  const itemIdRef = useRef(1)
+  const [queryItems, setQueryItems] = useState<QueryItemInput[]>([
     { id: 0, subjects: "", types: "", tags: "" },
   ])
 
@@ -101,8 +101,8 @@ export default function FactsPage() {
   const [error, setError] = useState<string | null>(null)
   const [queried, setQueried] = useState(false)
 
-  const updateFilter = (index: number, patch: Partial<QueryFilterInput>) =>
-    setQueryFilters((filters) => filters.map((filter, i) => (i === index ? { ...filter, ...patch } : filter)))
+  const updateItem = (index: number, patch: Partial<QueryItemInput>) =>
+    setQueryItems((items) => items.map((item, i) => (i === index ? { ...item, ...patch } : item)))
 
   const runQuery = useCallback(async () => {
     if (!storeName) return
@@ -156,15 +156,15 @@ export default function FactsPage() {
           direction,
         })
       } else {
-        const filters = queryFilters.map(toFactFilter).filter((filter) => Object.keys(filter).length > 0)
-        if (filters.length === 0) {
-          setError("Add at least one filter with a subject, a type or a tag before running a query.")
+        const items = queryItems.map(toFactQueryItem).filter((item) => Object.keys(item).length > 0)
+        if (items.length === 0) {
+          setError("Add at least one item with a subject, a type or a tag before running a query.")
           setLoading(false)
           return
         }
         result = await queryFacts(storeName, {
           mode: "query",
-          filters,
+          items,
           limit: Number(limit) || 0,
           direction,
         })
@@ -176,7 +176,7 @@ export default function FactsPage() {
     } finally {
       setLoading(false)
     }
-  }, [storeName, mode, tagInputs, subject, type, queryFilters, limit, direction])
+  }, [storeName, mode, tagInputs, subject, type, queryItems, limit, direction])
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 space-y-6">
@@ -292,38 +292,38 @@ export default function FactsPage() {
         {mode === "query" && (
           <div className="space-y-3">
             <p className="text-xs text-muted-foreground">
-              A fact matches when it matches any filter. Within a filter, subjects, types and tags must all
+              A fact matches when it matches any item. Within an item, subjects, types and tags must all
               hold; subjects and types are comma-separated and match any of their values.
             </p>
-            {queryFilters.map((filter, i) => (
-              <div key={filter.id} className="rounded-lg border border-border p-3 space-y-2">
+            {queryItems.map((item, i) => (
+              <div key={item.id} className="rounded-lg border border-border p-3 space-y-2">
                 <div className="flex items-center justify-between">
-                  <Label className="text-xs">Filter {i + 1}</Label>
+                  <Label className="text-xs">Item {i + 1}</Label>
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    disabled={queryFilters.length === 1}
-                    onClick={() => setQueryFilters(queryFilters.filter((_, j) => j !== i))}
+                    disabled={queryItems.length === 1}
+                    onClick={() => setQueryItems(queryItems.filter((_, j) => j !== i))}
                   >
                     <X className="size-3.5" />
                   </Button>
                 </div>
                 <div className="grid gap-2 md:grid-cols-3">
                   <Input
-                    value={filter.subjects}
-                    onChange={(e) => updateFilter(i, { subjects: e.target.value })}
+                    value={item.subjects}
+                    onChange={(e) => updateItem(i, { subjects: e.target.value })}
                     placeholder="subjects: order/1, order/2"
                     className="font-mono text-xs h-8"
                   />
                   <Input
-                    value={filter.types}
-                    onChange={(e) => updateFilter(i, { types: e.target.value })}
+                    value={item.types}
+                    onChange={(e) => updateItem(i, { types: e.target.value })}
                     placeholder="types: OrderPlaced, OrderPaid"
                     className="font-mono text-xs h-8"
                   />
                   <Input
-                    value={filter.tags}
-                    onChange={(e) => updateFilter(i, { tags: e.target.value })}
+                    value={item.tags}
+                    onChange={(e) => updateItem(i, { tags: e.target.value })}
                     placeholder="tags: region=eu, tier=gold"
                     className="font-mono text-xs h-8"
                   />
@@ -335,11 +335,11 @@ export default function FactsPage() {
               size="sm"
               className="text-xs h-7"
               onClick={() =>
-                setQueryFilters([...queryFilters, { id: filterIdRef.current++, subjects: "", types: "", tags: "" }])
+                setQueryItems([...queryItems, { id: itemIdRef.current++, subjects: "", types: "", tags: "" }])
               }
             >
               <Plus className="size-3" />
-              Add filter
+              Add item
             </Button>
           </div>
         )}

@@ -1,17 +1,13 @@
 package io.factstore.server.grpc
 
-import com.google.protobuf.Timestamp
 import io.factstore.core.*
 import io.factstore.grpc.v1.*
 import io.factstore.server.input.*
-import java.time.Instant
 import io.factstore.core.ReadDirection as CoreReadDirection
 
 /*
  * Parses gRPC input into the specification's requests.
  */
-
-internal fun Timestamp.toInstant(): Instant = Instant.ofEpochSecond(seconds, nanos.toLong())
 
 /** Every read states its direction: an unset or unknown direction is invalid input. */
 internal fun FactStoreProto.ReadDirection.toCore(): CoreReadDirection = when (this) {
@@ -116,67 +112,20 @@ typealias GrpcStreamFactsRequest = FactStoreProto.StreamFactsRequest
 internal fun GrpcStreamFactsRequest.toDomainRequest(): StreamFactsRequest = parseRequest {
     StreamFactsRequest(
         storeName = storeName.asStoreName(),
+        query = if (hasQuery()) query.toDomain() else null,
         continueAfter = if (hasContinueAfterFactId()) continueAfterFactId.asFactId() else null,
         direction = direction.toCore(),
         limit = if (hasLimit()) Limit.of(limit) else Limit.None,
     )
 }
 
-internal fun FactStoreProto.FactFilter.toDomain(): FactFilter = FactFilter(
+internal fun FactStoreProto.FactQueryItem.toDomain(): FactQueryItem = FactQueryItem(
     subjects = subjectsList.map { it.asSubject() }.toSet(),
     types = typesList.map { it.asFactType() }.toSet(),
     tags = tagsMap.asTags(),
 )
 
-internal fun FactStoreProto.FactQuery.toDomain(): FactQuery = FactQuery(filtersList.map { it.toDomain() })
-
-typealias GrpcStreamFactsByQueryRequest = FactStoreProto.StreamFactsByQueryRequest
-
-internal fun GrpcStreamFactsByQueryRequest.toDomainRequest(): StreamFactsByQueryRequest = parseRequest {
-    StreamFactsByQueryRequest(
-        storeName = storeName.asStoreName(),
-        query = query.toDomain(),
-        continueAfter = if (hasContinueAfterFactId()) continueAfterFactId.asFactId() else null,
-        direction = direction.toCore(),
-        limit = if (hasLimit()) Limit.of(limit) else Limit.None,
-    )
-}
-
-typealias GrpcStreamFactsByTagsRequest = FactStoreProto.StreamFactsByTagsRequest
-
-internal fun GrpcStreamFactsByTagsRequest.toDomainRequest(): StreamFactsByTagsRequest = parseRequest {
-    StreamFactsByTagsRequest(
-        storeName = storeName.asStoreName(),
-        tags = tagsMap.asTags(),
-        continueAfter = if (hasContinueAfterFactId()) continueAfterFactId.asFactId() else null,
-        direction = direction.toCore(),
-        limit = if (hasLimit()) Limit.of(limit) else Limit.None,
-    )
-}
-
-typealias GrpcStreamFactsByTypeRequest = FactStoreProto.StreamFactsByTypeRequest
-
-internal fun GrpcStreamFactsByTypeRequest.toDomainRequest(): StreamFactsByTypeRequest = parseRequest {
-    StreamFactsByTypeRequest(
-        storeName = storeName.asStoreName(),
-        type = type.asFactType(),
-        continueAfter = if (hasContinueAfterFactId()) continueAfterFactId.asFactId() else null,
-        direction = direction.toCore(),
-        limit = if (hasLimit()) Limit.of(limit) else Limit.None,
-    )
-}
-
-typealias GrpcStreamFactsBySubjectRequest = FactStoreProto.StreamFactsBySubjectRequest
-
-internal fun GrpcStreamFactsBySubjectRequest.toDomainRequest(): StreamFactsBySubjectRequest = parseRequest {
-    StreamFactsBySubjectRequest(
-        storeName = storeName.asStoreName(),
-        subject = subject.asSubject(),
-        continueAfter = if (hasContinueAfterFactId()) continueAfterFactId.asFactId() else null,
-        direction = direction.toCore(),
-        limit = if (hasLimit()) Limit.of(limit) else Limit.None,
-    )
-}
+internal fun FactStoreProto.FactQuery.toDomain(): FactQuery = FactQuery(itemsList.map { it.toDomain() })
 
 typealias GrpcSubscribeFactsRequest = FactStoreProto.SubscribeFactsRequest
 

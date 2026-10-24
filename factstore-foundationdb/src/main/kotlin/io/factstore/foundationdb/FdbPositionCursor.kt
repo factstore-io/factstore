@@ -157,7 +157,7 @@ private suspend fun List<PositionSource>.readTogether() {
 /**
  * The positions of any of the [sources]: their union, each position visited once.
  *
- * This is how a filter matches several subjects or types, and how a query combines its filters.
+ * This is how a query item matches several subjects or types, and how a query combines its items.
  */
 internal class AnyOf(private val sources: List<PositionSource>, direction: ReadDirection) : PositionSource {
 
@@ -189,7 +189,7 @@ internal class AnyOf(private val sources: List<PositionSource>, direction: ReadD
 /**
  * The positions every one of the [sources] has: their intersection.
  *
- * This is how a filter requires a subject and a type and several tags at once. The sources are
+ * This is how a query item requires a subject and a type and several tags at once. The sources are
  * advanced in step, like a merge join: whichever source is furthest ahead sets the position to
  * meet, and the others skip to it.
  */

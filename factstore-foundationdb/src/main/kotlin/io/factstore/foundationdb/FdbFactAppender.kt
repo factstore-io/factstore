@@ -11,8 +11,8 @@ import kotlinx.coroutines.future.future
 import kotlinx.coroutines.supervisorScope
 import java.time.Instant
 
-const val REVERSED = true
-const val LIMIT_ONE = 1
+private const val REVERSED = true
+private const val LIMIT_ONE = 1
 
 /**
  * The number of keys a cursor of an append condition reads at a time.
@@ -21,24 +21,11 @@ const val LIMIT_ONE = 1
  * while an intersection walks its ranges in step and is cheaper with larger batches. Every key is
  * read within the append's transaction.
  */
-const val CONDITION_BATCH_SIZE = 256
+private const val CONDITION_BATCH_SIZE = 256
 
 class FdbFactAppender(
     private val store: FdbFactStore,
 ) : FactAppender {
-
-    override suspend fun append(storeName: StoreName, fact: FactInput): AppendResult =
-        append(storeName, listOf(fact))
-
-    override suspend fun append(storeName: StoreName, facts: List<FactInput>): AppendResult =
-        append(
-            AppendRequest(
-                storeName = storeName,
-                facts = facts,
-                idempotencyKey = IdempotencyKey(),
-                condition = AppendCondition.None
-            )
-        )
 
     /**
      * Appends within one transaction, which FoundationDB retries as a whole on a conflict.

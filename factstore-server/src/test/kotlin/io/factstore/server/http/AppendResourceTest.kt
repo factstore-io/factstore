@@ -113,7 +113,7 @@ class AppendResourceTest {
         val fact = mapOf("type" to "order.archived", "subject" to "order-8", "payload" to mapOf("data" to "e30="))
         val condition = mapOf(
             "type" to "noneMatch",
-            "query" to mapOf("filters" to listOf(mapOf("types" to listOf("order.archived")))),
+            "query" to mapOf("items" to listOf(mapOf("types" to listOf("order.archived")))),
         )
 
         given()
@@ -145,7 +145,7 @@ class AppendResourceTest {
             "facts" to listOf(mapOf("type" to "test", "subject" to "sub-1", "payload" to mapOf("data" to "e30="))),
             "condition" to mapOf(
                 "type" to "noneMatch",
-                "query" to mapOf("filters" to listOf(mapOf("subjects" to listOf("sub-1")))),
+                "query" to mapOf("items" to listOf(mapOf("subjects" to listOf("sub-1")))),
                 "after" to unknownId,
             ),
         )

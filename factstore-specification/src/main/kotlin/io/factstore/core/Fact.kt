@@ -1,7 +1,7 @@
 package io.factstore.core
 
 import java.time.Instant
-import java.util.*
+import java.util.UUID
 
 /**
  * Represents an immutable fact stored in the FactStore.

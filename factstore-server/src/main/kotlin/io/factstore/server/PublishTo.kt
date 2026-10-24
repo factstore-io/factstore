@@ -18,18 +18,6 @@ internal suspend fun ExistsByIdRequest.publishTo(factStore: FactStore): ExistsBy
 internal suspend fun StreamFactsRequest.publishTo(factStore: FactStore): StreamFactsResult =
     factStore.streamFacts(this)
 
-internal suspend fun StreamFactsBySubjectRequest.publishTo(factStore: FactStore): StreamFactsBySubjectResult =
-    factStore.streamFactsBySubject(this)
-
-internal suspend fun StreamFactsByTypeRequest.publishTo(factStore: FactStore): StreamFactsByTypeResult =
-    factStore.streamFactsByType(this)
-
-internal suspend fun StreamFactsByTagsRequest.publishTo(factStore: FactStore): StreamFactsByTagsResult =
-    factStore.streamFactsByTags(this)
-
-internal suspend fun StreamFactsByQueryRequest.publishTo(factStore: FactStore): StreamFactsByQueryResult =
-    factStore.streamFactsByQuery(this)
-
 internal suspend fun SubscribeRequest.publishTo(factStore: FactStore): SubscribeResult =
     factStore.subscribe(this)
 

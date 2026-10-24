@@ -10,7 +10,9 @@
 - HTTP carries both as **NDJSON**, one single-key object per line. A bounded stream is complete
   only when it closes with an `end` line.
 - A stream **continues after a fact ID**, the same cursor for bounded reads and subscriptions.
-- The HTTP read surface is **two endpoints**, `GET /facts` for one filter and `POST /facts:query`
+- A bounded read is **one operation**, `streamFacts`, with an optional `FactQuery`; without one it
+  streams every fact of the store.
+- The HTTP read surface is **two endpoints**, `GET /facts` for one query item and `POST /facts:query`
   for several, plus `GET /facts:subscribe`.
 - A subscription is **one operation** and takes no filters for now.
 
@@ -21,7 +23,9 @@
 | Extent | A stream resolves the store and its head in one consistent read when it is opened, and emits the matching facts up to that head | Bounded, repeatable and independent of the consumer's pace; a stream that followed the tail would never terminate reliably under load |
 | Laziness | Cold: nothing is read until the stream is collected, and every collection emits the same facts | A stream can be handed around and retried like a value. The cursor tree of a multi-tag read is built inside the flow, since one built at call time was used up by the first collection |
 | Direction | Required in the specification and in gRPC; defaults to `forward` at the HTTP edge | The specification has no natural default for a backward read, while a URL without `direction` is the common case |
-| Limits | At most 10 filters per query, 10 subjects and 10 types per filter, and 5 tags | A query expresses one decision's interest, which covers a handful of entities; reading wider is a projection or an export, which streams the store instead. Chosen from modelling practice and widened later if needed, never narrowed |
+| Operations | One, `streamFacts(StreamFactsRequest)`, whose optional `FactQuery` selects the facts; without one every fact of the store is streamed | Reading one subject, one type or a set of tags is a query of one item, and the backend picks the cheapest read for it, so separate operations added surface without adding reads. Helpers for common cases can be added on top |
+| Naming | `FactQuery` holds `FactQueryItem`s: a fact matches when it matches any item, and an item when all its predicates hold | The Dynamic Consistency Boundary vocabulary (a query of query items), and the same type serves streams and `AppendCondition.NoneMatch`. A richer query API can only look at the envelope, since payloads are opaque, so it would extend this type rather than compete for the name |
+| Limits | At most 10 items per query, 10 subjects and 10 types per item, and 5 tags | A query expresses one decision's interest, which covers a handful of entities; reading wider is a projection or an export, which streams the store instead. Chosen from modelling practice and widened later if needed, never narrowed |
 
 ## Continuing a stream
 
@@ -37,7 +41,7 @@
 | What | Decision | Why |
 |---|---|---|
 | Format | NDJSON: one `{"fact":…}` per line, closed by `{"end":{"count":n}}` or `{"error":{…}}` | A long history can be processed while it arrives. A stream without a closing line is incomplete, whatever the transport reported |
-| Endpoints | `GET /facts` with repeatable `subject`, `type` and `tag` parameters for **one filter**; `POST /facts:query` for a query of several | A query string is flat and cannot express OR across filters. The resource picks the cheapest specification operation for what was asked, so the URL shape does not dictate the read |
+| Endpoints | `GET /facts` with repeatable `subject`, `type` and `tag` parameters for **one query item**, or none for every fact; `POST /facts:query` for a query of several items | A query string is flat and cannot express OR across items. Both endpoints call the same operation, and the backend picks the cheapest read, so the URL shape does not dictate the read |
 | Sub-resources | `/subjects/{subject}/facts` and `/types/{type}/facts` removed | A third way to say the same thing, and subjects and types may contain slashes, which in a path segment means `%2F` and the mercy of proxy normalisation |
 | Operations | Separated from their resource by a colon, as in `/facts:query` | An operation can never collide with an identifier, and unlike a custom HTTP method it still appears in OpenAPI |
 
@@ -47,7 +51,7 @@ gRPC needs no terminator: its trailers carry the final status.
 
 | What | Decision | Why |
 |---|---|---|
-| Shape | One operation emitting `Flow<Fact>`, resuming on `continueAfter`, starting at `beginning`, `end` or after a fact | The same vocabulary as bounded streams, without mirroring all five stream operations: a subscription is long-lived, so every filtered path it adds has to stay correct under a head watch |
+| Shape | One operation emitting `Flow<Fact>`, resuming on `continueAfter`, starting at `beginning`, `end` or after a fact | The same vocabulary as bounded streams, without mirroring the stream operation's queries: a subscription is long-lived, so every filtered path it adds has to stay correct under a head watch |
 | Filters | None; a subscription delivers every fact of the store | Filtered subscriptions were built and removed again: they read the tail and discarded what did not match, so `from=beginning` on a large store decoded every fact to find a few. When filters return they go on the same operation and endpoint as one filter; a POST form for a query of several would be purely additive |
 | HTTP transport | NDJSON on `GET /facts:subscribe`, with a `heartbeat` line every 20 s while idle and no `end` line | SSE's reconnect and `Last-Event-ID` are free only in a browser, while `continueAfter` resumes any client in the vocabulary it already knows. Every HTTP read now has one shape |
 | gRPC transport | Batches are sent with what is ready; a batch is never waited for | Draining history fills batches, while following a tail sends each fact as it arrives instead of holding it back |
