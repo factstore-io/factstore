@@ -105,6 +105,11 @@ class MemoryFactStore : FactStore {
         val appendedAt = Instant.now()
         val materializedFacts = request.facts.map { it.toFact(FactId.generate(), appendedAt) }
 
+        // A condition naming a fact the store does not have cannot be judged at all
+        request.condition.afterFactIds()
+            .firstOrNull { after -> facts[storeId]?.none { it.id == after } ?: true }
+            ?.let { return AppendResult.AfterFactNotFound(it) }
+
         // Check append condition
         if (!checkAppendCondition(storeId, request.condition)) {
             return AppendResult.AppendConditionViolated
@@ -281,36 +286,20 @@ class MemoryFactStore : FactStore {
                 lastFact?.id == condition.expectedLastFactId
             }
             is AppendCondition.All -> condition.conditions.all { checkAppendCondition(storeId, it) }
-            is AppendCondition.TagQueryBased -> {
+            is AppendCondition.NoneMatch -> {
                 val store = facts[storeId]?.toList() ?: return false
-                val startIndex = if (condition.after != null) {
-                    val index = store.indexOfFirst { it.id == condition.after }
-                    if (index == -1) return false
-                    index + 1
-                } else {
-                    0
-                }
-
-                val matchingFacts = store.drop(startIndex).filter { fact ->
-                    condition.failIfEventsMatch.queryItems.any { queryItem ->
-                        when (queryItem) {
-                            is TagTypeItem -> {
-                                fact.type in queryItem.types &&
-                                        queryItem.tags.all { (key, value) ->
-                                            fact.tags[key] == value
-                                        }
-                            }
-                            is TagOnlyQueryItem -> {
-                                queryItem.tags.all { (key, value) ->
-                                    fact.tags[key] == value
-                                }
-                            }
-                        }
-                    }
-                }
-                matchingFacts.isEmpty()
+                // The fact exists: unknown ones are turned away before conditions are checked
+                val startIndex = condition.after?.let { after -> store.indexOfFirst { it.id == after } + 1 } ?: 0
+                store.drop(startIndex).none { condition.query.matches(it) }
             }
         }
+    }
+
+    /** The facts every [AppendCondition.NoneMatch] in this condition checks after. */
+    private fun AppendCondition.afterFactIds(): List<FactId> = when (this) {
+        AppendCondition.None, is AppendCondition.ExpectedLastFact -> emptyList()
+        is AppendCondition.All -> conditions.flatMap { it.afterFactIds() }
+        is AppendCondition.NoneMatch -> listOfNotNull(after)
     }
 
     override suspend fun remove(request: RemoveStoreRequest): RemoveStoreResult {

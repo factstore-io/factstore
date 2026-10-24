@@ -9,8 +9,6 @@ import io.factstore.client.model.FactPayload
 import io.factstore.client.model.ReadDirection
 import io.factstore.client.model.ServerInfo
 import io.factstore.client.model.StoreInfo
-import io.factstore.client.model.TagQuery
-import io.factstore.client.model.TagQueryItem
 import io.factstore.grpc.v1.FactStoreProto
 import io.factstore.grpc.v1.all
 import io.factstore.grpc.v1.appendCondition
@@ -18,11 +16,8 @@ import io.factstore.grpc.v1.expectedLastFact
 import io.factstore.grpc.v1.factFilter
 import io.factstore.grpc.v1.factInput
 import io.factstore.grpc.v1.factPayload
-import io.factstore.grpc.v1.tagOnlyItem
-import io.factstore.grpc.v1.tagQuery
-import io.factstore.grpc.v1.tagQueryBasedCondition
-import io.factstore.grpc.v1.tagQueryItem
-import io.factstore.grpc.v1.tagTypeItem
+import io.factstore.grpc.v1.factQuery
+import io.factstore.grpc.v1.noneMatch
 import java.time.Instant
 
 // ─── Proto → Domain ───────────────────────────────────────────────────────────
@@ -76,26 +71,12 @@ internal fun AppendCondition.toProto(): FactStoreProto.AppendCondition = appendC
             subject = c.subject
             c.expectedLastFactId?.let { expectedLastFactId = it }
         }
-        is AppendCondition.TagQueryBased -> tagQueryBased = tagQueryBasedCondition {
-            failIfEventsMatch = c.failIfEventsMatch.toProto()
+        is AppendCondition.NoneMatch -> noneMatch = noneMatch {
+            query = factQuery { filters += c.filters.map { it.toProto() } }
             c.afterFactId?.let { afterFactId = it }
         }
         is AppendCondition.All -> all = all {
             conditions += c.conditions.map { it.toProto() }
-        }
-    }
-}
-
-internal fun TagQuery.toProto(): FactStoreProto.TagQuery = tagQuery {
-    items += this@toProto.items.map { it.toProto() }
-}
-
-internal fun TagQueryItem.toProto(): FactStoreProto.TagQueryItem = tagQueryItem {
-    when (val item = this@toProto) {
-        is TagQueryItem.TagOnly -> tagOnly = tagOnlyItem { tags.putAll(item.tags) }
-        is TagQueryItem.TagType -> tagType = tagTypeItem {
-            types += item.types
-            tags.putAll(item.tags)
         }
     }
 }

@@ -107,6 +107,63 @@ class AppendResourceTest {
     }
 
     @Test
+    @Order(3)
+    @DisplayName("POST /v1/stores/{name}/facts - Should return 409 ApiError when a noneMatch query matches")
+    fun appendFactsNoneMatchConflict() {
+        val fact = mapOf("type" to "order.archived", "subject" to "order-8", "payload" to mapOf("data" to "e30="))
+        val condition = mapOf(
+            "type" to "noneMatch",
+            "query" to mapOf("filters" to listOf(mapOf("types" to listOf("order.archived")))),
+        )
+
+        given()
+            .pathParam("storeName", storeName)
+            .contentType(ContentType.JSON)
+            .body(mapOf("facts" to listOf(fact), "condition" to condition))
+            .post("/api/v1/stores/{storeName}/facts")
+            .then()
+            .statusCode(200)
+
+        val error = given()
+            .pathParam("storeName", storeName)
+            .contentType(ContentType.JSON)
+            .body(mapOf("facts" to listOf(fact), "condition" to condition))
+            .post("/api/v1/stores/{storeName}/facts")
+            .then()
+            .statusCode(409)
+            .extract().`as`(ApiError::class.java)
+
+        assertThat(error.reason).isEqualTo(Reason.ConditionViolated)
+    }
+
+    @Test
+    @Order(3)
+    @DisplayName("POST /v1/stores/{name}/facts - Should return 404 ApiError when a noneMatch checks after an unknown fact")
+    fun appendFactsNoneMatchAfterUnknownFact() {
+        val unknownId = UUID.randomUUID()
+        val request = mapOf(
+            "facts" to listOf(mapOf("type" to "test", "subject" to "sub-1", "payload" to mapOf("data" to "e30="))),
+            "condition" to mapOf(
+                "type" to "noneMatch",
+                "query" to mapOf("filters" to listOf(mapOf("subjects" to listOf("sub-1")))),
+                "after" to unknownId,
+            ),
+        )
+
+        val error = given()
+            .pathParam("storeName", storeName)
+            .contentType(ContentType.JSON)
+            .body(request)
+            .post("/api/v1/stores/{storeName}/facts")
+            .then()
+            .statusCode(404)
+            .extract().`as`(ApiError::class.java)
+
+        assertThat(error.reason).isEqualTo(Reason.NotFound)
+        assertThat(error.details).containsEntry("kind", "afterFact").containsEntry("id", unknownId.toString())
+    }
+
+    @Test
     @Order(4)
     @DisplayName("POST /v1/stores/{name}/facts - Should return 404 ApiError when store does not exist")
     fun appendFactsStoreNotFound() {

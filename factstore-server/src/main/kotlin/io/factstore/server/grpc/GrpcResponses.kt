@@ -122,6 +122,7 @@ internal fun AppendResult.toGrpcResponse(): GrpcAppendFactsResponse =
             is AppendResult.AlreadyApplied -> alreadyApplied = alreadyApplied { }
             is AppendResult.AppendConditionViolated -> conditionViolated = conditionViolated { }
             is AppendResult.StoreNotFound -> storeNotFound = storeNotFound { storeName = this@toGrpcResponse.storeName.value }
+            is AppendResult.AfterFactNotFound -> afterFactNotFound = afterFactNotFound { factId = this@toGrpcResponse.factId.uuid.toString() }
         }
     }
 

@@ -105,6 +105,51 @@ class GrpcFactServiceTest {
     }
 
     @Test
+    @Order(4)
+    @DisplayName("AppendFacts - should return ConditionViolated when a NoneMatch query matches")
+    fun appendFactsNoneMatchViolated(): Unit = runBlocking {
+        val response = factService.appendFacts(appendFactsRequest {
+            storeName = STORE
+            facts += factInput {
+                type = "order.updated"
+                subject = SUBJECT
+                payload = factPayload { data = ByteString.copyFromUtf8("{}") }
+            }
+            condition = appendCondition {
+                noneMatch = noneMatch {
+                    query = factQuery { filters += factFilter { tags["region"] = "eu" } }
+                }
+            }
+        })
+
+        assertThat(response.hasConditionViolated()).isTrue()
+    }
+
+    @Test
+    @Order(4)
+    @DisplayName("AppendFacts - should return AfterFactNotFound when a NoneMatch checks after an unknown fact")
+    fun appendFactsNoneMatchAfterUnknownFact(): Unit = runBlocking {
+        val unknownId = UUID.randomUUID().toString()
+        val response = factService.appendFacts(appendFactsRequest {
+            storeName = STORE
+            facts += factInput {
+                type = "order.updated"
+                subject = SUBJECT
+                payload = factPayload { data = ByteString.copyFromUtf8("{}") }
+            }
+            condition = appendCondition {
+                noneMatch = noneMatch {
+                    query = factQuery { filters += factFilter { types += "order.cancelled" } }
+                    afterFactId = unknownId
+                }
+            }
+        })
+
+        assertThat(response.hasAfterFactNotFound()).isTrue()
+        assertThat(response.afterFactNotFound.factId).isEqualTo(unknownId)
+    }
+
+    @Test
     @Order(5)
     @DisplayName("AppendFacts - should return StoreNotFound when store does not exist")
     fun appendFactsStoreNotFound(): Unit = runBlocking {

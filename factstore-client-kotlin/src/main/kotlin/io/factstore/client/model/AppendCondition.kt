@@ -7,8 +7,15 @@ sealed class AppendCondition {
         val expectedLastFactId: String? = null,
     ) : AppendCondition()
 
-    data class TagQueryBased(
-        val failIfEventsMatch: TagQuery,
+    /**
+     * Fails the append if a fact matching any of [filters] was appended after [afterFactId], the
+     * last fact the decision read, or, without it, if any fact matches at all.
+     *
+     * An [afterFactId] the store does not have fails the append with
+     * [io.factstore.client.exceptions.AfterFactNotFoundException].
+     */
+    data class NoneMatch(
+        val filters: List<FactFilter>,
         val afterFactId: String? = null,
     ) : AppendCondition()
 

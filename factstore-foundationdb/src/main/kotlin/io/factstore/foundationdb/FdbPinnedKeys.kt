@@ -12,18 +12,22 @@ import io.factstore.core.TagValue
 /**
  * The keys of [range] up to and including [pinnedEndKey], read in [direction].
  *
+ * Without a pinned key, the keys run to the end of the range. That is how an append condition
+ * reads within its transaction: a fact appended concurrently lands at the range's end, and only a
+ * read that covers it there makes the two transactions conflict.
+ *
  * A read starts at one end and continues from its cursor, the last key read, towards the
  * other end: reading forward moves the begin past the cursor, reading backward moves the end
  * before it.
  */
-internal class PinnedKeys(range: Range, pinnedEndKey: ByteArray, direction: ReadDirection) {
+internal class PinnedKeys(range: Range, pinnedEndKey: ByteArray?, direction: ReadDirection) {
 
     val reverse = direction.isReverse()
 
     private val first = KeySelector.firstGreaterOrEqual(range.begin)
 
     // An exclusive end that includes the pinned key itself.
-    private val last = KeySelector.firstGreaterThan(pinnedEndKey)
+    private val last = pinnedEndKey?.let { KeySelector.firstGreaterThan(it) } ?: KeySelector.firstGreaterOrEqual(range.end)
 
     /** The begin and end of the keys still to be read after [cursor]; all of them if it is `null`. */
     fun remainingAfter(cursor: ByteArray?): Pair<KeySelector, KeySelector> = when {
@@ -41,51 +45,51 @@ internal class PinnedKeys(range: Range, pinnedEndKey: ByteArray, direction: Read
     val readingOrder: Comparator<FactPosition> = direction.toComparator()
 }
 
-/** The keys of one subject's index in this store, up to the fact at [head]. */
+/** The keys of one subject's index in this store, up to the fact at [head], or all of them without one. */
 internal fun SubjectIndexSubspace.pinnedKeys(
     storeId: StoreId,
     subject: Subject,
-    head: FactPosition,
+    head: FactPosition?,
     direction: ReadDirection,
 ): PinnedKeys = PinnedKeys(
     range = range(storeId, subject),
-    pinnedEndKey = getKey(storeId, subject, head),
+    pinnedEndKey = head?.let { getKey(storeId, subject, it) },
     direction = direction,
 )
 
-/** The keys of one type's index in this store, up to the fact at [head]. */
+/** The keys of one type's index in this store, up to the fact at [head], or all of them without one. */
 internal fun EventTypeIndexSubspace.pinnedKeys(
     storeId: StoreId,
     type: FactType,
-    head: FactPosition,
+    head: FactPosition?,
     direction: ReadDirection,
 ): PinnedKeys = PinnedKeys(
     range = range(storeId, type),
-    pinnedEndKey = getKey(storeId, type, head),
+    pinnedEndKey = head?.let { getKey(storeId, type, it) },
     direction = direction,
 )
 
-/** The keys of one type-and-tag combination's index in this store, up to the fact at [head]. */
+/** The keys of one type-and-tag combination's index in this store, up to the fact at [head], or all of them without one. */
 internal fun TagsTypeIndexSubspace.pinnedKeys(
     storeId: StoreId,
     type: FactType,
     tag: Pair<TagKey, TagValue>,
-    head: FactPosition,
+    head: FactPosition?,
     direction: ReadDirection,
 ): PinnedKeys = PinnedKeys(
     range = range(storeId, type, tag),
-    pinnedEndKey = getKey(storeId, type, tag, head),
+    pinnedEndKey = head?.let { getKey(storeId, type, tag, it) },
     direction = direction,
 )
 
-/** The keys of one tag's index in this store, up to the fact at [head]. */
+/** The keys of one tag's index in this store, up to the fact at [head], or all of them without one. */
 internal fun TagsIndexSubspace.pinnedKeys(
     storeId: StoreId,
     tag: Pair<TagKey, TagValue>,
-    head: FactPosition,
+    head: FactPosition?,
     direction: ReadDirection,
 ): PinnedKeys = PinnedKeys(
     range = range(storeId, tag),
-    pinnedEndKey = getKey(storeId, tag, head),
+    pinnedEndKey = head?.let { getKey(storeId, tag, it) },
     direction = direction,
 )

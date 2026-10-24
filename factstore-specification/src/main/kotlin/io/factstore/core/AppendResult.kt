@@ -41,6 +41,18 @@ sealed interface AppendResult {
     data object AppendConditionViolated : AppendResult
 
     /**
+     * Indicates that the append operation was not applied because a
+     * [AppendCondition.NoneMatch] condition names a fact to check after that is not a
+     * fact of the store.
+     *
+     * It takes precedence over [AppendConditionViolated]: whether the other conditions
+     * hold says nothing about a request that refers to a fact the store does not have.
+     *
+     * @property factId the fact that was not found
+     */
+    data class AfterFactNotFound(val factId: FactId) : AppendResult
+
+    /**
      * Indicates that the append operation failed because the specified fact store does not
      * exist. This result is returned when the fact store identified in the append request cannot be found.
      */

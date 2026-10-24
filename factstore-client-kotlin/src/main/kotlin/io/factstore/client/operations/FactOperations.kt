@@ -1,5 +1,6 @@
 package io.factstore.client.operations
 
+import io.factstore.client.exceptions.AfterFactNotFoundException
 import io.factstore.client.exceptions.AppendConditionViolatedException
 import io.factstore.client.exceptions.ContinuationNotFoundException
 import io.factstore.client.exceptions.FactNotFoundException
@@ -63,6 +64,7 @@ class FactOperations internal constructor(
             response.hasAlreadyApplied() -> AppendOutcome.AlreadyApplied
             response.hasConditionViolated() -> throw AppendConditionViolatedException()
             response.hasStoreNotFound() -> throw StoreNotFoundException(storeName)
+            response.hasAfterFactNotFound() -> throw AfterFactNotFoundException(response.afterFactNotFound.factId)
             else -> error("Unexpected response: $response")
         }
     }

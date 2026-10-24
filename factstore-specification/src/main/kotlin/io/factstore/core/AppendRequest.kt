@@ -121,15 +121,21 @@ sealed interface AppendCondition {
     }
 
     /**
-     * Requires that no facts matching the given tag query exist after the
-     * specified fact identifier.
+     * Requires that no fact matching [query] was appended after [after].
      *
-     * @property failIfEventsMatch the tag query that must not match any facts
-     * @property after an optional fact identifier defining the lower bound
-     *         for the query
+     * This is the condition of a decision that read the facts matching [query]: [after] is the
+     * last fact it read, and the append is applied only if nothing it would have read has been
+     * appended since. Without [after], no matching fact may exist at all.
+     *
+     * An [after] that is not a fact of the store fails the append with
+     * [AppendResult.AfterFactNotFound]: a decision that names a fact it cannot have read knows
+     * nothing about the store's state.
+     *
+     * @property query the facts that must not have been appended
+     * @property after the last fact the decision read, exclusive; `null` to check the whole store
      */
-    data class TagQueryBased(
-        val failIfEventsMatch: TagQuery,
+    data class NoneMatch(
+        val query: FactQuery,
         val after: FactId?
     ) : AppendCondition
 

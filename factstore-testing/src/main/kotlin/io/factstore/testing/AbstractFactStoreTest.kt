@@ -1710,18 +1710,29 @@ abstract class AbstractFactStoreTest {
 
 
 
-    @Test
-    fun testConditionalAppendWithTagQuery(): Unit = runBlocking {
+    // ===== NoneMatch: no fact matching a query since the last fact the decision read =====
 
-        val aliceTags = mapOf(TagKey("user") to TagValue("ALICE"))
-        val tagQuery = TagQuery(
-            queryItems = listOf(
-                TagTypeItem(
-                    types = setOf(FactType("USER_CREATED")),
-                    tags = mapOf(TagKey("user") to TagValue("ALICE")),
-                )
+    private fun noneMatch(query: FactQuery, after: FactId? = null) = AppendCondition.NoneMatch(query, after)
+
+    private suspend fun appendWithCondition(
+        condition: AppendCondition,
+        storeName: StoreName = testStore,
+        idempotencyKey: IdempotencyKey = IdempotencyKey(),
+    ): AppendResult =
+        store.append(
+            AppendRequest(
+                storeName = storeName,
+                facts = listOf(input(ALICE_SUBJECT_VALUE, "UNRELATED", alicePayload)),
+                idempotencyKey = idempotencyKey,
+                condition = condition,
             )
         )
+
+    @Test
+    fun testConditionalAppendWithNoneMatch(): Unit = runBlocking {
+
+        val aliceTags = mapOf(TagKey("user") to TagValue("ALICE"))
+        val aliceCreated = query(FactFilter(types = setOf(FactType("USER_CREATED")), tags = aliceTags))
 
         // append fact1: no matching USER_CREATED/user=ALICE exists yet → appended
         val appended1 = store.append(
@@ -1729,7 +1740,7 @@ abstract class AbstractFactStoreTest {
                 storeName = testStore,
                 facts = listOf(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload, tags = aliceTags)),
                 idempotencyKey = IdempotencyKey(),
-                condition = AppendCondition.TagQueryBased(failIfEventsMatch = tagQuery, after = null)
+                condition = noneMatch(aliceCreated)
             )
         )
         assertThat(appended1).isInstanceOf(AppendResult.Appended::class.java)
@@ -1741,18 +1752,18 @@ abstract class AbstractFactStoreTest {
                 storeName = testStore,
                 facts = listOf(input(ALICE_SUBJECT_VALUE, "USER_LOCKED", alicePayload, tags = aliceTags)),
                 idempotencyKey = IdempotencyKey(),
-                condition = AppendCondition.TagQueryBased(failIfEventsMatch = tagQuery, after = fact1Id)
+                condition = noneMatch(aliceCreated, after = fact1Id)
             )
         )
         assertThat(appended2).isInstanceOf(AppendResult.Appended::class.java)
 
-        // appending again without an `after` cursor sees fact1 and is rejected
+        // appending again without an `after` fact sees fact1 and is rejected
         store.append(
             AppendRequest(
                 storeName = testStore,
                 facts = listOf(input(ALICE_SUBJECT_VALUE, "USER_LOCKED", alicePayload, tags = aliceTags)),
                 idempotencyKey = IdempotencyKey(),
-                condition = AppendCondition.TagQueryBased(failIfEventsMatch = tagQuery, after = null)
+                condition = noneMatch(aliceCreated)
             )
         ).also {
             assertThat(it).isInstanceOf(AppendResult.AppendConditionViolated::class.java)
@@ -1760,21 +1771,14 @@ abstract class AbstractFactStoreTest {
 
         // append another user fact with another tag
         val bobTags = mapOf(TagKey("user") to TagValue("BOB"))
-        val tagQuery2 = TagQuery(
-            queryItems = listOf(
-                TagTypeItem(
-                    types = setOf(FactType("USER_CREATED")),
-                    tags = mapOf(TagKey("user") to TagValue("BOB")),
-                )
-            )
-        )
+        val bobCreated = query(FactFilter(types = setOf(FactType("USER_CREATED")), tags = bobTags))
 
         val appended3 = store.append(
             AppendRequest(
                 storeName = testStore,
                 facts = listOf(input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload, tags = bobTags)),
                 idempotencyKey = IdempotencyKey(),
-                condition = AppendCondition.TagQueryBased(failIfEventsMatch = tagQuery2, after = null)
+                condition = noneMatch(bobCreated)
             )
         )
         assertThat(appended3).isInstanceOf(AppendResult.Appended::class.java)
@@ -1785,7 +1789,7 @@ abstract class AbstractFactStoreTest {
                 storeName = testStore,
                 facts = listOf(input(BOB_SUBJECT_VALUE, "USER_LOCKED", bobPayload, tags = bobTags)),
                 idempotencyKey = IdempotencyKey(),
-                condition = AppendCondition.TagQueryBased(failIfEventsMatch = tagQuery2, after = fact3Id)
+                condition = noneMatch(bobCreated, after = fact3Id)
             )
         ).also {
             assertThat(it).isInstanceOf(AppendResult.Appended::class.java)
@@ -1793,11 +1797,11 @@ abstract class AbstractFactStoreTest {
 
     }
 
-    // ===== Tag queries require every tag of a query item =====
+    // ===== A filter's tags must all be carried =====
     //
-    // A query item matches a fact only if the fact carries all of the item's tags. The
-    // facts below deliberately carry the queried tags separately and interleaved, so a
-    // backend cannot pass by looking at each tag's index on its own.
+    // A filter matches a fact only if the fact carries all of the filter's tags. The facts
+    // below deliberately carry the queried tags separately and interleaved, so a backend
+    // cannot pass by looking at each tag's index on its own.
 
     private val courseTag = TagKey("course") to TagValue("c1")
     private val studentTag = TagKey("student") to TagValue("s1")
@@ -1806,78 +1810,68 @@ abstract class AbstractFactStoreTest {
     private suspend fun appendTagged(type: String, vararg tags: Pair<TagKey, TagValue>): Fact =
         appendStored(input(ALICE_SUBJECT_VALUE, type, alicePayload, tags = mapOf(*tags)))
 
-    private suspend fun appendWithTagQueryCondition(query: TagQuery, after: FactId? = null): AppendResult =
-        store.append(
-            AppendRequest(
-                storeName = testStore,
-                facts = listOf(input(ALICE_SUBJECT_VALUE, "UNRELATED", alicePayload)),
-                idempotencyKey = IdempotencyKey(),
-                condition = AppendCondition.TagQueryBased(failIfEventsMatch = query, after = after),
-            )
-        )
-
     @Test
-    fun testTagQueryRequiresAllTagsForTagOnlyCondition(): Unit = runBlocking {
-        val query = TagQuery(listOf(TagOnlyQueryItem(mapOf(courseTag, studentTag))))
+    fun testNoneMatchRequiresAllTagsOfATagFilter(): Unit = runBlocking {
+        val query = query(FactFilter(tags = mapOf(courseTag, studentTag)))
 
         appendTagged("COURSE_DEFINED", courseTag)
         appendTagged("STUDENT_REGISTERED", studentTag)
         appendTagged("COURSE_UPDATED", courseTag)
 
-        assertThat(appendWithTagQueryCondition(query))
+        assertThat(appendWithCondition(noneMatch(query)))
             .describedAs("no fact carries both tags yet")
             .isInstanceOf(AppendResult.Appended::class.java)
 
         appendTagged("STUDENT_SUBSCRIBED", courseTag, studentTag)
 
-        assertThat(appendWithTagQueryCondition(query))
+        assertThat(appendWithCondition(noneMatch(query)))
             .describedAs("a fact carrying both tags now exists")
             .isInstanceOf(AppendResult.AppendConditionViolated::class.java)
     }
 
     @Test
-    fun testTagQueryRequiresAllTagsForTagTypeCondition(): Unit = runBlocking {
-        val query = TagQuery(listOf(TagTypeItem(setOf(FactType("STUDENT_SUBSCRIBED")), mapOf(courseTag, studentTag))))
+    fun testNoneMatchRequiresAllTagsOfATypeAndTagFilter(): Unit = runBlocking {
+        val query = query(FactFilter(types = setOf(FactType("STUDENT_SUBSCRIBED")), tags = mapOf(courseTag, studentTag)))
 
         appendTagged("STUDENT_SUBSCRIBED", courseTag)
         appendTagged("STUDENT_SUBSCRIBED", studentTag)
         appendTagged("STUDENT_SUBSCRIBED", TagKey("course") to TagValue("c2"), studentTag)
         appendTagged("STUDENT_UNSUBSCRIBED", courseTag, studentTag)
 
-        assertThat(appendWithTagQueryCondition(query))
+        assertThat(appendWithCondition(noneMatch(query)))
             .describedAs("no fact of the queried type carries both tags yet")
             .isInstanceOf(AppendResult.Appended::class.java)
 
         appendTagged("STUDENT_SUBSCRIBED", courseTag, studentTag)
 
-        assertThat(appendWithTagQueryCondition(query))
+        assertThat(appendWithCondition(noneMatch(query)))
             .describedAs("a fact of the queried type carrying both tags now exists")
             .isInstanceOf(AppendResult.AppendConditionViolated::class.java)
     }
 
     @Test
-    fun testTagQueryRequiresAllTagsAfterPositionCondition(): Unit = runBlocking {
-        val query = TagQuery(listOf(TagOnlyQueryItem(mapOf(courseTag, studentTag, semesterTag))))
+    fun testNoneMatchRequiresAllTagsAfterTheGivenFact(): Unit = runBlocking {
+        val query = query(FactFilter(tags = mapOf(courseTag, studentTag, semesterTag)))
 
-        val cursor = appendTagged("STUDENT_SUBSCRIBED", courseTag, studentTag, semesterTag)
+        val after = appendTagged("STUDENT_SUBSCRIBED", courseTag, studentTag, semesterTag)
         appendTagged("STUDENT_SUBSCRIBED", courseTag, studentTag)
         appendTagged("STUDENT_SUBSCRIBED", studentTag, semesterTag)
         appendTagged("STUDENT_SUBSCRIBED", courseTag, semesterTag)
 
-        assertThat(appendWithTagQueryCondition(query, after = cursor.id))
-            .describedAs("the only fact carrying all three tags is not after the cursor")
+        assertThat(appendWithCondition(noneMatch(query, after = after.id)))
+            .describedAs("the only fact carrying all three tags is not after the given fact")
             .isInstanceOf(AppendResult.Appended::class.java)
 
         appendTagged("STUDENT_SUBSCRIBED", courseTag, studentTag, semesterTag)
 
-        assertThat(appendWithTagQueryCondition(query, after = cursor.id))
-            .describedAs("a fact carrying all three tags now exists after the cursor")
+        assertThat(appendWithCondition(noneMatch(query, after = after.id)))
+            .describedAs("a fact carrying all three tags now exists after the given fact")
             .isInstanceOf(AppendResult.AppendConditionViolated::class.java)
     }
 
     @Test
-    fun testTagQueryRequiresAllTagsAcrossLongInterleaving(): Unit = runBlocking {
-        val query = TagQuery(listOf(TagOnlyQueryItem(mapOf(courseTag, studentTag))))
+    fun testNoneMatchRequiresAllTagsAcrossLongInterleaving(): Unit = runBlocking {
+        val query = query(FactFilter(tags = mapOf(courseTag, studentTag)))
 
         // Hundreds of facts alternate between the two tags without ever carrying both, so a
         // backend that intersects the tag indexes step by step has to take many steps before
@@ -1889,17 +1883,173 @@ abstract class AbstractFactStoreTest {
             }
         )
 
-        assertThat(appendWithTagQueryCondition(query))
+        assertThat(appendWithCondition(noneMatch(query)))
             .describedAs("no fact carries both tags")
             .isInstanceOf(AppendResult.Appended::class.java)
 
         appendTagged("STUDENT_SUBSCRIBED", courseTag, studentTag)
 
-        assertThat(appendWithTagQueryCondition(query))
+        assertThat(appendWithCondition(noneMatch(query)))
             .describedAs("a fact carrying both tags now exists after the interleaved facts")
             .isInstanceOf(AppendResult.AppendConditionViolated::class.java)
     }
 
+    // ===== Filters without tags =====
+
+    @Test
+    fun testNoneMatchWithASubjectFilter(): Unit = runBlocking {
+        val bobsFacts = query(FactFilter(subjects = setOf(Subject(BOB_SUBJECT_VALUE))))
+
+        val alice = appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload))
+
+        assertThat(appendWithCondition(noneMatch(bobsFacts)))
+            .describedAs("Bob has no facts yet")
+            .isInstanceOf(AppendResult.Appended::class.java)
+
+        val bob = appendStored(input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload))
+
+        assertThat(appendWithCondition(noneMatch(bobsFacts, after = alice.id)))
+            .describedAs("Bob's fact was appended after Alice's")
+            .isInstanceOf(AppendResult.AppendConditionViolated::class.java)
+        assertThat(appendWithCondition(noneMatch(bobsFacts, after = bob.id)))
+            .describedAs("nothing of Bob's was appended after his own fact")
+            .isInstanceOf(AppendResult.Appended::class.java)
+    }
+
+    @Test
+    fun testNoneMatchWithATypeFilter(): Unit = runBlocking {
+        val lockings = query(FactFilter(types = setOf(FactType("USER_LOCKED"))))
+
+        val created = appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload))
+
+        assertThat(appendWithCondition(noneMatch(lockings)))
+            .describedAs("no user was locked yet")
+            .isInstanceOf(AppendResult.Appended::class.java)
+
+        appendStored(input(BOB_SUBJECT_VALUE, "USER_LOCKED", bobPayload))
+
+        assertThat(appendWithCondition(noneMatch(lockings, after = created.id)))
+            .describedAs("a user was locked after the given fact")
+            .isInstanceOf(AppendResult.AppendConditionViolated::class.java)
+    }
+
+    @Test
+    fun testNoneMatchFailsWhenAnyFilterMatches(): Unit = runBlocking {
+        val either = query(
+            FactFilter(subjects = setOf(Subject(BOB_SUBJECT_VALUE))),
+            FactFilter(types = setOf(FactType("USER_LOCKED")), tags = mapOf(courseTag)),
+        )
+
+        appendStored(input(ALICE_SUBJECT_VALUE, "USER_LOCKED", alicePayload))
+
+        assertThat(appendWithCondition(noneMatch(either)))
+            .describedAs("neither filter matches yet")
+            .isInstanceOf(AppendResult.Appended::class.java)
+
+        appendTagged("USER_LOCKED", courseTag)
+
+        assertThat(appendWithCondition(noneMatch(either)))
+            .describedAs("the second filter matches")
+            .isInstanceOf(AppendResult.AppendConditionViolated::class.java)
+    }
+
+    @Test
+    fun testConcurrentNoneMatchAppendsOnlyOneWins(): Unit = runBlocking {
+        val subscriptions = query(FactFilter(types = setOf(FactType("STUDENT_SUBSCRIBED")), tags = mapOf(courseTag)))
+
+        assertOnlyOneConcurrentNoneMatchAppendWins(subscriptions, mapOf(courseTag))
+    }
+
+    @Test
+    fun testConcurrentNoneMatchAppendsOnlyOneWinsForAnIntersection(): Unit = runBlocking {
+        // Two tags without a type: the backend has to intersect two indexes, so a concurrent
+        // match has to be caught although no single index answers the query.
+        val enrolments = query(FactFilter(tags = mapOf(courseTag, studentTag)))
+        appendTagged("COURSE_UPDATED", courseTag)
+        appendTagged("STUDENT_REGISTERED", studentTag)
+
+        assertOnlyOneConcurrentNoneMatchAppendWins(enrolments, mapOf(courseTag, studentTag))
+    }
+
+    /**
+     * Every contender read the facts matching [query] up to the same fact and decides to append
+     * one carrying [tags]. Each append is itself a fact its rivals' conditions forbid, so exactly
+     * one may win.
+     */
+    private suspend fun assertOnlyOneConcurrentNoneMatchAppendWins(query: FactQuery, tags: Map<TagKey, TagValue>) {
+        val seed = appendTagged("COURSE_DEFINED")
+        val contenders = 8
+
+        val results = coroutineScope {
+            (1..contenders).map {
+                async(Dispatchers.Default) {
+                    store.append(
+                        AppendRequest(
+                            storeName = testStore,
+                            facts = listOf(input(ALICE_SUBJECT_VALUE, "STUDENT_SUBSCRIBED", alicePayload, tags = tags)),
+                            idempotencyKey = IdempotencyKey(),
+                            condition = noneMatch(query, after = seed.id),
+                        )
+                    )
+                }
+            }.awaitAll()
+        }
+
+        assertThat(results.filterIsInstance<AppendResult.Appended>()).hasSize(1)
+        assertThat(results.count { it is AppendResult.AppendConditionViolated }).isEqualTo(contenders - 1)
+    }
+
+    // ===== NoneMatch after a fact the store does not have =====
+
+    @Test
+    fun testNoneMatchAfterAnUnknownFact(): Unit = runBlocking {
+        val unknown = FactId.generate()
+        appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload))
+
+        assertThat(appendWithCondition(noneMatch(query(FactFilter(types = setOf(FactType("USER_LOCKED")))), after = unknown)))
+            .describedAs("nothing matches, but the given fact is not one of the store's")
+            .isEqualTo(AppendResult.AfterFactNotFound(unknown))
+    }
+
+    @Test
+    fun testNoneMatchAfterAFactOfAnotherStore(): Unit = runBlocking {
+        val otherStore = StoreName("other-store")
+        store.create(CreateStoreRequest(otherStore))
+        val foreign = appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload), otherStore)
+
+        assertThat(appendWithCondition(noneMatch(query(FactFilter(types = setOf(FactType("USER_LOCKED")))), after = foreign.id)))
+            .describedAs("the given fact belongs to another store")
+            .isEqualTo(AppendResult.AfterFactNotFound(foreign.id))
+    }
+
+    @Test
+    fun testUnknownAfterFactTakesPrecedenceOverAViolatedCondition(): Unit = runBlocking {
+        val unknown = FactId.generate()
+        appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload))
+
+        val condition = AppendCondition.All(
+            listOf(
+                // Alice already has a fact -> violated
+                AppendCondition.ExpectedLastFact(Subject(ALICE_SUBJECT_VALUE), null),
+                noneMatch(query(FactFilter(types = setOf(FactType("USER_LOCKED")))), after = unknown),
+            )
+        )
+
+        assertThat(appendWithCondition(condition)).isEqualTo(AppendResult.AfterFactNotFound(unknown))
+    }
+
+    @Test
+    fun testAlreadyAppliedTakesPrecedenceOverAnUnknownAfterFact(): Unit = runBlocking {
+        val key = IdempotencyKey()
+        assertThat(appendWithCondition(AppendCondition.None, idempotencyKey = key))
+            .isInstanceOf(AppendResult.Appended::class.java)
+
+        val condition = noneMatch(query(FactFilter(types = setOf(FactType("USER_LOCKED")))), after = FactId.generate())
+
+        assertThat(appendWithCondition(condition, idempotencyKey = key))
+            .describedAs("a replayed key was applied already, whatever its condition says now")
+            .isEqualTo(AppendResult.AlreadyApplied)
+    }
 
     @Test
     fun testIsolationOfFactStoreInstances(): Unit = runBlocking {

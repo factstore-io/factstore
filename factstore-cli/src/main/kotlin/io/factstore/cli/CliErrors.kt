@@ -1,5 +1,6 @@
 package io.factstore.cli
 
+import io.factstore.client.exceptions.AfterFactNotFoundException
 import io.factstore.client.exceptions.AppendConditionViolatedException
 import io.factstore.client.exceptions.ContinuationNotFoundException
 import io.factstore.client.exceptions.FactNotFoundException
@@ -24,6 +25,7 @@ internal fun FactStoreException.toCliMessage(): String = when (this) {
     is ContinuationNotFoundException -> "Cannot continue after fact '$factId': the store holds no such fact"
     is AppendConditionViolatedException ->
         "Append condition violated: a concurrent write changed the store. Retry with an updated condition."
+    is AfterFactNotFoundException -> "Cannot check the append condition after fact '$factId': the store holds no such fact"
     is FactStoreInvalidRequestException -> "Invalid request: $reason"
     is FactStoreUnavailableException -> "Cannot reach the FactStore server. Is it running?"
     is FactStoreTimeoutException -> "The request timed out. The server may be overloaded or unreachable."

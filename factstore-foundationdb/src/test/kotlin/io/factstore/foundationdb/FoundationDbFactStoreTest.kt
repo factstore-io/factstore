@@ -142,7 +142,7 @@ class FactStoreTest : AbstractFactStoreTest() {
         val streamer = FdbFactStreamer(FdbFactStore(db, FdbFactStoreContext.create(Subspace(Tuple.from("test")))))
         val head = Versionstamp.complete(ByteArray(10))
 
-        val source = with(streamer) { query.toSource(StoreId(UUID.randomUUID()), head, ReadDirection.Forward) }
+        val source = with(streamer.sources) { query.toSource(StoreId(UUID.randomUUID()), head, ReadDirection.Forward) }
 
         assertThat(source is PositionCursor).isEqualTo(singleRange)
     }

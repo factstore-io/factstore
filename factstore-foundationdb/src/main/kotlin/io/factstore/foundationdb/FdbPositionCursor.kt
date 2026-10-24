@@ -1,7 +1,10 @@
 package io.factstore.foundationdb
 
 import com.apple.foundationdb.Database
+import com.apple.foundationdb.KeySelector
+import com.apple.foundationdb.KeyValue
 import com.apple.foundationdb.StreamingMode
+import com.apple.foundationdb.Transaction
 import io.factstore.core.ReadDirection
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
@@ -10,17 +13,41 @@ import kotlinx.coroutines.future.await
 import kotlinx.coroutines.launch
 
 /**
- * Walks the positions behind the keys of one pinned index range, one position at a time.
+ * Reads up to `limit` keys between two selectors, in reverse when asked to.
  *
- * The keys are read in batches, each in its own transaction, so a cursor that is held while
- * another one is read never keeps a transaction open. Positions are visited in reading order:
+ * Where the keys are read is the reader's choice: a stream reads every batch in its own
+ * transaction ([inOwnTransactions]), while an append condition reads within the append's
+ * transaction ([within]), so that its reads conflict with a concurrent append they would miss.
+ */
+internal fun interface KeyReader {
+
+    suspend fun read(begin: KeySelector, end: KeySelector, limit: Int, reverse: Boolean): List<KeyValue>
+
+    companion object {
+
+        /** Reads every batch in a short transaction of its own, so no transaction stays open. */
+        fun inOwnTransactions(db: Database) = KeyReader { begin, end, limit, reverse ->
+            db.readAsync { tr -> tr.getRange(begin, end, limit, reverse, StreamingMode.WANT_ALL).asList() }.await()
+        }
+
+        /** Reads within [tr], which records every range read for conflict checking at commit. */
+        fun within(tr: Transaction) = KeyReader { begin, end, limit, reverse ->
+            tr.getRange(begin, end, limit, reverse, StreamingMode.WANT_ALL).asList().await()
+        }
+    }
+}
+
+/**
+ * Walks the positions behind the keys of one index range, one position at a time.
+ *
+ * The keys are read in batches through [reader]. Positions are visited in reading order:
  * ascending for [ReadDirection.Forward], descending for [ReadDirection.Backward].
  *
  * @param positionOf reads the position out of an index key
  * @param keyOf builds the index key a position would have, which lets the cursor skip ahead
  */
 internal class PositionCursor(
-    private val db: Database,
+    private val reader: KeyReader,
     val keys: PinnedKeys,
     private val batchSize: Int,
     val positionOf: (ByteArray) -> FactPosition,
@@ -80,9 +107,7 @@ internal class PositionCursor(
         val (begin, end) = from?.let { keys.remainingFrom(it) } ?: keys.remainingAfter(after)
         from = null
 
-        val read = db.readAsync { tr ->
-            tr.getRange(begin, end, batchSize, keys.reverse, StreamingMode.WANT_ALL).asList()
-        }.await()
+        val read = reader.read(begin, end, batchSize, keys.reverse)
 
         batch = read.map { positionOf(it.key) }
         next = 0
@@ -203,6 +228,17 @@ internal class AllOf(private val sources: List<PositionSource>, direction: ReadD
 
     override val needsRead: Boolean
         get() = !exhausted && sources.any { it.needsRead }
+}
+
+/**
+ * Continues the source after [position]: the named position is a marker, so a source sitting
+ * exactly on it moves past it.
+ */
+internal suspend fun PositionSource.continuingAfter(position: FactPosition?): PositionSource {
+    if (position == null) return this
+    seekTo(position)
+    if (peek() == position) advance()
+    return this
 }
 
 /** Drains the source into a flow of positions, in reading order. */

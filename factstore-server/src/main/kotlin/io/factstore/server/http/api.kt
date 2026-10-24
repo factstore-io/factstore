@@ -58,8 +58,8 @@ data class AppendedHttp(
         name = "all"
     ),
     JsonSubTypes.Type(
-        value = AppendConditionHttp.TagQueryBased::class,
-        name = "tagQueryBased"
+        value = AppendConditionHttp.NoneMatch::class,
+        name = "noneMatch"
     )
 )
 sealed interface AppendConditionHttp {
@@ -75,46 +75,22 @@ sealed interface AppendConditionHttp {
         val conditions: List<AppendConditionHttp>
     ) : AppendConditionHttp
 
-    data class TagQueryBased(
-        val failIfEventsMatch: FactQueryHttp,
-        val after: UUID?
+    /**
+     * Fails the append if a fact matching [query] was appended after [after], or, without it, if
+     * any fact matches at all.
+     */
+    data class NoneMatch(
+        val query: FactQueryHttp,
+        @field:Schema(description = "The last fact the decision read, exclusive.", format = "uuid")
+        val after: UUID? = null,
     ) : AppendConditionHttp
 }
 
+/** A fact matches the query when it matches any of its [filters]. */
 data class FactQueryHttp(
-    @field:Schema(minItems = 1)
-    val queryItems: List<TagQueryItemHttp>
+    @field:Schema(minItems = 1, maxItems = FactQuery.MAX_FILTERS)
+    val filters: List<FactFilterHttp>,
 )
-
-@JsonTypeInfo(
-    use = JsonTypeInfo.Id.NAME,
-    include = JsonTypeInfo.As.PROPERTY,
-    property = "type"
-)
-@JsonSubTypes(
-    JsonSubTypes.Type(
-        value = TagQueryItemHttp.TagOnly::class,
-        name = "tagOnly"
-    ),
-    JsonSubTypes.Type(
-        value = TagQueryItemHttp.TagType::class,
-        name = "tagType"
-    )
-)
-sealed interface TagQueryItemHttp {
-
-    data class TagType(
-        @field:Schema(minItems = 1)
-        val types: List<String>,
-        @field:Schema(minProperties = 1, maxProperties = FactInput.MAX_TAGS)
-        val tags: Map<String, String>
-    ) : TagQueryItemHttp
-
-    data class TagOnly(
-        @field:Schema(minProperties = 1, maxProperties = FactInput.MAX_TAGS)
-        val tags: Map<String, String>
-    ) : TagQueryItemHttp
-}
 
 data class FactHttp(
     val id: UUID?,

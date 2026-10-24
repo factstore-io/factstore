@@ -31,6 +31,7 @@ internal fun AppendResult.toResponse(): Response = when (this) {
     is AppendResult.AlreadyApplied -> Response.ok().build()
     is AppendResult.AppendConditionViolated -> appendConditionViolatedError()
     is AppendResult.StoreNotFound -> storeNotFoundError(storeName)
+    is AppendResult.AfterFactNotFound -> afterFactNotFoundError(factId)
 }
 
 internal fun FindByIdResult.toResponse(): Response = when (this) {

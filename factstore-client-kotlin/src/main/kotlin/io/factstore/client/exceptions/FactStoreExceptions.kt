@@ -20,6 +20,10 @@ class ContinuationNotFoundException(val factId: String) :
 class AppendConditionViolatedException :
     FactStoreException("Append condition was violated")
 
+/** An append condition checks after a fact the store does not have. */
+class AfterFactNotFoundException(val factId: String) :
+    FactStoreException("The fact '$factId' the append condition checks after does not exist")
+
 // ─── Request errors ──────────────────────────────────────────────────────────
 
 /** The server rejected the request as invalid (gRPC INVALID_ARGUMENT); retrying it unchanged fails again. */

@@ -66,6 +66,9 @@ class FdbFactStreamer(
         require(streamBatchSize > 0) { "The stream batch size must be positive, but was $streamBatchSize." }
     }
 
+    /** The sources of a stream read every batch in a transaction of its own. */
+    internal val sources = QuerySources(store.context, KeyReader.inOwnTransactions(store.db), streamBatchSize)
+
     // -------------------------------------------------------------------------
     // Stream (bounded, pinned at call time)
     // -------------------------------------------------------------------------
@@ -150,7 +153,7 @@ class FdbFactStreamer(
             ) { tr, entries -> loadFacts(tr, pinned.storeId, entries.map { tagsIndex.unpackPosition(it.key) }) }
         } else {
             positionsOf {
-                AllOf(tags.map { tagCursor(pinned.storeId, it, head, request.direction) }, request.direction)
+                AllOf(tags.map { sources.tagCursor(pinned.storeId, it, head, request.direction) }, request.direction)
                     .continuingAfter(pinned.continueAfter)
             }.loadFacts(pinned.storeId, request.limit)
         }
@@ -166,7 +169,7 @@ class FdbFactStreamer(
         }
         val head = pinned.head ?: return StreamFactsByQueryResult.FactStream(emptyFlow())
 
-        val source = { request.query.toSource(pinned.storeId, head, request.direction) }
+        val source = { with(sources) { request.query.toSource(pinned.storeId, head, request.direction) } }
 
         // A query that comes down to a single index range needs nothing combined: the range is
         // scanned as for a single subject, type or tag, reading index entries and facts together.
@@ -185,51 +188,6 @@ class FdbFactStreamer(
     }
 
     /**
-     * The positions of the facts this query matches: a filter is an intersection of its
-     * predicates, and the query the union of its filters.
-     *
-     * Building the sources reads nothing, so a query can be inspected before it is read.
-     */
-    internal fun FactQuery.toSource(storeId: StoreId, head: FactPosition, direction: ReadDirection): PositionSource =
-        anyOf(filters.map { it.toSource(storeId, head, direction) }, direction)
-
-    /**
-     * The positions of the facts this filter matches: every predicate it sets must hold, while a
-     * predicate holding several values matches any of them.
-     */
-    private fun FactFilter.toSource(storeId: StoreId, head: FactPosition, direction: ReadDirection): PositionSource {
-        val tags = tags.map { (key, value) -> key to value }
-
-        val predicates = buildList {
-            if (subjects.isNotEmpty()) {
-                add(anyOf(subjects.map { subjectCursor(storeId, it, head, direction) }, direction))
-            }
-
-            if (types.isNotEmpty() && tags.isNotEmpty()) {
-                // Facts are indexed by type and tag together, and that index holds only the facts
-                // carrying both, so reading a tag from it skips every fact of the type without it.
-                // Each type read this way costs its own cursor, so tags are folded into the types
-                // only as far as that keeps the number of cursors the same.
-                if (types.size == 1) {
-                    val type = types.single()
-                    tags.forEach { add(typeTagCursor(storeId, type, it, head, direction)) }
-                } else {
-                    val folded = tags.first()
-                    add(anyOf(types.map { typeTagCursor(storeId, it, folded, head, direction) }, direction))
-                    tags.drop(1).forEach { add(tagCursor(storeId, it, head, direction)) }
-                }
-            } else {
-                if (types.isNotEmpty()) {
-                    add(anyOf(types.map { typeCursor(storeId, it, head, direction) }, direction))
-                }
-                tags.forEach { add(tagCursor(storeId, it, head, direction)) }
-            }
-        }
-
-        return if (predicates.size == 1) predicates.single() else AllOf(predicates, direction)
-    }
-
-    /**
      * The positions of a source that is built anew for every collection.
      *
      * Sources are cursors, and a cursor is consumed as it is read. Building the tree inside the
@@ -238,58 +196,6 @@ class FdbFactStreamer(
      */
     private fun positionsOf(source: suspend () -> PositionSource): Flow<FactPosition> =
         flow { emitAll(source().positions()) }
-
-    /** Combines sources into a union, without wrapping a single one. */
-    private fun anyOf(sources: List<PositionSource>, direction: ReadDirection): PositionSource =
-        if (sources.size == 1) sources.single() else AnyOf(sources, direction)
-
-    private fun subjectCursor(storeId: StoreId, subject: Subject, head: FactPosition, direction: ReadDirection) =
-        store.context.subjectIndexSubspace.let { index ->
-            cursor(
-                keys = index.pinnedKeys(storeId, subject, head, direction),
-                positionOf = { key -> index.unpackPosition(key) },
-                keyOf = { position -> index.getKey(storeId, subject, position) },
-            )
-        }
-
-    private fun typeCursor(storeId: StoreId, type: FactType, head: FactPosition, direction: ReadDirection) =
-        store.context.eventTypeIndexSubspace.let { index ->
-            cursor(
-                keys = index.pinnedKeys(storeId, type, head, direction),
-                positionOf = { key -> index.unpackPosition(key) },
-                keyOf = { position -> index.getKey(storeId, type, position) },
-            )
-        }
-
-    private fun typeTagCursor(
-        storeId: StoreId,
-        type: FactType,
-        tag: Pair<TagKey, TagValue>,
-        head: FactPosition,
-        direction: ReadDirection,
-    ) = store.context.tagsTypeIndexSubspace.let { index ->
-        cursor(
-            keys = index.pinnedKeys(storeId, type, tag, head, direction),
-            positionOf = { key -> index.unpackPosition(key) },
-            keyOf = { position -> index.getKey(storeId, type, tag, position) },
-        )
-    }
-
-    private fun tagCursor(storeId: StoreId, tag: Pair<TagKey, TagValue>, head: FactPosition, direction: ReadDirection) =
-        store.context.tagsIndexSubspace.let { index ->
-            cursor(
-                keys = index.pinnedKeys(storeId, tag, head, direction),
-                positionOf = { key -> index.unpackPosition(key) },
-                keyOf = { position -> index.getKey(storeId, tag, position) },
-            )
-        }
-
-    /** A cursor over the [keys] of one index, which says how its keys and positions map to each other. */
-    private fun cursor(
-        keys: PinnedKeys,
-        positionOf: (ByteArray) -> FactPosition,
-        keyOf: (FactPosition) -> ByteArray,
-    ) = PositionCursor(store.db, keys, streamBatchSize, positionOf, keyOf)
 
     /**
      * What a stream needs before it can read: the store, the head it stops at, and the position it
@@ -327,17 +233,6 @@ class FdbFactStreamer(
                 }
             }
         }
-
-    /**
-     * Continues the source after [position]: the named position is a marker, so a source sitting
-     * exactly on it moves past it.
-     */
-    private suspend fun PositionSource.continuingAfter(position: FactPosition?): PositionSource {
-        if (position == null) return this
-        seekTo(position)
-        if (peek() == position) advance()
-        return this
-    }
 
     /**
      * Streams the facts behind [keys], at most [limit] of them.

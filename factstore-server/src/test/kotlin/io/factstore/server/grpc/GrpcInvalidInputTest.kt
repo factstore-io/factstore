@@ -63,6 +63,21 @@ class GrpcInvalidInputTest {
                 this.facts += fact { (1..6).forEach { tags["k$it"] = "v" } }
             })
         },
+        case("append with a condition of no kind") {
+            facts.appendFacts(appendFactsRequest { storeName = STORE; this.facts += fact { }; condition = appendCondition { } })
+        },
+        case("append with a condition of no kind nested in all") {
+            facts.appendFacts(appendFactsRequest {
+                storeName = STORE
+                this.facts += fact { }
+                condition = appendCondition { all = all { conditions += appendCondition { } } }
+            })
+        },
+        case("append with a none_match condition without a query") {
+            facts.appendFacts(appendFactsRequest {
+                storeName = STORE; this.facts += fact { }; condition = appendCondition { noneMatch = noneMatch { } }
+            })
+        },
         case("append with an idempotency key that is not a UUID") {
             facts.appendFacts(appendFactsRequest { storeName = STORE; idempotencyKey = "nope"; this.facts += fact { } })
         },

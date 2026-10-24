@@ -1,15 +1,27 @@
 package io.factstore.foundationdb
 
-import com.apple.foundationdb.KeySelector
 import com.apple.foundationdb.Transaction
 import com.apple.foundationdb.tuple.Tuple
 import io.factstore.core.*
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.future.await
+import kotlinx.coroutines.future.future
+import kotlinx.coroutines.supervisorScope
 import java.time.Instant
-import java.util.concurrent.CompletableFuture
 
 const val REVERSED = true
 const val LIMIT_ONE = 1
+
+/**
+ * The number of keys a cursor of an append condition reads at a time.
+ *
+ * A condition stops at its first match, so a single index range rarely needs more than one key,
+ * while an intersection walks its ranges in step and is cheaper with larger batches. Every key is
+ * read within the append's transaction.
+ */
+const val CONDITION_BATCH_SIZE = 256
 
 class FdbFactAppender(
     private val store: FdbFactStore,
@@ -28,84 +40,89 @@ class FdbFactAppender(
             )
         )
 
-    override suspend fun append(request: AppendRequest): AppendResult =
-        store.db.runAsync { tr ->
-            with(tr) {
-                // check fact store exists
-                store.context.lookUpStoreIdByName(request.storeName).thenCompose { storeId ->
-                    if (storeId == null) {
-                        CompletableFuture.completedFuture(AppendResult.StoreNotFound(request.storeName))
-                    } else {
-                        appendToStore(storeId, request)
-                    }
-                }
-            }
-        }.await()
+    /**
+     * Appends within one transaction, which FoundationDB retries as a whole on a conflict.
+     *
+     * The transaction's body is a coroutine, because an append condition walks the same cursors
+     * a stream does. It runs in a supervisor scope: a failed attempt completes its future
+     * exceptionally, for FoundationDB to retry, rather than cancelling the caller.
+     */
+    override suspend fun append(request: AppendRequest): AppendResult = supervisorScope {
+        store.db.runAsync { tr -> future { with(tr) { appendToStore(request) } } }.await()
+    }
 
     context(tr: Transaction)
-    private fun appendToStore(
-        storeId: StoreId,
-        request: AppendRequest,
-    ): CompletableFuture<AppendResult> = with(storeId) {
-        val idempotencyKey = request.idempotencyKeyBytes()
+    private suspend fun appendToStore(request: AppendRequest): AppendResult {
+        val storeId = store.context.lookUpStoreIdByName(request.storeName).await()
+            ?: return AppendResult.StoreNotFound(request.storeName)
 
-        tr[idempotencyKey].thenCompose { existing ->
-            if (existing != null) {
-                CompletableFuture.completedFuture(AppendResult.AlreadyApplied)
-            } else {
-                with(storeId) {
-                    val appendedAt = Instant.now()
-                    val facts = request.facts.map { it.toFact(FactId.generate(), appendedAt) }
-                    request.appendNew(facts, appendedAt)
-                }
-            }
+        return with(storeId) {
+            if (tr[request.idempotencyKeyBytes()].await() != null) return AppendResult.AlreadyApplied
+
+            // A condition naming a fact the store does not have cannot be judged at all
+            val positions = request.condition.afterPositions()
+            positions.entries.firstOrNull { it.value == null }?.let { return AppendResult.AfterFactNotFound(it.key) }
+
+            if (!request.condition.isSatisfied(positions)) return AppendResult.AppendConditionViolated
+
+            val appendedAt = Instant.now()
+            val facts = request.facts.map { it.toFact(FactId.generate(), appendedAt) }
+            with(request) { facts.store() }
+            store.context.idempotencySubspace.save(storeId, request.idempotencyKey)
+            AppendResult.Appended(facts.map { it.id }, appendedAt)
         }
     }
 
+    /**
+     * The position of every fact a [AppendCondition.NoneMatch] in this condition checks after, in
+     * the order the condition names them, or `null` for a fact the store does not have.
+     */
     context(tr: Transaction, storeId: StoreId)
-    private fun AppendRequest.appendNew(
-        facts: List<Fact>,
-        appendedAt: Instant,
-    ): CompletableFuture<AppendResult> =
-        condition.isSatisfied().thenApply { satisfied ->
-            if (!satisfied) {
-                AppendResult.AppendConditionViolated
-            } else {
-                facts.store()
-                store.context.idempotencySubspace.save(storeId, idempotencyKey)
-                AppendResult.Appended(facts.map { it.id }, appendedAt)
-            }
-        }
+    private suspend fun AppendCondition.afterPositions(): Map<FactId, FactPosition?> =
+        afterFactIds().distinct()
+            .associateWith { store.context.factPositionIndexSubspace.getPosition(storeId, it) }
+            .mapValues { (_, position) -> position.await() }
 
+    private fun AppendCondition.afterFactIds(): List<FactId> = when (this) {
+        AppendCondition.None, is AppendCondition.ExpectedLastFact -> emptyList()
+        is AppendCondition.All -> conditions.flatMap { it.afterFactIds() }
+        is AppendCondition.NoneMatch -> listOfNotNull(after)
+    }
+
+    /** Whether the condition holds, given the [positions] of the facts it checks after. */
     context(tr: Transaction, storeId: StoreId)
-    private fun AppendCondition.isSatisfied(): CompletableFuture<Boolean> =
+    private suspend fun AppendCondition.isSatisfied(positions: Map<FactId, FactPosition?>): Boolean =
         when (this) {
-            AppendCondition.None -> CompletableFuture.completedFuture(true)
-            is AppendCondition.ExpectedLastFact -> isSatisfied()
-            is AppendCondition.TagQueryBased -> isSatisfied()
-            is AppendCondition.All -> isSatisfied()
+            AppendCondition.None -> true
+            is AppendCondition.ExpectedLastFact -> subject.getLastFactId() == expectedLastFactId
+            is AppendCondition.All -> coroutineScope {
+                conditions.map { async { it.isSatisfied(positions) } }.awaitAll().all { it }
+            }
+            is AppendCondition.NoneMatch -> isSatisfied(positions)
         }
 
+    /**
+     * Whether no fact matching the query follows the fact the condition checks after.
+     *
+     * The query is read with the cursors of a stream, within the append's transaction and to the
+     * end of every index range. A concurrent append of a matching fact lands at the end of a range
+     * this read covered, so the two transactions conflict and this one is retried. Reading stops
+     * at the first match.
+     */
     context(tr: Transaction, storeId: StoreId)
-    private fun AppendCondition.ExpectedLastFact.isSatisfied(): CompletableFuture<Boolean> =
-        subject.getLastFactId().thenApply { it == expectedLastFactId }
-
-    context(tr: Transaction, storeId: StoreId)
-    private fun AppendCondition.All.isSatisfied(): CompletableFuture<Boolean> {
-        val futures = conditions.map { it.isSatisfied() }
-        return CompletableFuture.allOf(*futures.toTypedArray()).thenApply {
-            futures.all { it.resultNow() }
-        }
+    private suspend fun AppendCondition.NoneMatch.isSatisfied(positions: Map<FactId, FactPosition?>): Boolean {
+        val sources = QuerySources(store.context, KeyReader.within(tr), CONDITION_BATCH_SIZE)
+        val source = with(sources) { query.toSource(storeId, head = null, ReadDirection.Forward) }
+        return source.continuingAfter(after?.let { positions.getValue(it) }).peek() == null
     }
 
     context(tr: Transaction, storeId: StoreId)
-    private fun Subject.getLastFactId(): CompletableFuture<FactId?> {
+    private suspend fun Subject.getLastFactId(): FactId? {
         val subjectRange = store.context.subjectIndexSubspace.range(storeId, this)
         return tr.getRange(subjectRange, LIMIT_ONE, REVERSED)
             .asList()
-            .thenApply { kvs ->
-                kvs.firstOrNull()?.let { Tuple.fromBytes(it.value).getFirstAsFactId() }
-            }
+            .await()
+            .firstOrNull()?.let { Tuple.fromBytes(it.value).getFirstAsFactId() }
     }
 
     context(storeId: StoreId)
@@ -115,145 +132,6 @@ class FdbFactAppender(
     context(tr: Transaction, appendRequest: AppendRequest, storeId: StoreId)
     private fun List<Fact>.store() = with(store) {
         appendRequest.storeName.apply { this@store.store() }
-    }
-
-    context(tr: Transaction, storeId: StoreId)
-    private fun AppendCondition.TagQueryBased.isSatisfied(): CompletableFuture<Boolean> {
-        return after?.getPosition()?.thenCompose { position ->
-            queryItemsForPosition(position)
-        } ?: queryItemsForPosition()
-    }
-
-    context(tr: Transaction, storeId: StoreId)
-    private fun FactId.getPosition() = with(store) {
-        context.factPositionIndexSubspace.getPosition(storeId, this@getPosition)
-    }
-
-    context(tr: Transaction, storeId: StoreId)
-    private fun AppendCondition.TagQueryBased.queryItemsForPosition(
-        afterPosition: FactPosition? = null
-    ): CompletableFuture<Boolean> {
-        val queryItemFutures = failIfEventsMatch.queryItems.map { queryItem ->
-            queryItem.resolveFactIds(afterPosition)
-        }
-
-        return CompletableFuture.allOf(*queryItemFutures.toTypedArray()).thenApply {
-            val factIds = queryItemFutures
-                .flatMap { it.getNow(emptySet()) }
-                .toSet()  // OR semantics = union
-
-            factIds.isEmpty()
-        }
-    }
-
-    context(tr: Transaction, storeId: StoreId)
-    private fun TagQueryItem.resolveFactIds(
-        afterPosition: FactPosition? = null
-    ): CompletableFuture<Set<FactId>> = when (this) {
-        is TagOnlyQueryItem -> queryByTags(afterPosition)
-        is TagTypeItem -> queryByTypeAndTags(afterPosition)
-    }
-
-    context(tr: Transaction, storeId: StoreId)
-    private fun TagOnlyQueryItem.queryByTags(
-        afterPosition: FactPosition?
-    ): CompletableFuture<Set<FactId>> {
-
-        // Helper function to create selectors covering the tag's index after the given position
-        fun createSelectors(
-            tag: Pair<TagKey, TagValue>,
-            afterPosition: FactPosition?
-        ): Pair<KeySelector, KeySelector> {
-            val range = store.context.tagsIndexSubspace.range(storeId, tag)
-
-            // Begin right after the position if one is given, otherwise at the start of the tag's index
-            val beginSelector = if (afterPosition != null) {
-                KeySelector.firstGreaterThan(store.context.tagsIndexSubspace.getKey(storeId, tag, afterPosition))
-            } else {
-                KeySelector.firstGreaterOrEqual(range.begin)
-            }
-
-            // End at the end of the tag's index
-            val endSelector = KeySelector.firstGreaterOrEqual(range.end)
-
-            return Pair(beginSelector, endSelector)
-        }
-
-        val futures: List<CompletableFuture<Set<FactId>>> = tags.map { (key, value) ->
-            val (beginSelector, endSelector) = createSelectors(key to value, afterPosition)
-
-            tr.getRange(beginSelector, endSelector)
-                .asList()
-                .thenApply { keyValues ->
-                    keyValues.map {
-                        Tuple.fromBytes(it.value).getFirstAsFactId()
-                    }.toSet() // Convert to Set to easily combine results
-                }
-        }
-
-        // After all futures complete, intersect the sets: a fact matches only if it carries every tag
-        return CompletableFuture.allOf(*futures.toTypedArray()).thenApply {
-            futures
-                .map { it.getNow(emptySet()) } // Extract the result of each CompletableFuture
-                .reduce { acc, set -> acc.intersect(set) } // Intersect all sets to get the facts carrying every tag
-                .orEmpty() // Return empty set if no sets are present
-        }
-    }
-
-    context(tr: Transaction, storeId: StoreId)
-    private fun TagTypeItem.queryByTypeAndTags(
-        afterPosition: FactPosition?
-    ): CompletableFuture<Set<FactId>> {
-        // Helper function to create selectors covering the type and tag's index after the given position
-        fun createSelectors(
-            type: FactType,
-            tag: Pair<TagKey, TagValue>,
-            afterPosition: FactPosition?
-        ): Pair<KeySelector, KeySelector> {
-            val range = store.context.tagsTypeIndexSubspace.range(storeId, type, tag)
-
-            val startKeySelector = if (afterPosition != null) {
-                KeySelector.firstGreaterThan(store.context.tagsTypeIndexSubspace.getKey(storeId, type, tag, afterPosition))
-            } else {
-                KeySelector.firstGreaterOrEqual(range.begin)
-            }
-
-            val endSelector = KeySelector.firstGreaterOrEqual(range.end)
-
-            return Pair(startKeySelector, endSelector)
-        }
-
-        // use composite "type+tag" index
-        val futures: List<CompletableFuture<Set<FactId>>> = types.map { type ->
-            val tagFutures = tags.map { (key, value) ->
-                // Create the start and end selectors
-                val (startKeySelector, endSelector) = createSelectors(type, key to value, afterPosition)
-
-                tr.getRange(startKeySelector, endSelector)
-                    .asList()
-                    .thenApply { keyValues ->
-                        keyValues.map {
-                            Tuple.fromBytes(it.value).getFirstAsFactId()
-                        }.toSet()
-                    }
-            }
-
-            // we want to logically "AND" the result of the tag queries
-            CompletableFuture.allOf(*tagFutures.toTypedArray()).thenApply {
-                tagFutures
-                    .map { it.getNow(emptySet()) } // Extract the result of each CompletableFuture
-                    .reduce { acc, set -> acc.intersect(set) } // Reduce by intersecting each set
-                    .orEmpty() // If there are no sets to intersect, return an empty set
-            }
-        }
-
-        // we finally union the found UUIDs
-        return CompletableFuture.allOf(*futures.toTypedArray()).thenApply {
-            futures
-                .map { it.getNow(emptySet()) }
-                .reduce { acc, set -> acc.union(set) }
-                .orEmpty()
-        }
     }
 
 }

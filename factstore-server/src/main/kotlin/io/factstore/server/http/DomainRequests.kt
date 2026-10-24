@@ -137,25 +137,10 @@ internal fun AppendConditionHttp.toAppendCondition(): AppendCondition =
                 conditions = conditions.map { it.toAppendCondition() }
             )
 
-        is AppendConditionHttp.TagQueryBased ->
-            AppendCondition.TagQueryBased(
-                failIfEventsMatch = failIfEventsMatch.toTagQuery(),
+        is AppendConditionHttp.NoneMatch ->
+            AppendCondition.NoneMatch(
+                query = FactQuery(query.filters.map { it.toFactFilter() }),
                 after = after?.toFactId(),
-            )
-    }
-
-internal fun FactQueryHttp.toTagQuery(): TagQuery =
-    TagQuery(queryItems = queryItems.map { it.toTagQueryItem() })
-
-internal fun TagQueryItemHttp.toTagQueryItem(): TagQueryItem =
-    when (this) {
-        is TagQueryItemHttp.TagOnly ->
-            TagOnlyQueryItem(tags = tags.asTags())
-
-        is TagQueryItemHttp.TagType ->
-            TagTypeItem(
-                types = types.map { it.asFactType() }.toSet(),
-                tags = tags.asTags(),
             )
     }
 

@@ -34,6 +34,13 @@ internal fun FactStoreProto.FactPayload.toDomain(): FactPayload = FactPayload(
     data = data.toByteArray(),
 )
 
+/**
+ * The condition this message sets.
+ *
+ * A request without a condition appends unconditionally, but a condition that is present and sets
+ * no kind is rejected: it is what a client sends whose kind this server does not know, and
+ * appending it unconditionally would silently drop the check the client asked for.
+ */
 internal fun FactStoreProto.AppendCondition.toDomain(): AppendCondition = when (kindCase) {
     FactStoreProto.AppendCondition.KindCase.EXPECTED_LAST_FACT -> AppendCondition.ExpectedLastFact(
         subject = expectedLastFact.subject.asSubject(),
@@ -46,30 +53,15 @@ internal fun FactStoreProto.AppendCondition.toDomain(): AppendCondition = when (
         conditions = all.conditionsList.map { it.toDomain() }
     )
 
-    FactStoreProto.AppendCondition.KindCase.TAG_QUERY_BASED -> AppendCondition.TagQueryBased(
-        failIfEventsMatch = tagQueryBased.failIfEventsMatch.toDomain(),
-        after = if (tagQueryBased.hasAfterFactId()) tagQueryBased.afterFactId.asFactId()
+    FactStoreProto.AppendCondition.KindCase.NONE_MATCH -> AppendCondition.NoneMatch(
+        query = noneMatch.query.toDomain(),
+        after = if (noneMatch.hasAfterFactId()) noneMatch.afterFactId.asFactId()
         else null
     )
 
-    else -> AppendCondition.None
-}
-
-internal fun FactStoreProto.TagQuery.toDomain(): TagQuery = TagQuery(
-    queryItems = itemsList.map { it.toDomain() }
-)
-
-internal fun FactStoreProto.TagQueryItem.toDomain(): TagQueryItem = when (kindCase) {
-    FactStoreProto.TagQueryItem.KindCase.TAG_ONLY -> TagOnlyQueryItem(
-        tags = tagOnly.tagsMap.asTags()
+    FactStoreProto.AppendCondition.KindCase.KIND_NOT_SET, null -> throw IllegalArgumentException(
+        "An append condition must set one of expected_last_fact, all or none_match."
     )
-
-    FactStoreProto.TagQueryItem.KindCase.TAG_TYPE -> TagTypeItem(
-        types = tagType.typesList.map { it.asFactType() }.toSet(),
-        tags = tagType.tagsMap.asTags()
-    )
-
-    else -> throw IllegalArgumentException("TagQueryItem has no kind set")
 }
 
 typealias GrpcAppendRequest = FactStoreProto.AppendFactsRequest

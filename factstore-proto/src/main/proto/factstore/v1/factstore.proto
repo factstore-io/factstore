@@ -38,41 +38,15 @@ enum ReadDirection {
   READ_DIRECTION_BACKWARD = 2; // newest to oldest
 }
 
-// ─── Tag Query ────────────────────────────────────────────────────────────────
-//
-// A TagQuery is a list of items evaluated with OR semantics: a fact matches if
-// it satisfies at least one item. Within each item, all tags/types are ANDed.
-
-message TagQuery {
-  repeated TagQueryItem items = 1;
-}
-
-message TagQueryItem {
-  oneof kind {
-    TagOnlyItem tag_only = 1;
-    TagTypeItem tag_type = 2;
-  }
-}
-
-// Matches facts that have all specified tags, regardless of type.
-message TagOnlyItem {
-  map<string, string> tags = 1;
-}
-
-// Matches facts whose type is in `types` AND that have all specified tags.
-message TagTypeItem {
-  repeated string types = 1;
-  map<string, string> tags = 2;
-}
-
 // ─── Append Condition ─────────────────────────────────────────────────────────
 
-// If absent on an AppendFactsRequest, no condition is applied.
+// If absent on an AppendFactsRequest, no condition is applied. A condition that is present must
+// set a kind; one that sets none is rejected with INVALID_ARGUMENT.
 message AppendCondition {
   oneof kind {
     ExpectedLastFact expected_last_fact = 1;
-    TagQueryBasedCondition tag_query_based = 2;
     All all = 3;
+    NoneMatch none_match = 4;
   }
 }
 
@@ -90,9 +64,11 @@ message ExpectedLastFact {
   optional string expected_last_fact_id = 2;
 }
 
-// Append fails if any fact matching `fail_if_events_match` exists after `after_fact_id`.
-message TagQueryBasedCondition {
-  TagQuery fail_if_events_match = 1;
+// Append fails if a fact matching `query` was appended after `after_fact_id`, or, without one,
+// if any fact matches at all. An `after_fact_id` that is not a fact of the store fails the
+// append with `after_fact_not_found`.
+message NoneMatch {
+  FactQuery query = 1;
   optional string after_fact_id = 2;
 }
 
@@ -265,7 +241,13 @@ message AppendFactsResponse {
     AlreadyApplied already_applied = 2;
     ConditionViolated condition_violated = 3;
     StoreNotFound store_not_found = 4;
+    AfterFactNotFound after_fact_not_found = 5;
   }
+}
+
+// A NoneMatch condition checks after a fact that is not a fact of the store.
+message AfterFactNotFound {
+  string fact_id = 1;
 }
 
 message FactsAppended {

@@ -67,6 +67,13 @@ fun continuationNotFoundError(factId: FactId): Response = apiErrorResponse(
     details = mapOf("kind" to "continuation", "id" to factId.uuid)
 )
 
+fun afterFactNotFoundError(factId: FactId): Response = apiErrorResponse(
+    status = NOT_FOUND,
+    reason = Reason.NotFound,
+    message = "The fact '${factId.uuid}' the append condition checks after does not exist.",
+    details = mapOf("kind" to "afterFact", "id" to factId.uuid)
+)
+
 fun storeAlreadyExistsError(storeName: StoreName): Response = apiErrorResponse(
     status = CONFLICT,
     reason = Reason.AlreadyExists,

@@ -24,7 +24,6 @@ and [ADR 004](decisions/004_streaming_reads.md) for queries.
 | Subjects per filter | 10 |
 | Types per filter | 10 |
 | Tags a filter may require | 5 |
-| Tags an append condition's query item may require | 1 to 5 |
 
 The size of an append is the sum of what each fact carries: its payload plus its type, subject,
 tag keys and values, and metadata keys and values. A client can compute it exactly before calling.
