@@ -37,13 +37,11 @@ class QueryResource(
         description = "A fact matches when it matches any of the query's items, and a fact matching " +
             "several of them is streamed once. " + FACT_STREAM_DESCRIPTION,
     )
-    fun streamFactsByQuery(
+    fun queryFacts(
         @PathParam("storeName") storeName: String,
-        request: StreamFactsByQueryHttpRequest,
+        request: QueryFactsHttpRequest,
     ): Multi<FactStreamLineHttp> =
         streamOfLines { request.toDomainRequest(storeName).publishTo(store).toResponse() }
-
-
 
     @GET
     @Produces(APPLICATION_NDJSON)

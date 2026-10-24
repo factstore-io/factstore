@@ -12,19 +12,19 @@ import io.factstore.core.*
 import java.time.Instant
 import java.util.concurrent.CompletableFuture
 
-const val HEAD_INDEX = 100
-const val EVENT_TYPE_INDEX = 102
-const val SUBJECT_INDEX = 103
-const val TAGS_INDEX = 105
-const val TAGS_TYPE_INDEX = 106
+internal const val HEAD_INDEX = 100
+internal const val EVENT_TYPE_INDEX = 102
+internal const val SUBJECT_INDEX = 103
+internal const val TAGS_INDEX = 105
+internal const val TAGS_TYPE_INDEX = 106
 
-const val IDEMPOTENCY_KEYS = 200
+internal const val IDEMPOTENCY_KEYS = 200
 
-val EMPTY_BYTE_ARRAY = ByteArray(0)
-const val DEFAULT_INDEX = 0
+internal val EMPTY_BYTE_ARRAY = ByteArray(0)
+private const val DEFAULT_INDEX = 0
 
-const val FACTS = 1
-const val FACT_POSITIONS = 2
+internal const val FACTS = 1
+internal const val FACT_POSITIONS = 2
 
 /**
  * A simple event/fact store implementation based on FoundationDB.

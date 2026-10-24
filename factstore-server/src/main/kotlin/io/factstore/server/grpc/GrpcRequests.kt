@@ -1,17 +1,13 @@
 package io.factstore.server.grpc
 
-import com.google.protobuf.Timestamp
 import io.factstore.core.*
 import io.factstore.grpc.v1.*
 import io.factstore.server.input.*
-import java.time.Instant
 import io.factstore.core.ReadDirection as CoreReadDirection
 
 /*
  * Parses gRPC input into the specification's requests.
  */
-
-internal fun Timestamp.toInstant(): Instant = Instant.ofEpochSecond(seconds, nanos.toLong())
 
 /** Every read states its direction: an unset or unknown direction is invalid input. */
 internal fun FactStoreProto.ReadDirection.toCore(): CoreReadDirection = when (this) {

@@ -3,26 +3,18 @@ package io.factstore.testing
 import io.factstore.core.*
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
-import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
-import kotlinx.coroutines.flow.transform
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.assertj.core.api.Assertions.*
 import org.junit.jupiter.api.*
-import java.time.Instant
 import java.util.UUID
-import kotlin.system.measureTimeMillis
-import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 private const val ALICE_SUBJECT_VALUE = "USER:ALICE"
@@ -86,7 +78,6 @@ abstract class AbstractFactStoreTest {
     private suspend fun appendStored(input: FactInput, storeName: StoreName = testStore): Fact =
         appendStored(listOf(input), storeName).single()
 
-
     @BeforeEach
     fun clearEventStore(): Unit = runBlocking {
         store = initializeFactStore()
@@ -96,7 +87,6 @@ abstract class AbstractFactStoreTest {
 
         assertThat(result).isInstanceOf(CreateStoreResult.Created::class.java)
     }
-
 
     @Test
     fun testCreateFactStore(): Unit = runBlocking {
@@ -171,13 +161,6 @@ abstract class AbstractFactStoreTest {
         val result = store.findById(FindByIdRequest(nonExistingStore, FactId.generate()))
         assertThat(result).isInstanceOf(FindByIdResult.StoreNotFound::class.java)
     }
-
-
-
-
-
-
-
 
     @Test
     fun testConditionalAppendWithSubject(): Unit = runBlocking {
@@ -313,12 +296,6 @@ abstract class AbstractFactStoreTest {
 
     }
 
-
-
-
-
-
-
     @Test
     fun testWithMetadata(): Unit = runBlocking {
 
@@ -415,13 +392,6 @@ abstract class AbstractFactStoreTest {
         val last = (store.findById(FindByIdRequest(testStore, ids.last())) as FindByIdResult.Found).fact
         assertThat(last).isEqualTo(inputs.last().toFact(last.id, last.appendedAt))
     }
-
-
-
-
-
-
-
 
     // ===== FactSubscriber: subscribe =====
 
@@ -740,7 +710,7 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
-    fun testStreamFactsBySubjectContinuesAfterAFactOfAnotherSubject(): Unit = runBlocking {
+    fun testStreamFactsOfASubjectContinuesAfterAFactOfAnotherSubject(): Unit = runBlocking {
         val (alice1, bob, alice2) = appendStored(
             listOf(
                 input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
@@ -757,7 +727,7 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
-    fun testStreamFactsByTypeContinuesAfterAFact(): Unit = runBlocking {
+    fun testStreamFactsOfATypeContinuesAfterAFact(): Unit = runBlocking {
         val (created1, locked, created2) = appendStored(
             listOf(
                 input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
@@ -773,7 +743,7 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
-    fun testStreamFactsByTagsContinuesAfterAFact(): Unit = runBlocking {
+    fun testStreamFactsOfTagsContinuesAfterAFact(): Unit = runBlocking {
         val (alice, bob, charlie) = appendStored(
             listOf(
                 userInput("ALICE", "Alice", role = "admin", region = "eu"),
@@ -793,7 +763,7 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
-    fun testStreamFactsByQueryContinuesAfterAFact(): Unit = runBlocking {
+    fun testStreamFactsOfAQueryContinuesAfterAFact(): Unit = runBlocking {
         val (alice, bob, charlie) = appendStored(
             listOf(
                 userInput("ALICE", "Alice", role = "admin", region = "eu"),
@@ -831,7 +801,7 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
-    fun testStreamFactsByQueryContinuedAfterAnUnknownFact(): Unit = runBlocking {
+    fun testStreamFactsOfAQueryContinuedAfterAnUnknownFact(): Unit = runBlocking {
         appendStored(userInput("ALICE", "Alice", role = "admin", region = "eu"))
         val unknown = FactId.generate()
 
@@ -851,7 +821,7 @@ abstract class AbstractFactStoreTest {
     // ===== FactStreamer: a query of one subject =====
 
     @Test
-    fun testStreamFactsBySubjectForward(): Unit = runBlocking {
+    fun testStreamFactsOfASubjectForward(): Unit = runBlocking {
         val (fact1, fact2, fact3) = appendStored(
             listOf(
                 input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
@@ -867,7 +837,7 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
-    fun testStreamFactsBySubjectBackward(): Unit = runBlocking {
+    fun testStreamFactsOfASubjectBackward(): Unit = runBlocking {
         val (fact1, _, fact3) = appendStored(
             listOf(
                 input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
@@ -881,7 +851,7 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
-    fun testStreamFactsBySubjectWithLimit(): Unit = runBlocking {
+    fun testStreamFactsOfASubjectWithLimit(): Unit = runBlocking {
         val (fact1, fact2, fact3) = appendStored(
             listOf(
                 input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
@@ -900,7 +870,7 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
-    fun testStreamFactsBySubjectLimitCountsOnlyTheSubjectsFacts(): Unit = runBlocking {
+    fun testStreamFactsOfASubjectLimitCountsOnlyTheSubjectsFacts(): Unit = runBlocking {
         val (fact1, _, _, fact4) = appendStored(
             listOf(
                 input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
@@ -916,14 +886,14 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
-    fun testStreamFactsBySubjectWithoutFacts(): Unit = runBlocking {
+    fun testStreamFactsOfASubjectWithoutFacts(): Unit = runBlocking {
         appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload))
 
         assertThat(streamToList(subjectRequest("USER:PETER", ReadDirection.Forward, Limit.None))).isEmpty()
     }
 
     @Test
-    fun testStreamFactsBySubjectOnlyContainsFactsOfTheRequestedStore(): Unit = runBlocking {
+    fun testStreamFactsOfASubjectOnlyContainsFactsOfTheRequestedStore(): Unit = runBlocking {
         val otherStore = StoreName("other-store")
         store.create(CreateStoreRequest(otherStore))
 
@@ -935,7 +905,7 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
-    fun testStreamFactsBySubjectExcludesFactsAppendedAfterCall(): Unit = runBlocking {
+    fun testStreamFactsOfASubjectExcludesFactsAppendedAfterCall(): Unit = runBlocking {
         val fact1 = appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload))
 
         // The head is pinned when the stream is requested, not when it is collected.
@@ -948,7 +918,7 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
-    fun testStreamFactsBySubjectIsRepeatable(): Unit = runBlocking {
+    fun testStreamFactsOfASubjectIsRepeatable(): Unit = runBlocking {
         val (fact1, _, fact3) = appendStored(
             listOf(
                 input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
@@ -969,7 +939,7 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
-    fun testStreamFactsBySubjectOfLargeHistory(): Unit = runBlocking {
+    fun testStreamFactsOfASubjectOfLargeHistory(): Unit = runBlocking {
         val aliceFacts = appendLargeHistory().filter { it.subject.value == ALICE_SUBJECT_VALUE }
 
         assertThat(streamToList(subjectRequest(ALICE_SUBJECT_VALUE, ReadDirection.Forward, Limit.None)))
@@ -985,7 +955,7 @@ abstract class AbstractFactStoreTest {
     // ===== FactStreamer: a query of one type =====
 
     @Test
-    fun testStreamFactsByTypeForward(): Unit = runBlocking {
+    fun testStreamFactsOfATypeForward(): Unit = runBlocking {
         val (fact1, _, fact3) = appendStored(
             listOf(
                 input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
@@ -1000,7 +970,7 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
-    fun testStreamFactsByTypeBackward(): Unit = runBlocking {
+    fun testStreamFactsOfATypeBackward(): Unit = runBlocking {
         val (fact1, _, fact3) = appendStored(
             listOf(
                 input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
@@ -1014,7 +984,7 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
-    fun testStreamFactsByTypeWithLimit(): Unit = runBlocking {
+    fun testStreamFactsOfATypeWithLimit(): Unit = runBlocking {
         val (fact1, fact2, fact3) = appendStored(
             listOf(
                 input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
@@ -1030,7 +1000,7 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
-    fun testStreamFactsByTypeLimitCountsOnlyTheTypesFacts(): Unit = runBlocking {
+    fun testStreamFactsOfATypeLimitCountsOnlyTheTypesFacts(): Unit = runBlocking {
         val (fact1, _, _, fact4) = appendStored(
             listOf(
                 input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
@@ -1046,7 +1016,7 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
-    fun testStreamFactsByTypeMatchesTheTypeExactly(): Unit = runBlocking {
+    fun testStreamFactsOfATypeMatchesTheTypeExactly(): Unit = runBlocking {
         val exact = appendStored(input(ALICE_SUBJECT_VALUE, "com.acme.OrderPlaced", alicePayload))
         appendStored(input(ALICE_SUBJECT_VALUE, "com.acme.OrderPlaced.V2", alicePayload))
 
@@ -1056,14 +1026,14 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
-    fun testStreamFactsByTypeWithoutFacts(): Unit = runBlocking {
+    fun testStreamFactsOfATypeWithoutFacts(): Unit = runBlocking {
         appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload))
 
         assertThat(streamToList(typeRequest("USER_DELETED", ReadDirection.Forward, Limit.None))).isEmpty()
     }
 
     @Test
-    fun testStreamFactsByTypeOnlyContainsFactsOfTheRequestedStore(): Unit = runBlocking {
+    fun testStreamFactsOfATypeOnlyContainsFactsOfTheRequestedStore(): Unit = runBlocking {
         val otherStore = StoreName("other-store")
         store.create(CreateStoreRequest(otherStore))
 
@@ -1075,7 +1045,7 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
-    fun testStreamFactsByTypeExcludesFactsAppendedAfterCall(): Unit = runBlocking {
+    fun testStreamFactsOfATypeExcludesFactsAppendedAfterCall(): Unit = runBlocking {
         val fact1 = appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload))
 
         val stream = (store.streamFacts(typeRequest("USER_CREATED", ReadDirection.Forward, Limit.None))
@@ -1087,7 +1057,7 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
-    fun testStreamFactsByTypeExcludesFactsAppendedWhileCollected(): Unit = runBlocking {
+    fun testStreamFactsOfATypeExcludesFactsAppendedWhileCollected(): Unit = runBlocking {
         // More facts than a backend is likely to read at once, so collecting spans several reads.
         val facts = appendStored((0 until 300).map { input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload) })
 
@@ -1106,7 +1076,7 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
-    fun testStreamFactsByTypeIsRepeatable(): Unit = runBlocking {
+    fun testStreamFactsOfATypeIsRepeatable(): Unit = runBlocking {
         val (fact1, _, fact3) = appendStored(
             listOf(
                 input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
@@ -1127,7 +1097,7 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
-    fun testStreamFactsByTypeOfLargeHistory(): Unit = runBlocking {
+    fun testStreamFactsOfATypeOfLargeHistory(): Unit = runBlocking {
         val evenFacts = appendLargeHistory().filterIndexed { index, _ -> index % 2 == 0 }
 
         assertThat(streamToList(typeRequest(EVEN_FACT_TYPE, ReadDirection.Forward, Limit.None)))
@@ -1141,7 +1111,7 @@ abstract class AbstractFactStoreTest {
     // ===== FactStreamer: a query of tags =====
 
     @Test
-    fun testStreamFactsByOneTag(): Unit = runBlocking {
+    fun testStreamFactsOfOneTag(): Unit = runBlocking {
         val (alice, _, charlie) = appendStored(
             listOf(
                 userInput("ALICE", "Alice", role = "admin", region = "eu"),
@@ -1155,7 +1125,7 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
-    fun testStreamFactsByTagsRequiresAllTags(): Unit = runBlocking {
+    fun testStreamFactsOfTagsRequiresAllTags(): Unit = runBlocking {
         val (_, _, charlie) = appendStored(
             listOf(
                 userInput("ALICE", "Alice", role = "admin", region = "eu"),
@@ -1170,7 +1140,7 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
-    fun testStreamFactsByTagsMatchesTheTagValueExactly(): Unit = runBlocking {
+    fun testStreamFactsOfTagsMatchesTheTagValueExactly(): Unit = runBlocking {
         appendStored(userInput("ALICE", "Alice", role = "admin", region = "eu"))
 
         assertThat(streamToList(tagsRequest(mapOf("role" to "admins"), ReadDirection.Forward, Limit.None))).isEmpty()
@@ -1178,7 +1148,7 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
-    fun testStreamFactsByTagsBackward(): Unit = runBlocking {
+    fun testStreamFactsOfTagsBackward(): Unit = runBlocking {
         val (alice, _, charlie) = appendStored(
             listOf(
                 userInput("ALICE", "Alice", role = "admin", region = "eu"),
@@ -1192,7 +1162,7 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
-    fun testStreamFactsByTagsWithLimit(): Unit = runBlocking {
+    fun testStreamFactsOfTagsWithLimit(): Unit = runBlocking {
         val (alice, _, charlie) = appendStored(
             listOf(
                 userInput("ALICE", "Alice", role = "admin", region = "eu"),
@@ -1209,7 +1179,7 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
-    fun testStreamFactsByTagsWithoutMatches(): Unit = runBlocking {
+    fun testStreamFactsOfTagsWithoutMatches(): Unit = runBlocking {
         appendStored(userInput("ALICE", "Alice", role = "admin", region = "eu"))
 
         assertThat(streamToList(tagsRequest(mapOf("role" to "guest"), ReadDirection.Forward, Limit.None))).isEmpty()
@@ -1218,7 +1188,7 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
-    fun testStreamFactsByTagsExcludesFactsAppendedAfterCall(): Unit = runBlocking {
+    fun testStreamFactsOfTagsExcludesFactsAppendedAfterCall(): Unit = runBlocking {
         val alice = appendStored(userInput("ALICE", "Alice", role = "admin", region = "eu"))
 
         val stream = (store.streamFacts(tagsRequest(mapOf("role" to "admin"), ReadDirection.Forward, Limit.None))
@@ -1230,7 +1200,7 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
-    fun testStreamFactsByTagsIsRepeatable(): Unit = runBlocking {
+    fun testStreamFactsOfTagsIsRepeatable(): Unit = runBlocking {
         val alice = appendStored(userInput("ALICE", "Alice", role = "admin", region = "eu"))
 
         val stream = (store.streamFacts(tagsRequest(mapOf("role" to "admin"), ReadDirection.Forward, Limit.None))
@@ -1245,7 +1215,7 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
-    fun testStreamFactsBySeveralTagsIsRepeatable(): Unit = runBlocking {
+    fun testStreamFactsOfSeveralTagsIsRepeatable(): Unit = runBlocking {
         val alice = appendStored(userInput("ALICE", "Alice", role = "admin", region = "eu"))
         appendStored(userInput("BOB", "Bob", role = "user", region = "eu"))
 
@@ -1261,7 +1231,7 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
-    fun testStreamFactsByTagsOfLargeHistory(): Unit = runBlocking {
+    fun testStreamFactsOfTagsOfLargeHistory(): Unit = runBlocking {
         // 900 facts: every third carries role=admin, every fifth region=eu, so the tags match
         // different, interleaved sets. The 300 admin facts are more than a backend reads at once,
         // so matching the two tags has to continue across several reads of that tag's index.
@@ -1290,7 +1260,7 @@ abstract class AbstractFactStoreTest {
     // ===== FactStreamer: queries of several predicates and items =====
 
     @Test
-    fun testStreamFactsByQueryOfOneItemPerPredicate(): Unit = runBlocking {
+    fun testStreamFactsOfAQueryOfOneItemPerPredicate(): Unit = runBlocking {
         val (alice, bob, aliceLocked) = appendStored(
             listOf(
                 userInput("ALICE", "Alice", role = "admin", region = "eu"),
@@ -1309,7 +1279,7 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
-    fun testStreamFactsByQueryCombinesPredicatesWithAnd(): Unit = runBlocking {
+    fun testStreamFactsOfAQueryCombinesPredicatesWithAnd(): Unit = runBlocking {
         val (_, _, aliceLocked) = appendStored(
             listOf(
                 userInput("ALICE", "Alice", role = "admin", region = "eu"),
@@ -1329,7 +1299,7 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
-    fun testStreamFactsByQueryMatchesAnyValueOfAPredicate(): Unit = runBlocking {
+    fun testStreamFactsOfAQueryMatchesAnyValueOfAPredicate(): Unit = runBlocking {
         val (alice, bob, charlie) = appendStored(
             listOf(
                 userInput("ALICE", "Alice", role = "admin", region = "eu"),
@@ -1348,7 +1318,7 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
-    fun testStreamFactsByQueryCombinesOneTypeWithSeveralTags(): Unit = runBlocking {
+    fun testStreamFactsOfAQueryCombinesOneTypeWithSeveralTags(): Unit = runBlocking {
         val (alice, _, _) = appendStored(
             listOf(
                 // Right type, both tags.
@@ -1366,7 +1336,7 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
-    fun testStreamFactsByQueryCombinesSeveralTypesWithSeveralTags(): Unit = runBlocking {
+    fun testStreamFactsOfAQueryCombinesSeveralTypesWithSeveralTags(): Unit = runBlocking {
         val (alice, _, _, charlie) = appendStored(
             listOf(
                 // Alice: right type, both tags.
@@ -1389,7 +1359,7 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
-    fun testStreamFactsByQueryCombinesItemsWithOr(): Unit = runBlocking {
+    fun testStreamFactsOfAQueryCombinesItemsWithOr(): Unit = runBlocking {
         val (alice, _, charlie) = appendStored(
             listOf(
                 userInput("ALICE", "Alice", role = "admin", region = "eu"),
@@ -1409,7 +1379,7 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
-    fun testStreamFactsByQueryEmitsAFactMatchingSeveralItemsOnce(): Unit = runBlocking {
+    fun testStreamFactsOfAQueryEmitsAFactMatchingSeveralItemsOnce(): Unit = runBlocking {
         val (alice, bob) = appendStored(
             listOf(
                 userInput("ALICE", "Alice", role = "admin", region = "eu"),
@@ -1429,7 +1399,7 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
-    fun testStreamFactsByQueryBackwardAndWithLimit(): Unit = runBlocking {
+    fun testStreamFactsOfAQueryBackwardAndWithLimit(): Unit = runBlocking {
         val (alice, bob, charlie) = appendStored(
             listOf(
                 userInput("ALICE", "Alice", role = "admin", region = "eu"),
@@ -1451,14 +1421,14 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
-    fun testStreamFactsByQueryWithoutMatches(): Unit = runBlocking {
+    fun testStreamFactsOfAQueryWithoutMatches(): Unit = runBlocking {
         appendStored(userInput("ALICE", "Alice", role = "admin", region = "eu"))
 
         assertThat(streamToList(query(FactQueryItem(types = setOf(FactType("USER_DELETED")))))).isEmpty()
     }
 
     @Test
-    fun testStreamFactsByQueryOfNonExistingStore(): Unit = runBlocking {
+    fun testStreamFactsOfAQueryOfNonExistingStore(): Unit = runBlocking {
         val result = store.streamFacts(
             StreamFactsRequest(
                 nonExistingStore,
@@ -1473,7 +1443,7 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
-    fun testStreamFactsByQueryExcludesFactsAppendedAfterCall(): Unit = runBlocking {
+    fun testStreamFactsOfAQueryExcludesFactsAppendedAfterCall(): Unit = runBlocking {
         val alice = appendStored(userInput("ALICE", "Alice", role = "admin", region = "eu"))
 
         val stream = (store.streamFacts(
@@ -1492,7 +1462,7 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
-    fun testStreamFactsByQueryIsRepeatable(): Unit = runBlocking {
+    fun testStreamFactsOfAQueryIsRepeatable(): Unit = runBlocking {
         val (alice, _, charlie) = appendStored(
             listOf(
                 userInput("ALICE", "Alice", role = "admin", region = "eu"),
@@ -1524,7 +1494,7 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
-    fun testStreamFactsByQueryOfLargeHistory(): Unit = runBlocking {
+    fun testStreamFactsOfAQueryOfLargeHistory(): Unit = runBlocking {
         // 900 facts: every third is an admin, every fifth is in the EU, and the types alternate,
         // so every part of the query spans more than one read of a backend.
         val inputs = (0 until 900).map { i ->
@@ -1553,7 +1523,7 @@ abstract class AbstractFactStoreTest {
     }
 
     @Test
-    fun testStreamFactsByQueryOfOneIndexRange(): Unit = runBlocking {
+    fun testStreamFactsOfAQueryOfOneIndexRange(): Unit = runBlocking {
         // An item of a single subject, type or tag, or one type and one tag, may be read
         // differently from a query that combines several. 600 facts, so that the larger results
         // span more than one read of a backend.
@@ -1652,14 +1622,6 @@ abstract class AbstractFactStoreTest {
         }
         return inputs.chunked(AppendRequest.MAX_FACTS).flatMap { appendStored(it) }
     }
-
-
-
-
-
-
-
-
 
     // ===== NoneMatch: no fact matching a query since the last fact the decision read =====
 
@@ -2055,7 +2017,6 @@ abstract class AbstractFactStoreTest {
         val appendResult2 = store.append(appendRequest)
 
         assertThat(appendResult2).isInstanceOf(AppendResult.AlreadyApplied::class.java)
-
 
     }
 

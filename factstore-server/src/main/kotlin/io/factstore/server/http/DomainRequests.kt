@@ -74,7 +74,7 @@ internal fun streamFactsRequest(
     )
 }
 
-internal fun StreamFactsByQueryHttpRequest.toDomainRequest(storeName: String): StreamFactsRequest = parseInput {
+internal fun QueryFactsHttpRequest.toDomainRequest(storeName: String): StreamFactsRequest = parseInput {
     StreamFactsRequest(
         storeName = storeName.asStoreName(),
         query = FactQuery(items.map { it.toFactQueryItem() }),

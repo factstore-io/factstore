@@ -121,9 +121,6 @@ class MemoryFactStore : FactStore {
         if (exists) ExistsByIdResult.Exists else ExistsByIdResult.DoesNotExist
     }
 
-
-
-
     // ===== FactStreamer Implementation =====
 
     override suspend fun streamFacts(request: StreamFactsRequest): StreamFactsResult = lock.withLock {
@@ -191,7 +188,6 @@ class MemoryFactStore : FactStore {
 
         SubscribeResult.FactStream(scanFlow(internalId, startIndex))
     }
-
 
     /** Follows the store from [startIndex] onwards; a subscription never ends on its own. */
     private fun scanFlow(internalId: UUID, startIndex: Int) = flow {

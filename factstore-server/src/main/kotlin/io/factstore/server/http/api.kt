@@ -109,7 +109,7 @@ data class FactHttp(
  * @property direction `forward` (the default) or `backward`
  * @property limit the maximum number of facts to stream, over the whole result
  */
-data class StreamFactsByQueryHttpRequest(
+data class QueryFactsHttpRequest(
     @field:Schema(minItems = 1, maxItems = FactQuery.MAX_ITEMS)
     val items: List<FactQueryItemHttp>,
     @field:Schema(description = "Continue after this fact, exclusive and in reading order.", format = "uuid")

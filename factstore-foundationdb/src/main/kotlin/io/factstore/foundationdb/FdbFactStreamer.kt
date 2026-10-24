@@ -22,8 +22,8 @@ import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.transform
 import java.util.concurrent.CompletableFuture
 
-const val DEFAULT_BATCH_SIZE = 10_000
-const val RAW_CHANNEL_CAPACITY = 4
+private const val DEFAULT_BATCH_SIZE = 10_000
+private const val RAW_CHANNEL_CAPACITY = 4
 
 /**
  * The number of entries a [FactStreamer] stream reads per transaction.
@@ -32,7 +32,7 @@ const val RAW_CHANNEL_CAPACITY = 4
  * limit: even at the largest fact the specification allows, about 75 kB, a batch loads
  * less than 20 MB.
  */
-const val STREAM_BATCH_SIZE = 256
+internal const val STREAM_BATCH_SIZE = 256
 
 /**
  * The number of batches a [FactStreamer] stream reads ahead of its consumer.
@@ -41,7 +41,7 @@ const val STREAM_BATCH_SIZE = 256
  * The batches read ahead wait in memory: with the batch being processed, a stream holds at
  * most 5 batches, which is about 96 MB at the largest fact size and a few MB for typical facts.
  */
-const val STREAM_PREFETCH_BATCHES = 4
+private const val STREAM_PREFETCH_BATCHES = 4
 
 /** Turns the entries of a batch into the serialized facts behind them, within the batch's transaction. */
 private typealias BatchLoader = (ReadTransaction, List<KeyValue>) -> CompletableFuture<List<ByteArray>>

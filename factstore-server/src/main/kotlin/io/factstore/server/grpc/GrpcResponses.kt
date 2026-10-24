@@ -59,7 +59,7 @@ internal fun Flow<Fact>.toProtoFactBatches(
         // The fact that did not fit the batch just sent; it opens the next one.
         var carried: FactStoreProto.Fact? = null
         while (true) {
-            val first = carried ?: ready.receiveOrNull()?.toProto() ?: break
+            val first = carried ?: ready.receiveFactOrNull()?.toProto() ?: break
             carried = null
             val batch = mutableListOf(first)
             var batchBytes = first.sizeInBatch()
@@ -80,7 +80,7 @@ internal fun Flow<Fact>.toProtoFactBatches(
 }
 
 /** Receives the next fact, or `null` once the channel is closed; a failure upstream is rethrown. */
-private suspend fun ReceiveChannel<Fact>.receiveOrNull(): Fact? {
+private suspend fun ReceiveChannel<Fact>.receiveFactOrNull(): Fact? {
     val received = receiveCatching()
     received.exceptionOrNull()?.let { throw it }
     return received.getOrNull()

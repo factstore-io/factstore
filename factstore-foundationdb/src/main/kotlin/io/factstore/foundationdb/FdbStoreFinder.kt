@@ -1,17 +1,12 @@
 package io.factstore.foundationdb
 
-import com.github.avrokotlin.avro4k.Avro
 import io.factstore.core.ExistsStoreByNameRequest
 import io.factstore.core.ExistsStoreByNameResult
 import io.factstore.core.FindStoreByNameRequest
 import io.factstore.core.FindStoreByNameResult
 import io.factstore.core.StoreFinder
-import io.factstore.core.StoreId
 import io.factstore.core.StoreMetadata
-import io.factstore.core.StoreName
 import kotlinx.coroutines.future.await
-import kotlinx.serialization.decodeFromByteArray
-import java.time.Instant
 import java.util.concurrent.CompletableFuture
 
 class FdbStoreFinder(
