@@ -255,7 +255,7 @@ class FdbFactStreamer(
         val futures = positions.map { position ->
             with(tr) { store.context.factSubspace.findFact(storeId, position) }.thenApply { fact ->
                 // An index entry and its fact are written, and removed, in the same transaction.
-                fact ?: throw IllegalStateException("Store $storeId has an index entry at $position without a fact.")
+                fact ?: error("Store $storeId has an index entry at $position without a fact.")
             }
         }
         return CompletableFuture.allOf(*futures.toTypedArray()).thenApply { futures.map { it.resultNow() } }

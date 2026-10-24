@@ -13,7 +13,7 @@ import io.factstore.core.StoreName
 import io.factstore.core.Subject
 import org.eclipse.microprofile.openapi.annotations.media.Schema
 import java.time.Instant
-import java.util.*
+import java.util.UUID
 
 data class AppendHttpRequest(
     @field:Schema(minItems = 1, maxItems = AppendRequest.MAX_FACTS)
@@ -166,7 +166,15 @@ data class FactStreamHeartbeatHttp(val at: Instant)
 data class FactPayloadHttp(
     @field:Schema(description = "Base64-encoded payload of at most ${FactPayload.MAX_SIZE} bytes.")
     val data: ByteArray,
-)
+) {
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is FactPayloadHttp) return false
+        return data.contentEquals(other.data)
+    }
+
+    override fun hashCode(): Int = data.contentHashCode()
+}
 
 data class CreateStoreHttpRequest(
     @field:Schema(maxLength = StoreName.MAX_LENGTH, pattern = StoreName.REGEX_PATTERN)

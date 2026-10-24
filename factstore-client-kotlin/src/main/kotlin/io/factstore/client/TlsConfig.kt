@@ -2,13 +2,13 @@ package io.factstore.client
 
 import java.io.File
 
-sealed class TlsConfig {
+sealed interface TlsConfig {
 
     /** Plain-text, no TLS. */
-    data object Disabled : TlsConfig()
+    data object Disabled : TlsConfig
 
     /** TLS using the JVM's default system trust store. */
-    data object SystemDefault : TlsConfig()
+    data object SystemDefault : TlsConfig
 
     /**
      * TLS with explicit certificate material.
@@ -20,5 +20,5 @@ sealed class TlsConfig {
         val trustCertCollectionFile: File? = null,
         val certChainFile: File? = null,
         val privateKeyFile: File? = null,
-    ) : TlsConfig()
+    ) : TlsConfig
 }

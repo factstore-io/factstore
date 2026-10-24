@@ -1,11 +1,11 @@
 package io.factstore.client.model
 
-sealed class AppendCondition {
+sealed interface AppendCondition {
 
     data class ExpectedLastFact(
         val subject: String,
         val expectedLastFactId: String? = null,
-    ) : AppendCondition()
+    ) : AppendCondition
 
     /**
      * Fails the append if a fact matching [query] was appended after [afterFactId], the last fact
@@ -17,7 +17,7 @@ sealed class AppendCondition {
     data class NoneMatch(
         val query: FactQuery,
         val afterFactId: String? = null,
-    ) : AppendCondition()
+    ) : AppendCondition
 
     /**
      * Composite condition: all nested conditions must be satisfied (logical AND).
@@ -26,5 +26,5 @@ sealed class AppendCondition {
      */
     data class All(
         val conditions: List<AppendCondition>,
-    ) : AppendCondition()
+    ) : AppendCondition
 }

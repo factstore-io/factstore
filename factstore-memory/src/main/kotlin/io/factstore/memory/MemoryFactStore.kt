@@ -9,7 +9,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.time.Instant
-import java.util.*
+import java.util.UUID
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
@@ -82,7 +82,7 @@ class MemoryFactStore : FactStore {
         val storeId = resolveId(request.storeName) ?: return AppendResult.StoreNotFound(request.storeName)
 
         // Check idempotency
-        val idempotencySet = idempotencyKeys[storeId] ?: throw IllegalStateException("Idempotency set should be initialized for store $storeId")
+        val idempotencySet = idempotencyKeys[storeId] ?: error("Idempotency set should be initialized for store $storeId")
         if (idempotencySet.contains(request.idempotencyKey.value)) {
             return AppendResult.AlreadyApplied
         }

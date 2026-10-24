@@ -10,9 +10,8 @@ import kotlinx.coroutines.future.await
 import java.util.concurrent.CompletableFuture
 
 class FdbStoreFinder(
-    val store: FdbFactStore
+    private val store: FdbFactStore
 ) : StoreFinder {
-
 
     override suspend fun listAll(): List<StoreMetadata> {
         return store.db.readAsync { tr ->
