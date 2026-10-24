@@ -1,10 +1,12 @@
 # Limits
 
 FactStore is built for event sourcing, where facts are small and few tags express what a fact
-affects. It therefore limits what a client may append. The limits are part of the specification,
-so they are the same for every storage backend, and they cannot be configured.
+affects. It therefore limits what a client may append, and how much one query may ask for. The
+limits are part of the specification, so they are the same for every storage backend, and they
+cannot be configured.
 
-The reasoning behind the numbers is in [ADR 002](decisions/002_factstore_limits.md).
+The reasoning behind the numbers is in [ADR 002](decisions/002_factstore_limits.md) for appends
+and [ADR 004](decisions/004_streaming_reads.md) for queries.
 
 ## What is limited
 
@@ -18,10 +20,18 @@ The reasoning behind the numbers is in [ADR 002](decisions/002_factstore_limits.
 | Subject, fact type, tag value, metadata value | 256 characters |
 | Tag key, metadata key | 128 characters |
 | Store name | 256 characters |
-| Tags a query may require | 1 to 5 |
+| Filters per query | 1 to 10 |
+| Subjects per filter | 10 |
+| Types per filter | 10 |
+| Tags a filter may require | 5 |
+| Tags an append condition's query item may require | 1 to 5 |
 
 The size of an append is the sum of what each fact carries: its payload plus its type, subject,
 tag keys and values, and metadata keys and values. A client can compute it exactly before calling.
+
+A filter must constrain at least one of subjects, types or tags; reading every fact of a store is
+a stream without a filter. Within a filter, subjects match any of them, types match any of them,
+and tags must all be carried, so requiring more tags than a fact can carry would never match.
 
 ## What values may contain
 
@@ -63,6 +73,8 @@ The request is rejected before anything is stored, and it does not use up its id
 - **Text outside the character set** belongs in the payload, which is never validated or indexed.
 - **More than 512 facts in one append** means the work is a bulk import rather than one decision;
   append it in several requests.
+- **More than 10 filters, subjects or types in one query** means the read is a projection or an
+  export rather than one decision's interest; stream the whole store and filter while reading.
 
 ## Stability
 

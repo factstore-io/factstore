@@ -21,6 +21,10 @@ data class FactQuery(val filters: List<FactFilter>) {
 
         /**
          * The maximum number of filters in one query.
+         *
+         * A query expresses the interest of one decision, which covers a handful of entities: an
+         * order, its customer, the products it reserves. Reading wider than that is a projection
+         * or an export, and those stream the whole store rather than enumerate what they want.
          */
         const val MAX_FILTERS = 10
     }
