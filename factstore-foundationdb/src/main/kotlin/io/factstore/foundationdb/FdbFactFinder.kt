@@ -2,26 +2,20 @@ package io.factstore.foundationdb
 
 import io.factstore.core.*
 
-class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
+internal class FdbFactFinder(storage: FdbStorage) : FactFinder, FdbAccess by storage {
 
-    private val db = fdbFactStore.db
-
-    private val context = fdbFactStore.context
-
-    override suspend fun findById(request: FindByIdRequest): FindByIdResult = db.inReadTransaction {
-        val storeId = context.lookUpStoreIdByName(request.storeName)
+    override suspend fun findById(request: FindByIdRequest): FindByIdResult = inReadTransaction {
+        val storeId = storeIdOf(request.storeName)
             ?: return@inReadTransaction FindByIdResult.StoreNotFound(request.storeName)
 
-        val fact = with(fdbFactStore) { with(storeId) { request.factId.loadFactById() } }
-        if (fact != null) FindByIdResult.Found(fact.fact) else FindByIdResult.NotFound(request.factId)
+        loadFact(storeId, request.factId)?.let(FindByIdResult::Found) ?: FindByIdResult.NotFound(request.factId)
     }
 
-    override suspend fun existsById(request: ExistsByIdRequest): ExistsByIdResult = db.inReadTransaction {
-        val storeId = context.lookUpStoreIdByName(request.storeName)
+    override suspend fun existsById(request: ExistsByIdRequest): ExistsByIdResult = inReadTransaction {
+        val storeId = storeIdOf(request.storeName)
             ?: return@inReadTransaction ExistsByIdResult.StoreNotFound(request.storeName)
 
-        if (context.factPositionIndexSubspace.exists(storeId, request.factId)) ExistsByIdResult.Exists
-        else ExistsByIdResult.DoesNotExist
+        if (positionOf(storeId, request.factId) != null) ExistsByIdResult.Exists else ExistsByIdResult.DoesNotExist
     }
 
 }

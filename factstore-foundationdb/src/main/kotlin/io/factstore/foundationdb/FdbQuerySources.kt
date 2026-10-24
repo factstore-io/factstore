@@ -19,7 +19,7 @@ import io.factstore.core.TagValue
  * @param batchSize the number of keys a cursor reads at a time
  */
 internal class QuerySources(
-    private val context: FdbFactStoreContext,
+    private val keyspace: FdbKeyspace,
     private val reader: KeyReader,
     private val batchSize: Int,
 ) {
@@ -76,7 +76,7 @@ internal class QuerySources(
         if (sources.size == 1) sources.single() else AnyOf(sources, direction)
 
     private fun subjectCursor(storeId: StoreId, subject: Subject, head: FactPosition?, direction: ReadDirection) =
-        context.subjectIndexSubspace.let { index ->
+        keyspace.subjectIndexSubspace.let { index ->
             cursor(
                 keys = index.pinnedKeys(storeId, subject, head, direction),
                 positionOf = { key -> index.unpackPosition(key) },
@@ -85,7 +85,7 @@ internal class QuerySources(
         }
 
     private fun typeCursor(storeId: StoreId, type: FactType, head: FactPosition?, direction: ReadDirection) =
-        context.eventTypeIndexSubspace.let { index ->
+        keyspace.eventTypeIndexSubspace.let { index ->
             cursor(
                 keys = index.pinnedKeys(storeId, type, head, direction),
                 positionOf = { key -> index.unpackPosition(key) },
@@ -99,7 +99,7 @@ internal class QuerySources(
         tag: Pair<TagKey, TagValue>,
         head: FactPosition?,
         direction: ReadDirection,
-    ) = context.tagsTypeIndexSubspace.let { index ->
+    ) = keyspace.tagsTypeIndexSubspace.let { index ->
         cursor(
             keys = index.pinnedKeys(storeId, type, tag, head, direction),
             positionOf = { key -> index.unpackPosition(key) },
@@ -108,7 +108,7 @@ internal class QuerySources(
     }
 
     private fun tagCursor(storeId: StoreId, tag: Pair<TagKey, TagValue>, head: FactPosition?, direction: ReadDirection) =
-        context.tagsIndexSubspace.let { index ->
+        keyspace.tagsIndexSubspace.let { index ->
             cursor(
                 keys = index.pinnedKeys(storeId, tag, head, direction),
                 positionOf = { key -> index.unpackPosition(key) },

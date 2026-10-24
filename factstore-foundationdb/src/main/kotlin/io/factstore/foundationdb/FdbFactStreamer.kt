@@ -55,18 +55,18 @@ private typealias BatchLoader = suspend ReadTransaction.(List<KeyValue>) -> List
  *
  * @param streamBatchSize the number of entries a [FactStreamer] stream reads per transaction
  */
-class FdbFactStreamer(
-    private val store: FdbFactStore,
+internal class FdbFactStreamer(
+    storage: FdbStorage,
     private val deserializationDispatcher: CoroutineDispatcher = Dispatchers.Default,
     private val streamBatchSize: Int = STREAM_BATCH_SIZE,
-) : FactStreamer, FactSubscriber {
+) : FactStreamer, FactSubscriber, FdbAccess by storage {
 
     init {
         require(streamBatchSize > 0) { "The stream batch size must be positive, but was $streamBatchSize." }
     }
 
     /** The sources of a stream read every batch in a transaction of its own. */
-    internal val sources = QuerySources(store.context, KeyReader.inOwnTransactions(store.db), streamBatchSize)
+    internal val sources = QuerySources(keyspace, KeyReader.inOwnTransactions(storage), streamBatchSize)
 
     // -------------------------------------------------------------------------
     // Stream (bounded, pinned at call time)
@@ -103,7 +103,7 @@ class FdbFactStreamer(
 
     /** Every fact of the store up to [head]: the facts are stored in position order, so they are their own index. */
     private fun allFacts(pinned: Pinned.Resolved, head: FactPosition, request: StreamFactsRequest): Flow<Fact> {
-        val factSubspace = store.context.factSubspace
+        val factSubspace = keyspace.factSubspace
         return scanPinned(
             keys = PinnedKeys(
                 range = factSubspace.getRange(pinned.storeId),
@@ -139,11 +139,11 @@ class FdbFactStreamer(
      * Resolves the store, its current head and the continuation in one read, so that a stream
      * cannot see them from different moments.
      */
-    private suspend fun pin(storeName: StoreName, continueAfter: FactId?): Pinned = store.db.inReadTransaction {
-        val storeId = store.context.lookUpStoreIdByName(storeName) ?: return@inReadTransaction Pinned.StoreMissing
-        val head = store.getHead(storeId)
+    private suspend fun pin(storeName: StoreName, continueAfter: FactId?): Pinned = inReadTransaction {
+        val storeId = storeIdOf(storeName) ?: return@inReadTransaction Pinned.StoreMissing
+        val head = headOf(storeId)
         val position = continueAfter?.let {
-            store.context.factPositionIndexSubspace.getPosition(storeId, it)
+            positionOf(storeId, it)
                 ?: return@inReadTransaction Pinned.ContinuationMissing(it)
         }
         Pinned.Resolved(storeId, head, position)
@@ -192,7 +192,7 @@ class FdbFactStreamer(
 
     /** Reads, in one transaction, up to [size] of the [keys] that follow [cursor], and the facts behind them. */
     private suspend fun readBatch(keys: PinnedKeys, cursor: ByteArray?, size: Int, load: BatchLoader): Batch =
-        store.db.inReadTransaction {
+        inReadTransaction {
             val (begin, end) = keys.remainingAfter(cursor)
             val entries = getRange(begin, end, size, keys.reverse, StreamingMode.WANT_ALL).asList().await()
             Batch(entries, load(entries))
@@ -211,7 +211,7 @@ class FdbFactStreamer(
     private fun Flow<FactPosition>.loadFacts(storeId: StoreId, limit: Limit): Flow<Fact> =
         (limit.value?.let { take(it) } ?: this)
             .batchedAsReady(streamBatchSize)
-            .map { positions -> store.db.inReadTransaction { loadFacts(storeId, positions) } }
+            .map { positions -> inReadTransaction { loadFacts(storeId, positions) } }
             .toFacts(readAhead = STREAM_PREFETCH_BATCHES)
 
     /**
@@ -239,7 +239,7 @@ class FdbFactStreamer(
      * costs one round trip rather than one per fact.
      */
     private suspend fun ReadTransaction.loadFacts(storeId: StoreId, positions: List<FactPosition>): List<ByteArray> {
-        val reads = positions.map { position -> position to store.context.factSubspace.findFact(storeId, position) }
+        val reads = positions.map { position -> position to keyspace.factSubspace.findFact(storeId, position) }
         return reads.map { (position, read) ->
             // An index entry and its fact are written, and removed, in the same transaction.
             read.await() ?: error("Store $storeId has an index entry at $position without a fact.")
@@ -253,10 +253,10 @@ class FdbFactStreamer(
     override suspend fun subscribe(request: SubscribeRequest): SubscribeResult {
         val storeName = request.storeName
 
-        val storeId = store.db.inReadTransaction { store.context.lookUpStoreIdByName(storeName) }
+        val storeId = inReadTransaction { storeIdOf(storeName) }
             ?: return SubscribeResult.StoreNotFound(storeName)
 
-        val cursorResult = with(storeId) { resolveInitialCursor(request.startPosition) }
+        val cursorResult = resolveInitialCursor(storeId, request.startPosition)
         val initialCursor = when (cursorResult) {
             is CursorResult.Found -> cursorResult.key
             is CursorResult.FactNotFound -> return SubscribeResult.ContinuationNotFound(cursorResult.factId)
@@ -289,11 +289,11 @@ class FdbFactStreamer(
         storeId: StoreId,
         beginCursor: ByteArray?,
     ): Flow<List<KeyValue>> = flow {
-        val globalRange = store.context.factSubspace.getRange(storeId)
+        val globalRange = keyspace.factSubspace.getRange(storeId)
         var lastSeenKey = beginCursor
         while (true) {
             // A transaction that may write, because a watch only takes effect once it commits.
-            val readResult = store.db.inTransaction {
+            val readResult = inTransaction {
                 readNextBatch(lastSeenKey, globalRange).toReadResult(this, storeId)
             }
             when (readResult) {
@@ -328,7 +328,7 @@ class FdbFactStreamer(
         if (isNotEmpty()) {
             ReadResult.BatchResult(this)
         } else {
-            val watchFuture = tr.watch(store.context.headSubspace.headKey(storeId))
+            val watchFuture = tr.watch(keyspace.headSubspace.headKey(storeId))
             ReadResult.WatchResult { watchFuture.await() }
         }
 
@@ -336,7 +336,7 @@ class FdbFactStreamer(
     // Cursor handling (subscribe)
     // -------------------------------------------------------------------------
 
-    sealed interface CursorResult {
+    private sealed interface CursorResult {
         data object Beginning : CursorResult
 
         @JvmInline
@@ -346,31 +346,28 @@ class FdbFactStreamer(
         value class FactNotFound(val factId: FactId) : CursorResult
     }
 
-    context(storeId: StoreId)
-    private suspend fun resolveInitialCursor(startPosition: StartPosition): CursorResult =
+    private suspend fun resolveInitialCursor(storeId: StoreId, startPosition: StartPosition): CursorResult =
         when (startPosition) {
             StartPosition.Beginning -> CursorResult.Beginning
             StartPosition.End -> {
-                val key = getCurrentEndKey()
+                val key = currentEndKey(storeId)
                 if (key == null) CursorResult.Beginning else CursorResult.Found(key)
             }
 
             is StartPosition.ContinueAfter -> {
-                val key = getKeyForFactOrNull(startPosition.factId)
+                val key = keyOfFact(storeId, startPosition.factId)
                 if (key == null) CursorResult.FactNotFound(startPosition.factId)
                 else CursorResult.Found(key)
             }
         }
 
-    context(storeId: StoreId)
-    private suspend fun getKeyForFactOrNull(factId: FactId): ByteArray? = store.db.inReadTransaction {
-        store.context.factPositionIndexSubspace.getPosition(storeId, factId)
-            ?.let { store.context.factSubspace.getFactKey(storeId, it) }
+    private suspend fun keyOfFact(storeId: StoreId, factId: FactId): ByteArray? = inReadTransaction {
+        positionOf(storeId, factId)
+            ?.let { keyspace.factSubspace.getFactKey(storeId, it) }
     }
 
-    context(storeId: StoreId)
-    private suspend fun getCurrentEndKey(): ByteArray? = store.db.inReadTransaction {
-        store.getHead(storeId)?.let { store.context.factSubspace.getFactKey(storeId, it) }
+    private suspend fun currentEndKey(storeId: StoreId): ByteArray? = inReadTransaction {
+        headOf(storeId)?.let { keyspace.factSubspace.getFactKey(storeId, it) }
     }
 
     // -------------------------------------------------------------------------

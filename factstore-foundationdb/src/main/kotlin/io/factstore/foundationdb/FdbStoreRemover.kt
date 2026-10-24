@@ -4,15 +4,13 @@ import io.factstore.core.RemoveStoreRequest
 import io.factstore.core.RemoveStoreResult
 import io.factstore.core.StoreRemover
 
-class FdbStoreRemover(
-    private val fdbFactStore: FdbFactStore
-) : StoreRemover {
+internal class FdbStoreRemover(storage: FdbStorage) : StoreRemover, FdbAccess by storage {
 
-    override suspend fun remove(request: RemoveStoreRequest): RemoveStoreResult = fdbFactStore.db.inTransaction {
-        val storeId = fdbFactStore.context.lookUpStoreIdByName(request.storeName)
+    override suspend fun remove(request: RemoveStoreRequest): RemoveStoreResult = inTransaction {
+        val storeId = storeIdOf(request.storeName)
             ?: return@inTransaction RemoveStoreResult.StoreNotFound(request.storeName)
 
-        with(fdbFactStore.context) {
+        with(keyspace) {
             storeNameToIdIndex.clear(request.storeName)
             storeSubspace.clear(storeId)
             headSubspace.clear(storeId)

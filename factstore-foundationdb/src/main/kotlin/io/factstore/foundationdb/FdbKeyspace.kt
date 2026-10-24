@@ -16,10 +16,42 @@ import io.factstore.core.IdempotencyKey
 import io.factstore.core.Subject
 import io.factstore.core.TagKey
 import io.factstore.core.TagValue
+import io.factstore.core.toFactId
 import kotlinx.coroutines.future.await
 import java.util.concurrent.CompletableFuture
 
-data class FdbFactStoreContext(
+/*
+ * The key layout of FactStore, as tuples under one root directory:
+ *
+ * ```
+ *  ("stores", storeId)                                    = store metadata
+ *  ("store-index", name)                                  = (storeId)
+ *  (1, storeId, versionstamp)                             = serialized fact
+ *  (2, storeId, factId)                                   = (versionstamp)
+ *  (100, storeId)                                         = (versionstamp of the newest fact)
+ *  (102, storeId, type, versionstamp)                     = (factId)
+ *  (103, storeId, subject, versionstamp)                  = (factId)
+ *  (105, storeId, tagKey, tagValue, versionstamp)         = (factId)
+ *  (106, storeId, type, tagKey, tagValue, versionstamp)   = (factId)
+ *  (200, storeId, idempotencyKey)                         = empty
+ * ```
+ */
+
+private const val STORES = "stores"
+private const val STORE_INDEX = "store-index"
+private const val FACTS = 1
+private const val FACT_POSITIONS = 2
+private const val HEAD_INDEX = 100
+private const val EVENT_TYPE_INDEX = 102
+private const val SUBJECT_INDEX = 103
+private const val TAGS_INDEX = 105
+private const val TAGS_TYPE_INDEX = 106
+private const val IDEMPOTENCY_KEYS = 200
+
+private val EMPTY_BYTE_ARRAY = ByteArray(0)
+
+/** Where FactStore keeps its keys: one subspace per kind of record, all under one root. */
+internal class FdbKeyspace(
     val storeSubspace: StoreSubspace,
     val storeNameToIdIndex: StoreNameToIdIndexSubspace,
     val factSubspace: FactSubspace,
@@ -34,44 +66,23 @@ data class FdbFactStoreContext(
 
     companion object {
 
-        fun create(rootDirectory: FactStoreRootDirectory): FdbFactStoreContext =
-            create(rootDirectory.rootDirectorySubspace)
-
         /** The subspaces of a fact store kept under [root]. */
-        internal fun create(root: Subspace): FdbFactStoreContext {
-            return FdbFactStoreContext(
-                storeSubspace = StoreSubspace(root.subspace(Tuple.from(STORES))),
-                storeNameToIdIndex = StoreNameToIdIndexSubspace(root.subspace(Tuple.from(STORE_INDEX))),
-                factSubspace = FactSubspace(root.subspace(Tuple.from(FACTS))),
-                headSubspace = HeadSubspace(root.subspace(Tuple.from(HEAD_INDEX))),
-                factPositionIndexSubspace = FactPositionIndexSubspace(root.subspace(Tuple.from(FACT_POSITIONS))),
-                eventTypeIndexSubspace = EventTypeIndexSubspace(root.subspace(Tuple.from(EVENT_TYPE_INDEX))),
-                subjectIndexSubspace = SubjectIndexSubspace(root.subspace(Tuple.from(SUBJECT_INDEX))),
-                tagsIndexSubspace = TagsIndexSubspace(root.subspace(Tuple.from(TAGS_INDEX))),
-                tagsTypeIndexSubspace = TagsTypeIndexSubspace(root.subspace(Tuple.from(TAGS_TYPE_INDEX))),
-                idempotencySubspace = IdempotencySubspace(root.subspace(Tuple.from(IDEMPOTENCY_KEYS)))
-            )
-        }
-
+        fun under(root: Subspace): FdbKeyspace = FdbKeyspace(
+            storeSubspace = StoreSubspace(root.subspace(Tuple.from(STORES))),
+            storeNameToIdIndex = StoreNameToIdIndexSubspace(root.subspace(Tuple.from(STORE_INDEX))),
+            factSubspace = FactSubspace(root.subspace(Tuple.from(FACTS))),
+            headSubspace = HeadSubspace(root.subspace(Tuple.from(HEAD_INDEX))),
+            factPositionIndexSubspace = FactPositionIndexSubspace(root.subspace(Tuple.from(FACT_POSITIONS))),
+            eventTypeIndexSubspace = EventTypeIndexSubspace(root.subspace(Tuple.from(EVENT_TYPE_INDEX))),
+            subjectIndexSubspace = SubjectIndexSubspace(root.subspace(Tuple.from(SUBJECT_INDEX))),
+            tagsIndexSubspace = TagsIndexSubspace(root.subspace(Tuple.from(TAGS_INDEX))),
+            tagsTypeIndexSubspace = TagsTypeIndexSubspace(root.subspace(Tuple.from(TAGS_TYPE_INDEX))),
+            idempotencySubspace = IdempotencySubspace(root.subspace(Tuple.from(IDEMPOTENCY_KEYS))),
+        )
     }
 }
 
-context(tr: ReadTransaction)
-suspend fun FdbFactStoreContext.getMetadata(storeId: StoreId): FdbStoreMetadata? =
-    storeSubspace.getMetadata(storeId)
-
-context(tr: Transaction)
-fun FdbFactStoreContext.saveMetadata(metadata: FdbStoreMetadata) {
-    storeSubspace.saveMetadata(metadata)
-    storeNameToIdIndex.save(StoreName(metadata.name), StoreId(metadata.storeId))
-}
-
-context(tr: ReadTransaction)
-suspend fun FdbFactStoreContext.lookUpStoreIdByName(name: StoreName): StoreId? =
-    storeNameToIdIndex.lookUpStore(name)
-
-@JvmInline
-value class StoreSubspace(val subspace: Subspace) {
+internal class StoreSubspace(val subspace: Subspace) {
 
     context(tr: ReadTransaction)
     suspend fun getMetadata(storeId: StoreId): FdbStoreMetadata? =
@@ -91,8 +102,7 @@ value class StoreSubspace(val subspace: Subspace) {
 
 }
 
-@JvmInline
-value class StoreNameToIdIndexSubspace(val subspace: Subspace) {
+internal class StoreNameToIdIndexSubspace(val subspace: Subspace) {
 
     context(tr: ReadTransaction)
     suspend fun lookUpStore(name: StoreName): StoreId? =
@@ -110,8 +120,7 @@ value class StoreNameToIdIndexSubspace(val subspace: Subspace) {
 
 }
 
-@JvmInline
-value class HeadSubspace(val subspace: Subspace) {
+internal class HeadSubspace(val subspace: Subspace) {
 
     context(tr: ReadTransaction)
     suspend fun head(storeId: StoreId): FactPosition? =
@@ -134,8 +143,7 @@ value class HeadSubspace(val subspace: Subspace) {
 
 }
 
-@JvmInline
-value class FactSubspace(val subspace: Subspace) {
+internal class FactSubspace(val subspace: Subspace) {
 
     context(tr: ReadTransaction)
     fun findFact(storeId: StoreId, factPosition: FactPosition): CompletableFuture<ByteArray?> {
@@ -164,12 +172,7 @@ value class FactSubspace(val subspace: Subspace) {
 
 }
 
-@JvmInline
-value class FactPositionIndexSubspace(val subspace: Subspace) {
-
-    context(tr: ReadTransaction)
-    suspend fun exists(storeId: StoreId, factId: FactId): Boolean =
-        tr[subspace.pack(Tuple.from(storeId.uuid, factId.uuid))].await() != null
+internal class FactPositionIndexSubspace(val subspace: Subspace) {
 
     context(tr: ReadTransaction)
     suspend fun getPosition(storeId: StoreId, factId: FactId): FactPosition? =
@@ -189,8 +192,7 @@ value class FactPositionIndexSubspace(val subspace: Subspace) {
 
 }
 
-@JvmInline
-value class EventTypeIndexSubspace(val subspace: Subspace) {
+internal class EventTypeIndexSubspace(val subspace: Subspace) {
 
     fun range(storeId: StoreId, factType: FactType): Range =
         subspace.range(Tuple.from(storeId.uuid, factType.value))
@@ -217,8 +219,7 @@ value class EventTypeIndexSubspace(val subspace: Subspace) {
 
 }
 
-@JvmInline
-value class SubjectIndexSubspace(val subspace: Subspace) {
+internal class SubjectIndexSubspace(val subspace: Subspace) {
 
     fun range(storeId: StoreId, subject: Subject): Range =
         subspace.range(Tuple.from(storeId.uuid, subject.value))
@@ -244,17 +245,13 @@ value class SubjectIndexSubspace(val subspace: Subspace) {
 
 }
 
-@JvmInline
-value class TagsIndexSubspace(val subspace: Subspace) {
+internal class TagsIndexSubspace(val subspace: Subspace) {
 
     fun getKey(storeId: StoreId, tag: Pair<TagKey, TagValue>, position: FactPosition): ByteArray =
         subspace.pack(Tuple.from(storeId.uuid, tag.first.value, tag.second.value, position))
 
     fun range(storeId: StoreId, tag: Pair<TagKey, TagValue>): Range =
         subspace.range(Tuple.from(storeId.uuid, tag.first.value, tag.second.value))
-
-    fun range(storeId: StoreId, key: TagKey, value: TagValue): Range =
-        subspace.range(Tuple.from(storeId.uuid, key.value, value.value))
 
     fun unpackPosition(key: ByteArray): FactPosition =
         subspace.unpack(key).getLastAsFactPosition()
@@ -277,8 +274,7 @@ value class TagsIndexSubspace(val subspace: Subspace) {
 
 }
 
-@JvmInline
-value class TagsTypeIndexSubspace(val subspace: Subspace) {
+internal class TagsTypeIndexSubspace(val subspace: Subspace) {
 
     fun getKey(storeId: StoreId, factType: FactType, tag: Pair<TagKey, TagValue>, position: FactPosition): ByteArray =
         subspace.pack(Tuple.from(storeId.uuid, factType.value, tag.first.value, tag.second.value, position))
@@ -313,8 +309,7 @@ value class TagsTypeIndexSubspace(val subspace: Subspace) {
 
 }
 
-@JvmInline
-value class IdempotencySubspace(val subspace: Subspace) {
+internal class IdempotencySubspace(val subspace: Subspace) {
 
     fun pack(storeId: StoreId, idempotencyKey: IdempotencyKey): ByteArray =
         subspace.pack(Tuple.from(storeId.uuid, idempotencyKey.value))
@@ -331,3 +326,9 @@ value class IdempotencySubspace(val subspace: Subspace) {
     }
 
 }
+
+/** Where a fact sits in its store: the versionstamp of the transaction that appended it. */
+internal typealias FactPosition = Versionstamp
+
+internal fun Tuple.getFirstAsFactId(): FactId = getUUID(0).toFactId()
+internal fun Tuple.getLastAsFactPosition(): FactPosition = getVersionstamp(size() - 1)
