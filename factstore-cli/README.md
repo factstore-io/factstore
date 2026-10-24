@@ -124,8 +124,8 @@ factstore fact get 550e8400-e29b-41d4-a716-446655440000 --store orders
 
 #### Stream
 
-Without filters the whole store is streamed. `--subject`, `--type` and `--tag` are repeatable
-and describe **one** criterion: the fact's subject must be one of the subjects, its type one of
+Without options the whole store is streamed. `--subject`, `--type` and `--tag` are repeatable
+and describe **one** query item: the fact's subject must be one of the subjects, its type one of
 the types, and it must carry **all** of the tags. Types are matched exactly.
 
 ```bash
@@ -140,19 +140,19 @@ exclusive and follows the reading order, so it works backwards too.
 
 #### Query
 
-A query asks several questions at once: a fact matches when it matches **any** of its filters.
-`--filter` adds one filter as JSON, and `--query-file` reads a whole query from a file:
+A query asks several questions at once: a fact matches when it matches **any** of its items.
+`--item` adds one query item as JSON, and `--query-file` reads a whole query from a file:
 
 ```bash
 factstore fact query --store orders \
-  --filter '{"subjects":["order/42"]}' \
-  --filter '{"types":["OrderPlaced"],"tags":{"region":"eu"}}'
+  --item '{"subjects":["order/42"]}' \
+  --item '{"types":["OrderPlaced"],"tags":{"region":"eu"}}'
 
-factstore fact query --store orders --query-file query.json   # {"filters":[…]}
+factstore fact query --store orders --query-file query.json   # {"items":[…]}
 ```
 
-Filters are read strictly, so a misspelled property is an error rather than a filter that
-silently matches more than was asked for. For a single filter `fact stream` is simpler.
+Query items are read strictly, so a misspelled property is an error rather than an item that
+silently matches more than was asked for. For a single item `fact stream` is simpler.
 
 #### Output formats
 
@@ -246,7 +246,7 @@ coroutine builder in the module is the one in `FactStoreCli`. The gRPC channel i
 `FactStoreClients` from the resolved connection rather than injected with `@GrpcClient`: a
 channel bound at start-up cannot see a flag parsed afterwards.
 
-Validation happens while the command line is parsed wherever it can — tags, fact ids, filters,
+Validation happens while the command line is parsed wherever it can — tags, fact ids, query items,
 contexts — so an error names the option that caused it. An error raised later, from `run()`,
 goes through `usageError()`, which attaches the command's context so the right usage line is
 printed with it.

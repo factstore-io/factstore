@@ -114,7 +114,7 @@ class QueryResourceTest {
             .contentType(JSON)
             .body(
                 mapOf(
-                    "filters" to listOf(
+                    "items" to listOf(
                         mapOf("subjects" to listOf(subject)),
                         mapOf("types" to listOf("test.type"), "tags" to mapOf("region" to "europe")),
                     ),
@@ -141,7 +141,7 @@ class QueryResourceTest {
         val error = given()
             .urlEncodingEnabled(false)
             .contentType(JSON)
-            .body(mapOf("filters" to listOf(mapOf("types" to listOf("test.type")))))
+            .body(mapOf("items" to listOf(mapOf("types" to listOf("test.type")))))
             .`when`()
             .post("/api/v1/stores/missing-store/facts:query")
             .then()
@@ -209,9 +209,9 @@ class QueryResourceTest {
 
     @Test
     @Order(4)
-    @DisplayName("GET /v1/stores/{name}/facts - Should combine subject, type and tags into one filter")
-    fun streamFactsByFilter() {
-        val store = "filter-test-store"
+    @DisplayName("GET /v1/stores/{name}/facts - Should combine subject, type and tags into one query item")
+    fun streamFactsByQueryItem() {
+        val store = "query-item-test-store"
         seedFact("sub-1", tags = mapOf("region" to "eu"), store = store)
         seedFact("sub-2", tags = mapOf("region" to "eu"), store = store)
 

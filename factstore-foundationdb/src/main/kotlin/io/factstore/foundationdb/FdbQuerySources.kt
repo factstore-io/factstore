@@ -1,7 +1,7 @@
 package io.factstore.foundationdb
 
-import io.factstore.core.FactFilter
 import io.factstore.core.FactQuery
+import io.factstore.core.FactQueryItem
 import io.factstore.core.FactType
 import io.factstore.core.ReadDirection
 import io.factstore.core.StoreId
@@ -25,21 +25,21 @@ internal class QuerySources(
 ) {
 
     /**
-     * The positions of the facts this query matches: a filter is an intersection of its
-     * predicates, and the query the union of its filters.
+     * The positions of the facts this query matches: an item is an intersection of its
+     * predicates, and the query the union of its items.
      *
      * Building the sources reads nothing, so a query can be inspected before it is read.
      *
      * @param head the last position the ranges include, or `null` to read them to their ends
      */
     fun FactQuery.toSource(storeId: StoreId, head: FactPosition?, direction: ReadDirection): PositionSource =
-        anyOf(filters.map { it.toSource(storeId, head, direction) }, direction)
+        anyOf(items.map { it.toSource(storeId, head, direction) }, direction)
 
     /**
-     * The positions of the facts this filter matches: every predicate it sets must hold, while a
+     * The positions of the facts this item matches: every predicate it sets must hold, while a
      * predicate holding several values matches any of them.
      */
-    private fun FactFilter.toSource(storeId: StoreId, head: FactPosition?, direction: ReadDirection): PositionSource {
+    private fun FactQueryItem.toSource(storeId: StoreId, head: FactPosition?, direction: ReadDirection): PositionSource {
         val tags = tags.map { (key, value) -> key to value }
 
         val predicates = buildList {
@@ -107,7 +107,7 @@ internal class QuerySources(
         )
     }
 
-    fun tagCursor(storeId: StoreId, tag: Pair<TagKey, TagValue>, head: FactPosition?, direction: ReadDirection) =
+    private fun tagCursor(storeId: StoreId, tag: Pair<TagKey, TagValue>, head: FactPosition?, direction: ReadDirection) =
         context.tagsIndexSubspace.let { index ->
             cursor(
                 keys = index.pinnedKeys(storeId, tag, head, direction),

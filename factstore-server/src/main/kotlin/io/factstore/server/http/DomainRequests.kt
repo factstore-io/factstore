@@ -40,43 +40,14 @@ internal fun findByIdRequest(storeName: String, factId: String): FindByIdRequest
     FindByIdRequest(storeName.asStoreName(), factId.asFactId())
 }
 
-internal fun streamFactsRequest(
-    storeName: String,
-    continueAfter: String?,
-    direction: String?,
-    limit: String?,
-): StreamFactsRequest = parseInput {
-    StreamFactsRequest(
-        storeName = storeName.asStoreName(),
-        continueAfter = continueAfter.asFactIdOrNull(),
-        direction = direction.asReadDirection(),
-        limit = limit.asLimit(),
-    )
-}
-
-internal fun StreamFactsByQueryHttpRequest.toDomainRequest(storeName: String): StreamFactsByQueryRequest = parseInput {
-    StreamFactsByQueryRequest(
-        storeName = storeName.asStoreName(),
-        query = FactQuery(filters.map { it.toFactFilter() }),
-        continueAfter = continueAfter?.let { FactId(it) },
-        direction = direction.asReadDirection(),
-        limit = limit.asLimit(),
-    )
-}
-
-internal fun FactFilterHttp.toFactFilter(): FactFilter = FactFilter(
-    subjects = subjects?.map { it.asSubject() }?.toSet() ?: emptySet(),
-    types = types?.map { it.asFactType() }?.toSet() ?: emptySet(),
-    tags = tags?.asTags() ?: emptyMap(),
-)
-
 /**
- * Requests the facts matching one filter, given as repeated query parameters.
+ * Requests the facts of a store, given as query parameters: every fact without criteria, and
+ * otherwise the facts matching one query item.
  *
  * Several subjects or types match any of them, while every tag must be carried — the meaning of a
- * single [FactFilter]. A query of several filters needs a body, and is `POST /facts:query`.
+ * single [FactQueryItem]. A query of several items needs a body, and is `POST /facts:query`.
  */
-internal fun streamFactsByFilterRequest(
+internal fun streamFactsRequest(
     storeName: String,
     subjects: List<String>,
     types: List<String>,
@@ -84,12 +55,13 @@ internal fun streamFactsByFilterRequest(
     continueAfter: String?,
     direction: String?,
     limit: String?,
-): StreamFactsByQueryRequest = parseInput {
-    StreamFactsByQueryRequest(
+): StreamFactsRequest = parseInput {
+    val criteria = subjects.isNotEmpty() || types.isNotEmpty() || tags.isNotEmpty()
+    StreamFactsRequest(
         storeName = storeName.asStoreName(),
-        query = FactQuery(
+        query = if (!criteria) null else FactQuery(
             listOf(
-                FactFilter(
+                FactQueryItem(
                     subjects = subjects.map { it.asSubject() }.toSet(),
                     types = types.map { it.asFactType() }.toSet(),
                     tags = tags.asTagFilter(),
@@ -101,6 +73,22 @@ internal fun streamFactsByFilterRequest(
         limit = limit.asLimit(),
     )
 }
+
+internal fun StreamFactsByQueryHttpRequest.toDomainRequest(storeName: String): StreamFactsRequest = parseInput {
+    StreamFactsRequest(
+        storeName = storeName.asStoreName(),
+        query = FactQuery(items.map { it.toFactQueryItem() }),
+        continueAfter = continueAfter?.let { FactId(it) },
+        direction = direction.asReadDirection(),
+        limit = limit.asLimit(),
+    )
+}
+
+internal fun FactQueryItemHttp.toFactQueryItem(): FactQueryItem = FactQueryItem(
+    subjects = subjects?.map { it.asSubject() }?.toSet() ?: emptySet(),
+    types = types?.map { it.asFactType() }?.toSet() ?: emptySet(),
+    tags = tags?.asTags() ?: emptyMap(),
+)
 
 internal fun subscribeRequest(
     storeName: String,
@@ -139,7 +127,7 @@ internal fun AppendConditionHttp.toAppendCondition(): AppendCondition =
 
         is AppendConditionHttp.NoneMatch ->
             AppendCondition.NoneMatch(
-                query = FactQuery(query.filters.map { it.toFactFilter() }),
+                query = FactQuery(query.items.map { it.toFactQueryItem() }),
                 after = after?.toFactId(),
             )
     }

@@ -4,9 +4,9 @@ import com.fasterxml.jackson.annotation.JsonSubTypes
 import com.fasterxml.jackson.annotation.JsonTypeInfo
 import io.factstore.core.AppendRequest
 import io.factstore.core.CLEAN_TEXT_PATTERN
-import io.factstore.core.FactFilter
 import io.factstore.core.FactInput
 import io.factstore.core.FactQuery
+import io.factstore.core.FactQueryItem
 import io.factstore.core.FactPayload
 import io.factstore.core.FactType
 import io.factstore.core.StoreName
@@ -86,10 +86,10 @@ sealed interface AppendConditionHttp {
     ) : AppendConditionHttp
 }
 
-/** A fact matches the query when it matches any of its [filters]. */
+/** A fact matches the query when it matches any of its [items]. */
 data class FactQueryHttp(
-    @field:Schema(minItems = 1, maxItems = FactQuery.MAX_FILTERS)
-    val filters: List<FactFilterHttp>,
+    @field:Schema(minItems = 1, maxItems = FactQuery.MAX_ITEMS)
+    val items: List<FactQueryItemHttp>,
 )
 
 data class FactHttp(
@@ -105,13 +105,13 @@ data class FactHttp(
 /**
  * A query and how to read its result, the body of `POST /facts:query`.
  *
- * @property filters the filters to match, of which at least one must match a fact
+ * @property items the query's items, of which at least one must match a fact
  * @property direction `forward` (the default) or `backward`
  * @property limit the maximum number of facts to stream, over the whole result
  */
 data class StreamFactsByQueryHttpRequest(
-    @field:Schema(minItems = 1, maxItems = FactQuery.MAX_FILTERS)
-    val filters: List<FactFilterHttp>,
+    @field:Schema(minItems = 1, maxItems = FactQuery.MAX_ITEMS)
+    val items: List<FactQueryItemHttp>,
     @field:Schema(description = "Continue after this fact, exclusive and in reading order.", format = "uuid")
     val continueAfter: UUID? = null,
     @field:Schema(enumeration = ["forward", "backward"], defaultValue = "forward")
@@ -124,10 +124,10 @@ data class StreamFactsByQueryHttpRequest(
  * Matches facts by subject, type and tags. Every property that is set must hold, while a property
  * with several values matches any of them. At least one must be set.
  */
-data class FactFilterHttp(
-    @field:Schema(maxItems = FactFilter.MAX_SUBJECTS)
+data class FactQueryItemHttp(
+    @field:Schema(maxItems = FactQueryItem.MAX_SUBJECTS)
     val subjects: List<String>? = null,
-    @field:Schema(maxItems = FactFilter.MAX_TYPES)
+    @field:Schema(maxItems = FactQueryItem.MAX_TYPES)
     val types: List<String>? = null,
     @field:Schema(maxProperties = FactInput.MAX_TAGS)
     val tags: Map<String, String>? = null,

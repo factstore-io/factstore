@@ -29,7 +29,7 @@ class PositionSourceTest {
 
     @Test
     fun `nested sources combine like flat ones`(): Unit = runBlocking {
-        val filters = AnyOf(
+        val items = AnyOf(
             listOf(
                 AllOf(listOf(source(1, 2, 3, 6), AnyOf(listOf(source(2), source(6, 8)), Forward)), Forward),
                 AllOf(listOf(source(4, 5, 6), source(5, 6, 7)), Forward),
@@ -37,7 +37,7 @@ class PositionSourceTest {
             Forward,
         )
 
-        assertThat(filters.positions().toList()).isEqualTo(positions(2, 5, 6))
+        assertThat(items.positions().toList()).isEqualTo(positions(2, 5, 6))
     }
 
     @Test

@@ -183,32 +183,17 @@ service FactService {
   // Check whether a fact with the given ID exists.
   rpc FactExists(FactExistsRequest) returns (FactExistsResponse);
 
-  // Stream all facts of a store, up to the head pinned at call time, then complete.
-  // A missing store is delivered as the first and only message; facts are delivered
-  // in batches of bounded size. The stream completes with status OK once every fact
-  // was sent, and with an error status if it fails part way.
+  // Stream the facts of a store, all of them or those matching a query, up to the head pinned at
+  // call time, then complete. A fact matches a query when it matches ANY of its items, and a
+  // fact matching several items is streamed once. A missing store or continuation is delivered
+  // as the first and only message; facts are delivered in batches of bounded size. The stream
+  // completes with status OK once every fact was sent, and with an error status if it fails
+  // part way.
   rpc StreamFacts(StreamFactsRequest) returns (stream StreamFactsResponse);
-
-  // Stream the facts of a subject, up to the head pinned at call time, then complete.
-  // Delivery and completion semantics mirror StreamFacts.
-  rpc StreamFactsBySubject(StreamFactsBySubjectRequest) returns (stream StreamFactsBySubjectResponse);
-
-  // Stream the facts of one type, matched exactly, up to the head pinned at call time,
-  // then complete. Delivery and completion semantics mirror StreamFacts.
-  rpc StreamFactsByType(StreamFactsByTypeRequest) returns (stream StreamFactsByTypeResponse);
-
-  // Stream the facts carrying ALL of the given tags, up to the head pinned at call time,
-  // then complete. Delivery and completion semantics mirror StreamFacts.
-  rpc StreamFactsByTags(StreamFactsByTagsRequest) returns (stream StreamFactsByTagsResponse);
-
-  // Stream the facts matching a query: a fact matches when it matches ANY of the query's
-  // filters, and a fact matching several of them is streamed once. Delivery and completion
-  // semantics mirror StreamFacts.
-  rpc StreamFactsByQuery(StreamFactsByQueryRequest) returns (stream StreamFactsByQueryResponse);
 
   // Open a live subscription: emit the facts the store already holds, from the start
   // position, and then keep emitting facts as they are appended. Every fact of the store is
-  // emitted; reading a part of one is what the stream RPCs are for. The stream never
+  // emitted; reading a part of one is what StreamFacts is for. The stream never
   // completes on its own. Facts are delivered in batches, which are sent as soon as they are
   // ready: nothing is held back to fill one. Pre-stream errors (store not found,
   // continue_after_fact_id not found) are delivered as the first and only
@@ -310,10 +295,24 @@ message ContinuationNotFound {
 
 // -- StreamFacts --
 
+// Matches facts by subject, type and tags. Every predicate that is set must hold (AND), while a
+// predicate with several values matches any of them (OR). At least one predicate must be set.
+message FactQueryItem {
+  repeated string subjects = 1; // the fact's subject is one of these
+  repeated string types = 2;    // the fact's type is one of these, matched exactly
+  map<string, string> tags = 3; // the fact carries all of these
+}
+
+// A fact matches the query when it matches at least one item.
+message FactQuery {
+  repeated FactQueryItem items = 1; // at least one
+}
+
 message StreamFactsRequest {
   string store_name = 1;
-  ReadDirection direction = 2;
-  optional int32 limit = 3; // absent = no limit
+  FactQuery query = 2; // absent = every fact of the store
+  ReadDirection direction = 3;
+  optional int32 limit = 4; // absent = no limit; counted over the whole result
   // Continue after this fact, exclusive and in reading order: reading forward with the facts
   // appended after it, reading backward with those appended before it. Any fact of the store may
   // be named, including one this stream does not emit.
@@ -324,103 +323,6 @@ message StreamFactsRequest {
 // could be opened. Mirrors the oneof-outcome pattern used by the unary RPCs so that
 // business errors are typed data rather than out-of-band status codes.
 message StreamFactsResponse {
-  oneof message {
-    FactBatch batch = 1;
-    StoreNotFound store_not_found = 2;
-    ContinuationNotFound continuation_not_found = 3;
-  }
-}
-
-// -- StreamFactsBySubject --
-
-message StreamFactsBySubjectRequest {
-  string store_name = 1;
-  string subject = 2;
-  ReadDirection direction = 3;
-  optional int32 limit = 4; // absent = no limit
-  // Continue after this fact, exclusive and in reading order: reading forward with the facts
-  // appended after it, reading backward with those appended before it. Any fact of the store may
-  // be named, including one this stream does not emit.
-  optional string continue_after_fact_id = 6;
-}
-
-message StreamFactsBySubjectResponse {
-  oneof message {
-    FactBatch batch = 1;
-    StoreNotFound store_not_found = 2;
-    ContinuationNotFound continuation_not_found = 3;
-  }
-}
-
-// -- StreamFactsByType --
-
-message StreamFactsByTypeRequest {
-  string store_name = 1;
-  string type = 2; // matched exactly
-  ReadDirection direction = 3;
-  optional int32 limit = 4; // absent = no limit
-  // Continue after this fact, exclusive and in reading order: reading forward with the facts
-  // appended after it, reading backward with those appended before it. Any fact of the store may
-  // be named, including one this stream does not emit.
-  optional string continue_after_fact_id = 6;
-}
-
-message StreamFactsByTypeResponse {
-  oneof message {
-    FactBatch batch = 1;
-    StoreNotFound store_not_found = 2;
-    ContinuationNotFound continuation_not_found = 3;
-  }
-}
-
-// -- StreamFactsByTags --
-
-message StreamFactsByTagsRequest {
-  string store_name = 1;
-  map<string, string> tags = 2; // all tags must match (AND semantics); at least one
-  ReadDirection direction = 3;
-  optional int32 limit = 4; // absent = no limit
-  // Continue after this fact, exclusive and in reading order: reading forward with the facts
-  // appended after it, reading backward with those appended before it. Any fact of the store may
-  // be named, including one this stream does not emit.
-  optional string continue_after_fact_id = 6;
-}
-
-message StreamFactsByTagsResponse {
-  oneof message {
-    FactBatch batch = 1;
-    StoreNotFound store_not_found = 2;
-    ContinuationNotFound continuation_not_found = 3;
-  }
-}
-
-// -- StreamFactsByQuery --
-
-// Matches facts by subject, type and tags. Every predicate that is set must hold (AND), while a
-// predicate with several values matches any of them (OR). At least one predicate must be set.
-message FactFilter {
-  repeated string subjects = 1; // the fact's subject is one of these
-  repeated string types = 2;    // the fact's type is one of these, matched exactly
-  map<string, string> tags = 3; // the fact carries all of these
-}
-
-// A fact matches the query when it matches at least one filter.
-message FactQuery {
-  repeated FactFilter filters = 1; // at least one
-}
-
-message StreamFactsByQueryRequest {
-  string store_name = 1;
-  FactQuery query = 2;
-  ReadDirection direction = 3;
-  optional int32 limit = 4; // absent = no limit; counted over the whole result
-  // Continue after this fact, exclusive and in reading order: reading forward with the facts
-  // appended after it, reading backward with those appended before it. Any fact of the store may
-  // be named, including one this stream does not emit.
-  optional string continue_after_fact_id = 6;
-}
-
-message StreamFactsByQueryResponse {
   oneof message {
     FactBatch batch = 1;
     StoreNotFound store_not_found = 2;

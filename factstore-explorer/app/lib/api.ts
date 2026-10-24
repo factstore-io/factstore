@@ -96,14 +96,14 @@ export async function deleteStore(name: string): Promise<void> {
 
 // ─── Facts ───────────────────────────────────────────────────────────────────
 
-/** One filter of a fact query: every property that is set must hold. */
-export interface FactFilter {
+/** One item of a fact query: every property that is set must hold. */
+export interface FactQueryItem {
   subjects?: string[]
   types?: string[]
   tags?: Record<string, string>
 }
 
-/** What to read: each mode names the one thing it filters by, so none can be left out. */
+/** What to read: each mode names the one thing it selects by, so none can be left out. */
 export type QueryOptions = {
   limit?: number
   direction?: "forward" | "backward"
@@ -112,20 +112,20 @@ export type QueryOptions = {
   | { mode: "tags"; tags: string[] }
   | { mode: "subject"; subject: string }
   | { mode: "type"; type: string }
-  | { mode: "query"; filters: FactFilter[] }
+  | { mode: "query"; items: FactQueryItem[] }
 )
 
 export async function queryFacts(storeName: string, opts: QueryOptions): Promise<Fact[]> {
   // A query carries everything in its body, and is posted to an operation on the facts.
   if (opts.mode === "query") {
-    if (opts.filters.length === 0) throw new Error("A query needs at least one filter.")
+    if (opts.items.length === 0) throw new Error("A query needs at least one item.")
     return fetchFactStream(
       `${BASE_URL}/v1/stores/${encodeURIComponent(storeName)}/facts:query`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          filters: opts.filters,
+          items: opts.items,
           direction: opts.direction,
           ...(opts.limit && opts.limit > 0 ? { limit: opts.limit } : {}),
         }),
@@ -135,7 +135,7 @@ export async function queryFacts(storeName: string, opts: QueryOptions): Promise
 
   const params = new URLSearchParams()
 
-  // An empty filter must not be dropped: without it the request would read every fact.
+  // An empty criterion must not be dropped: without it the request would read every fact.
   if (opts.mode === "tags") {
     if (opts.tags.length === 0) throw new Error("A tag query needs at least one tag.")
     for (const tag of opts.tags) params.append("tag", tag)

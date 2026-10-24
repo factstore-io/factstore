@@ -147,56 +147,9 @@ class MemoryFactStore : FactStore {
         val continuation = request.continueAfter?.let {
             store.continuationIndex(it) ?: return StreamFactsResult.ContinuationNotFound(it)
         }
+        val query = request.query
         StreamFactsResult.FactStream(
-            store.pinnedStream(continuation, request.direction, request.limit) { true }
-        )
-    }
-
-    override suspend fun streamFactsBySubject(request: StreamFactsBySubjectRequest): StreamFactsBySubjectResult = lock.withLock {
-        val internalId = resolveId(request.storeName) ?: return StreamFactsBySubjectResult.StoreNotFound(request.storeName)
-        val store = facts[internalId] ?: return StreamFactsBySubjectResult.StoreNotFound(request.storeName)
-        val continuation = request.continueAfter?.let {
-            store.continuationIndex(it) ?: return StreamFactsBySubjectResult.ContinuationNotFound(it)
-        }
-        StreamFactsBySubjectResult.FactStream(
-            store.pinnedStream(continuation, request.direction, request.limit) { it.subject == request.subject }
-        )
-    }
-
-    override suspend fun streamFactsByType(request: StreamFactsByTypeRequest): StreamFactsByTypeResult = lock.withLock {
-        val internalId = resolveId(request.storeName) ?: return StreamFactsByTypeResult.StoreNotFound(request.storeName)
-        val store = facts[internalId] ?: return StreamFactsByTypeResult.StoreNotFound(request.storeName)
-        val continuation = request.continueAfter?.let {
-            store.continuationIndex(it) ?: return StreamFactsByTypeResult.ContinuationNotFound(it)
-        }
-        StreamFactsByTypeResult.FactStream(
-            store.pinnedStream(continuation, request.direction, request.limit) { it.type == request.type }
-        )
-    }
-
-    override suspend fun streamFactsByTags(request: StreamFactsByTagsRequest): StreamFactsByTagsResult = lock.withLock {
-        val internalId = resolveId(request.storeName) ?: return StreamFactsByTagsResult.StoreNotFound(request.storeName)
-        val store = facts[internalId] ?: return StreamFactsByTagsResult.StoreNotFound(request.storeName)
-        val continuation = request.continueAfter?.let {
-            store.continuationIndex(it) ?: return StreamFactsByTagsResult.ContinuationNotFound(it)
-        }
-        StreamFactsByTagsResult.FactStream(
-            store.pinnedStream(continuation, request.direction, request.limit) { fact ->
-                request.tags.all { (key, value) -> fact.tags[key] == value }
-            }
-        )
-    }
-
-    override suspend fun streamFactsByQuery(request: StreamFactsByQueryRequest): StreamFactsByQueryResult = lock.withLock {
-        val internalId = resolveId(request.storeName) ?: return StreamFactsByQueryResult.StoreNotFound(request.storeName)
-        val store = facts[internalId] ?: return StreamFactsByQueryResult.StoreNotFound(request.storeName)
-        val continuation = request.continueAfter?.let {
-            store.continuationIndex(it) ?: return StreamFactsByQueryResult.ContinuationNotFound(it)
-        }
-        StreamFactsByQueryResult.FactStream(
-            store.pinnedStream(continuation, request.direction, request.limit) { fact ->
-                request.query.matches(fact)
-            }
+            store.pinnedStream(continuation, request.direction, request.limit) { query == null || query.matches(it) }
         )
     }
 

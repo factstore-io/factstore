@@ -96,17 +96,10 @@ internal fun streamOfLines(lines: suspend () -> Flow<FactStreamLineHttp>): Multi
     return flow { emitAll(lines()) }.toMulti(context.dispatcher())
 }
 
-
 internal fun StreamFactsResult.toResponse(): Flow<FactStreamLineHttp> = when (this) {
     is StreamFactsResult.StoreNotFound -> throw StreamApiException.StoreNotFoundException(storeName)
     is StreamFactsResult.ContinuationNotFound -> throw StreamApiException.ContinuationNotFoundException(factId)
     is StreamFactsResult.FactStream -> facts.toFactStreamLines()
-}
-
-internal fun StreamFactsByQueryResult.toResponse(): Flow<FactStreamLineHttp> = when (this) {
-    is StreamFactsByQueryResult.StoreNotFound -> throw StreamApiException.StoreNotFoundException(storeName)
-    is StreamFactsByQueryResult.ContinuationNotFound -> throw StreamApiException.ContinuationNotFoundException(factId)
-    is StreamFactsByQueryResult.FactStream -> facts.toFactStreamLines()
 }
 
 /**

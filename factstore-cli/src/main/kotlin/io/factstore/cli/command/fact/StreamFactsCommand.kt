@@ -13,7 +13,8 @@ import io.factstore.cli.command.tagOption
 import io.factstore.cli.connection.FactStoreClients
 import io.factstore.cli.output.writeTo
 import io.factstore.client.model.Fact
-import io.factstore.client.model.FactFilter
+import io.factstore.client.model.FactQuery
+import io.factstore.client.model.FactQueryItem
 import jakarta.enterprise.context.Dependent
 import kotlinx.coroutines.flow.Flow
 
@@ -24,8 +25,8 @@ class StreamFactsCommand(clients: FactStoreClients) : StoreScopedCommand(name = 
     override fun help(context: Context) = "Stream the facts of a store, up to its head"
 
     override fun helpEpilog(context: Context) =
-        "The filters describe one criterion: a fact must match any of the subjects, any of the " +
-            "types and all of the tags. For several criteria at once use 'fact query'."
+        "The options describe one query item: a fact must match any of the subjects, any of the " +
+            "types and all of the tags. For several items at once use 'fact query'."
 
     private val subjects by option("--subject", metavar = "<subject>", help = "A subject to match, repeatable").multiple()
     private val types by option("--type", metavar = "<type>", help = "A type to match exactly, repeatable").multiple()
@@ -42,18 +43,16 @@ class StreamFactsCommand(clients: FactStoreClients) : StoreScopedCommand(name = 
         facts().writeTo(terminal, output)
     }
 
-    /** Without a criterion the whole store is read; any criteria form one filter. */
-    private fun facts(): Flow<Fact> = with(client.facts) {
-        if (subjects.isEmpty() && types.isEmpty() && tags.isEmpty()) {
-            streamFacts(storeName, direction, limit, continueAfter)
-        } else {
-            streamFactsByQuery(
-                storeName = storeName,
-                filters = listOf(FactFilter(subjects = subjects, types = types, tags = tags.toMap())),
-                direction = direction,
-                limit = limit,
-                continueAfter = continueAfter,
-            )
-        }
-    }
+    /** Without a criterion the whole store is read; any criteria form one query item. */
+    private fun facts(): Flow<Fact> = client.facts.streamFacts(
+        storeName = storeName,
+        direction = direction,
+        query = query(),
+        limit = limit,
+        continueAfter = continueAfter,
+    )
+
+    private fun query(): FactQuery? =
+        if (subjects.isEmpty() && types.isEmpty() && tags.isEmpty()) null
+        else FactQuery(FactQueryItem(subjects = subjects, types = types, tags = tags.toMap()))
 }

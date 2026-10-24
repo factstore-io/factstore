@@ -89,44 +89,32 @@ class GrpcInvalidInputTest {
             facts.factExists(factExistsRequest { storeName = STORE; factId = "nope" })
         },
         case("stream the facts of an invalid subject") {
-            facts.streamFactsBySubject(streamFactsBySubjectRequest {
-                storeName = STORE; subject = "order 1"; direction = FORWARD
-            }).first()
-        },
-        case("stream the facts of a subject without a direction") {
-            facts.streamFactsBySubject(streamFactsBySubjectRequest { storeName = STORE; subject = "s" }).first()
-        },
-        case("stream facts by a query without filters") {
-            facts.streamFactsByQuery(streamFactsByQueryRequest {
-                storeName = STORE; direction = FORWARD; query = factQuery { }
-            }).first()
-        },
-        case("stream facts by a filter without predicates") {
-            facts.streamFactsByQuery(streamFactsByQueryRequest {
-                storeName = STORE; direction = FORWARD; query = factQuery { filters += factFilter { } }
-            }).first()
-        },
-        case("stream facts by a query with an invalid subject") {
-            facts.streamFactsByQuery(streamFactsByQueryRequest {
+            facts.streamFacts(streamFactsRequest {
                 storeName = STORE; direction = FORWARD
-                query = factQuery { filters += factFilter { subjects += "order 1" } }
-            }).first()
-        },
-        case("stream facts without tags") {
-            facts.streamFactsByTags(streamFactsByTagsRequest { storeName = STORE; direction = FORWARD }).first()
-        },
-        case("stream facts by six tags") {
-            facts.streamFactsByTags(streamFactsByTagsRequest {
-                storeName = STORE; direction = FORWARD; (1..6).forEach { tags["k$it"] = "v" }
+                query = factQuery { items += factQueryItem { subjects += "order 1" } }
             }).first()
         },
         case("stream the facts of an invalid type") {
-            facts.streamFactsByType(streamFactsByTypeRequest {
-                storeName = STORE; type = "order created"; direction = FORWARD
+            facts.streamFacts(streamFactsRequest {
+                storeName = STORE; direction = FORWARD
+                query = factQuery { items += factQueryItem { types += "order created" } }
             }).first()
         },
-        case("stream the facts of a type without a direction") {
-            facts.streamFactsByType(streamFactsByTypeRequest { storeName = STORE; type = "T" }).first()
+        case("stream facts by six tags") {
+            facts.streamFacts(streamFactsRequest {
+                storeName = STORE; direction = FORWARD
+                query = factQuery { items += factQueryItem { (1..6).forEach { tags["k$it"] = "v" } } }
+            }).first()
+        },
+        case("stream facts by a query without items") {
+            facts.streamFacts(streamFactsRequest {
+                storeName = STORE; direction = FORWARD; query = factQuery { }
+            }).first()
+        },
+        case("stream facts by a query item without predicates") {
+            facts.streamFacts(streamFactsRequest {
+                storeName = STORE; direction = FORWARD; query = factQuery { items += factQueryItem { } }
+            }).first()
         },
         case("stream facts continued after an id that is not a UUID") {
             facts.streamFacts(streamFactsRequest {

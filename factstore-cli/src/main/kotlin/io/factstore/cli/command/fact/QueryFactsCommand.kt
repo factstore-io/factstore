@@ -14,7 +14,7 @@ import io.factstore.cli.command.outputOption
 import io.factstore.cli.command.usageError
 import io.factstore.cli.connection.FactStoreClients
 import io.factstore.cli.output.writeTo
-import io.factstore.client.model.FactFilter
+import io.factstore.client.model.FactQuery
 import jakarta.enterprise.context.Dependent
 
 /** `factstore fact query` */
@@ -24,20 +24,20 @@ class QueryFactsCommand(clients: FactStoreClients) : StoreScopedCommand(name = "
     override fun help(context: Context) = "Stream the facts matching a query, up to the store's head"
 
     override fun helpEpilog(context: Context) =
-        "A fact matches when it matches any of the query's filters. For a single filter " +
+        "A fact matches when it matches any of the query's items. For a single item " +
             "'fact stream' is the simpler command."
 
-    private val filters by option(
-        "--filter",
+    private val items by option(
+        "--item",
         metavar = "<json>",
-        help = """A filter as JSON, repeatable, e.g. '{"types":["OrderPlaced"],"tags":{"region":"eu"}}'""",
-    ).convert { it.toFactFilter() }.multiple()
+        help = """A query item as JSON, repeatable, e.g. '{"types":["OrderPlaced"],"tags":{"region":"eu"}}'""",
+    ).convert { it.toFactQueryItem() }.multiple()
 
     private val queryFile by option(
         "--query-file",
         metavar = "<file>",
-        help = """A file holding the whole query as JSON: {"filters":[…]}""",
-    ).file().convert { it.toFactFilters() }
+        help = """A file holding the whole query as JSON: {"items":[…]}""",
+    ).file().convert { it.toFactQueryItems() }
 
     private val continueAfter by continueAfterOption()
     private val direction by directionOption()
@@ -45,18 +45,18 @@ class QueryFactsCommand(clients: FactStoreClients) : StoreScopedCommand(name = "
     private val output by outputOption()
 
     override suspend fun run() {
-        client.facts.streamFactsByQuery(
+        client.facts.streamFacts(
             storeName = storeName,
-            filters = query(),
+            query = query(),
             direction = direction,
             limit = limit,
             continueAfter = continueAfter,
         ).writeTo(terminal, output)
     }
 
-    private fun query(): List<FactFilter> {
-        val query = filters + queryFile.orEmpty()
-        if (query.isEmpty()) throw usageError("a query needs at least one filter: use --filter or --query-file")
-        return query
+    private fun query(): FactQuery {
+        val query = items + queryFile.orEmpty()
+        if (query.isEmpty()) throw usageError("a query needs at least one item: use --item or --query-file")
+        return FactQuery(query)
     }
 }
