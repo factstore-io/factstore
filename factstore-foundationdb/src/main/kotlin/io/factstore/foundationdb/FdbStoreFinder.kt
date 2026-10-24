@@ -7,52 +7,28 @@ import io.factstore.core.FindStoreByNameResult
 import io.factstore.core.StoreFinder
 import io.factstore.core.StoreMetadata
 import kotlinx.coroutines.future.await
-import java.util.concurrent.CompletableFuture
 
 class FdbStoreFinder(
     private val store: FdbFactStore
 ) : StoreFinder {
 
-    override suspend fun listAll(): List<StoreMetadata> {
-        return store.db.readAsync { tr ->
-            val storeRange = store.context.storeSubspace.range()
-            tr.getRange(storeRange).asList()
-                .thenApply { kvList ->
-                    kvList.map { kv -> kv.value.toFdbStoreMetadata().toStoreMetadata() }
-                }
-        }.await()
+    override suspend fun listAll(): List<StoreMetadata> = store.db.inReadTransaction {
+        getRange(store.context.storeSubspace.range()).asList().await()
+            .map { kv -> kv.value.toFdbStoreMetadata().toStoreMetadata() }
     }
 
-    override suspend fun existsByName(request: ExistsStoreByNameRequest): ExistsStoreByNameResult {
-        return store.db.readAsync { tr ->
-            with(tr) {
-                store.context.lookUpStoreIdByName(request.storeName).thenApply { store ->
-                    if (store != null) {
-                        ExistsStoreByNameResult.StoreExists
-                    } else {
-                        ExistsStoreByNameResult.StoreAbsent
-                    }
-                }
-            }
-        }.await()
+    override suspend fun existsByName(request: ExistsStoreByNameRequest): ExistsStoreByNameResult = store.db.inReadTransaction {
+        if (store.context.lookUpStoreIdByName(request.storeName) != null) ExistsStoreByNameResult.StoreExists
+        else ExistsStoreByNameResult.StoreAbsent
     }
 
-    override suspend fun findByName(request: FindStoreByNameRequest): FindStoreByNameResult {
-        return store.db.readAsync { tr ->
-            with(tr) {
-                store.context.lookUpStoreIdByName(request.storeName).thenCompose { id ->
-                    id?.let {
-                        store.context.getMetadata(id).thenApply { metadata ->
-                            if (metadata != null) {
-                                FindStoreByNameResult.Found(metadata.toStoreMetadata())
-                            } else {
-                                error("Store name '${request.storeName.value}' resolved to ID $id " +
-                                        "but no metadata record exists — index/metadata out of sync")
-                            }
-                        }
-                    } ?: CompletableFuture.completedFuture(FindStoreByNameResult.NotFound(request.storeName))
-                }
-            }
-        }.await()
+    override suspend fun findByName(request: FindStoreByNameRequest): FindStoreByNameResult = store.db.inReadTransaction {
+        val id = store.context.lookUpStoreIdByName(request.storeName)
+            ?: return@inReadTransaction FindStoreByNameResult.NotFound(request.storeName)
+
+        val metadata = store.context.getMetadata(id)
+            ?: error("Store name '${request.storeName.value}' resolved to ID $id " +
+                "but no metadata record exists — index/metadata out of sync")
+        FindStoreByNameResult.Found(metadata.toStoreMetadata())
     }
 }

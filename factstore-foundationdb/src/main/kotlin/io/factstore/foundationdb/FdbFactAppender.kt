@@ -7,8 +7,6 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.future.await
-import kotlinx.coroutines.future.future
-import kotlinx.coroutines.supervisorScope
 import java.time.Instant
 
 private const val REVERSED = true
@@ -27,20 +25,13 @@ class FdbFactAppender(
     private val store: FdbFactStore,
 ) : FactAppender {
 
-    /**
-     * Appends within one transaction, which FoundationDB retries as a whole on a conflict.
-     *
-     * The transaction's body is a coroutine, because an append condition walks the same cursors
-     * a stream does. It runs in a supervisor scope: a failed attempt completes its future
-     * exceptionally, for FoundationDB to retry, rather than cancelling the caller.
-     */
-    override suspend fun append(request: AppendRequest): AppendResult = supervisorScope {
-        store.db.runAsync { tr -> future { with(tr) { appendToStore(request) } } }.await()
-    }
+    /** Appends within one transaction, which FoundationDB retries as a whole on a conflict. */
+    override suspend fun append(request: AppendRequest): AppendResult =
+        store.db.inTransaction { appendToStore(request) }
 
     context(tr: Transaction)
     private suspend fun appendToStore(request: AppendRequest): AppendResult {
-        val storeId = store.context.lookUpStoreIdByName(request.storeName).await()
+        val storeId = store.context.lookUpStoreIdByName(request.storeName)
             ?: return AppendResult.StoreNotFound(request.storeName)
 
         return with(storeId) {
@@ -65,10 +56,11 @@ class FdbFactAppender(
      * the order the condition names them, or `null` for a fact the store does not have.
      */
     context(tr: Transaction, storeId: StoreId)
-    private suspend fun AppendCondition.afterPositions(): Map<FactId, FactPosition?> =
+    private suspend fun AppendCondition.afterPositions(): Map<FactId, FactPosition?> = coroutineScope {
         afterFactIds().distinct()
-            .associateWith { store.context.factPositionIndexSubspace.getPosition(storeId, it) }
+            .associateWith { async { store.context.factPositionIndexSubspace.getPosition(storeId, it) } }
             .mapValues { (_, position) -> position.await() }
+    }
 
     private fun AppendCondition.afterFactIds(): List<FactId> = when (this) {
         AppendCondition.None, is AppendCondition.ExpectedLastFact -> emptyList()

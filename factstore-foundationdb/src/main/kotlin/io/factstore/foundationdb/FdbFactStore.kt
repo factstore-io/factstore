@@ -10,7 +10,7 @@ import kotlinx.serialization.decodeFromByteArray
 import kotlinx.serialization.encodeToByteArray
 import io.factstore.core.*
 import java.time.Instant
-import java.util.concurrent.CompletableFuture
+import kotlinx.coroutines.future.await
 
 internal const val HEAD_INDEX = 100
 internal const val EVENT_TYPE_INDEX = 102
@@ -85,37 +85,17 @@ data class FdbFactStore(
     }
 
 
+    /** The fact with this id and its position, or `null` if the store holds no such fact. */
     context(transaction: ReadTransaction, storeId: StoreId)
-    fun FactId.loadFactById(): CompletableFuture<FdbFact?> {
-        // fetch fact data and position in parallel
-        val factPositionFuture = context.factPositionIndexSubspace.getPosition(storeId, this).thenCompose { factPosition ->
-            if (factPosition == null) {
-                return@thenCompose CompletableFuture.completedFuture(null)
-            }
-
-            // now that we have the position,
-            // we can look up the fact
-            context.factSubspace
-                .findFact(storeId, factPosition)
-                .thenApply { factBytes ->
-                    if (factBytes == null) {
-                        return@thenApply null
-                    }
-                    FdbFact(
-                        fact = factBytes.toSerializableFdbFact().toFact(),
-                        factPosition = factPosition
-                    )
-                }
-
-        }
-
-        return factPositionFuture
+    suspend fun FactId.loadFactById(): FdbFact? {
+        val position = context.factPositionIndexSubspace.getPosition(storeId, this) ?: return null
+        val factBytes = context.factSubspace.findFact(storeId, position).await() ?: return null
+        return FdbFact(fact = factBytes.toSerializableFdbFact().toFact(), factPosition = position)
     }
 
-    fun getHead(storeId: StoreId, transaction: ReadTransaction): CompletableFuture<FactPosition?> =
-        with(transaction) {
-            context.headSubspace.head(storeId)
-        }
+    /** The position of the store's newest fact, or `null` if it has none. */
+    context(transaction: ReadTransaction)
+    suspend fun getHead(storeId: StoreId): FactPosition? = context.headSubspace.head(storeId)
 
 }
 

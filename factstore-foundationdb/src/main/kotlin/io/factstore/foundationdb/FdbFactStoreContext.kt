@@ -16,6 +16,7 @@ import io.factstore.core.IdempotencyKey
 import io.factstore.core.Subject
 import io.factstore.core.TagKey
 import io.factstore.core.TagValue
+import kotlinx.coroutines.future.await
 import java.util.concurrent.CompletableFuture
 
 data class FdbFactStoreContext(
@@ -56,30 +57,25 @@ data class FdbFactStoreContext(
 }
 
 context(tr: ReadTransaction)
-fun FdbFactStoreContext.getMetadata(storeId: StoreId): CompletableFuture<FdbStoreMetadata?> =
+suspend fun FdbFactStoreContext.getMetadata(storeId: StoreId): FdbStoreMetadata? =
     storeSubspace.getMetadata(storeId)
 
-fun FdbFactStoreContext.saveMetadata(metadata: FdbStoreMetadata, tr: Transaction) {
-    with(tr) {
-        storeSubspace.saveMetadata(metadata)
-        storeNameToIdIndex.save(StoreName(metadata.name), StoreId(metadata.storeId))
-    }
+context(tr: Transaction)
+fun FdbFactStoreContext.saveMetadata(metadata: FdbStoreMetadata) {
+    storeSubspace.saveMetadata(metadata)
+    storeNameToIdIndex.save(StoreName(metadata.name), StoreId(metadata.storeId))
 }
 
 context(tr: ReadTransaction)
-fun FdbFactStoreContext.lookUpStoreIdByName(name: StoreName): CompletableFuture<StoreId?> =
-    with(tr) {
-        storeNameToIdIndex.lookUpStore(name)
-    }
+suspend fun FdbFactStoreContext.lookUpStoreIdByName(name: StoreName): StoreId? =
+    storeNameToIdIndex.lookUpStore(name)
 
 @JvmInline
 value class StoreSubspace(val subspace: Subspace) {
 
     context(tr: ReadTransaction)
-    fun getMetadata(storeId: StoreId): CompletableFuture<FdbStoreMetadata?> =
-        tr[subspace.pack(Tuple.from(storeId.uuid))].thenApply { valueBytes ->
-            valueBytes?.toFdbStoreMetadata()
-        }
+    suspend fun getMetadata(storeId: StoreId): FdbStoreMetadata? =
+        tr[subspace.pack(Tuple.from(storeId.uuid))].await()?.toFdbStoreMetadata()
 
     context(tr: Transaction)
     fun saveMetadata(metadata: FdbStoreMetadata) {
@@ -99,11 +95,8 @@ value class StoreSubspace(val subspace: Subspace) {
 value class StoreNameToIdIndexSubspace(val subspace: Subspace) {
 
     context(tr: ReadTransaction)
-    fun lookUpStore(name: StoreName): CompletableFuture<StoreId?> {
-        return tr[subspace.pack(Tuple.from(name.value))].thenApply { valueBytes ->
-            valueBytes?.let { StoreId(Tuple.fromBytes(it).getUUID(0)) }
-        }
-    }
+    suspend fun lookUpStore(name: StoreName): StoreId? =
+        tr[subspace.pack(Tuple.from(name.value))].await()?.let { StoreId(Tuple.fromBytes(it).getUUID(0)) }
 
     context(tr: Transaction)
     fun save(name: StoreName, storeId: StoreId) {
@@ -121,10 +114,8 @@ value class StoreNameToIdIndexSubspace(val subspace: Subspace) {
 value class HeadSubspace(val subspace: Subspace) {
 
     context(tr: ReadTransaction)
-    fun head(storeId: StoreId): CompletableFuture<FactPosition?> =
-        tr[subspace.pack(Tuple.from(storeId.uuid))].thenApply { valueBytes ->
-            valueBytes?.let { Tuple.fromBytes(it).getVersionstamp(0) }
-        }
+    suspend fun head(storeId: StoreId): FactPosition? =
+        tr[subspace.pack(Tuple.from(storeId.uuid))].await()?.let { Tuple.fromBytes(it).getVersionstamp(0) }
 
     fun headKey(storeId: StoreId): ByteArray =
         subspace.pack(storeId.uuid)
@@ -177,17 +168,12 @@ value class FactSubspace(val subspace: Subspace) {
 value class FactPositionIndexSubspace(val subspace: Subspace) {
 
     context(tr: ReadTransaction)
-    fun exists(storeId: StoreId, factId: FactId): CompletableFuture<Boolean> {
-        return tr[subspace.pack(Tuple.from(storeId.uuid, factId.uuid))].thenApply {
-            it != null
-        }
-    }
+    suspend fun exists(storeId: StoreId, factId: FactId): Boolean =
+        tr[subspace.pack(Tuple.from(storeId.uuid, factId.uuid))].await() != null
 
     context(tr: ReadTransaction)
-    fun getPosition(storeId: StoreId, factId: FactId): CompletableFuture<FactPosition?> =
-        tr[subspace.pack(Tuple.from(storeId.uuid, factId.uuid))].thenApply { valueBytes ->
-            valueBytes?.let { Tuple.fromBytes(it).getVersionstamp(0) }
-        }
+    suspend fun getPosition(storeId: StoreId, factId: FactId): FactPosition? =
+        tr[subspace.pack(Tuple.from(storeId.uuid, factId.uuid))].await()?.let { Tuple.fromBytes(it).getVersionstamp(0) }
 
     context(tr: Transaction)
     fun savePosition(storeId: StoreId, factId: FactId, incompleteVersionstamp: Versionstamp) {
