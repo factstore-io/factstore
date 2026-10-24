@@ -27,19 +27,6 @@ class FdbFactAppender(
     private val store: FdbFactStore,
 ) : FactAppender {
 
-    override suspend fun append(storeName: StoreName, fact: FactInput): AppendResult =
-        append(storeName, listOf(fact))
-
-    override suspend fun append(storeName: StoreName, facts: List<FactInput>): AppendResult =
-        append(
-            AppendRequest(
-                storeName = storeName,
-                facts = facts,
-                idempotencyKey = IdempotencyKey(),
-                condition = AppendCondition.None
-            )
-        )
-
     /**
      * Appends within one transaction, which FoundationDB retries as a whole on a conflict.
      *

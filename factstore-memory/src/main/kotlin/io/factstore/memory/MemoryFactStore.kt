@@ -78,21 +78,6 @@ class MemoryFactStore : FactStore {
         resolveId(request.storeName)?.let { stores[it] }?.let { FindStoreByNameResult.Found(it) } ?: FindStoreByNameResult.NotFound(request.storeName)
     }
 
-    override suspend fun append(storeName: StoreName, fact: FactInput): AppendResult =
-        append(storeName, listOf(fact))
-
-    override suspend fun append(storeName: StoreName, facts: List<FactInput>): AppendResult =
-        append(
-            AppendRequest(
-                storeName = storeName,
-                facts = facts,
-                idempotencyKey = IdempotencyKey(),
-                condition = AppendCondition.None
-            )
-        )
-
-    // ===== FactAppender Implementation =====
-
     override suspend fun append(request: AppendRequest): AppendResult = lock.withLock {
         val storeId = resolveId(request.storeName) ?: return AppendResult.StoreNotFound(request.storeName)
 

@@ -14,30 +14,6 @@ package io.factstore.core
 interface FactAppender {
 
     /**
-     * Appends a single fact to the store.
-     *
-     * This convenience overload generates a fresh idempotency key on every call
-     * and is therefore **not** idempotent across retries. Use [append] with an
-     * explicit [AppendRequest] when idempotency or conditional appends are needed.
-     *
-     * @param fact the fact to append
-     * @throws IllegalArgumentException if the fact does not form a valid [AppendRequest]
-     */
-    suspend fun append(storeName: StoreName, fact: FactInput): AppendResult
-
-    /**
-     * Appends multiple facts to the store atomically.
-     *
-     * Either all facts are appended successfully, or none are. Like the
-     * single-fact overload, this generates a fresh idempotency key per call and
-     * is not idempotent across retries.
-     *
-     * @param facts the facts to append
-     * @throws IllegalArgumentException if the facts do not form a valid [AppendRequest]
-     */
-    suspend fun append(storeName: StoreName, facts: List<FactInput>): AppendResult
-
-    /**
      * Appends facts using an explicit append request.
      *
      * This variant allows callers to specify idempotency keys and conditional
@@ -50,3 +26,28 @@ interface FactAppender {
     suspend fun append(request: AppendRequest): AppendResult
 
 }
+
+/**
+ * Appends a single fact to the store.
+ *
+ * This convenience generates a fresh idempotency key on every call and is therefore **not**
+ * idempotent across retries. Use [FactAppender.append] with an explicit [AppendRequest] when
+ * idempotency or conditional appends are needed.
+ *
+ * @param fact the fact to append
+ * @throws IllegalArgumentException if the fact does not form a valid [AppendRequest]
+ */
+suspend fun FactAppender.append(storeName: StoreName, fact: FactInput): AppendResult =
+    append(storeName, listOf(fact))
+
+/**
+ * Appends multiple facts to the store atomically.
+ *
+ * Either all facts are appended successfully, or none are. Like the single-fact convenience, this
+ * generates a fresh idempotency key per call and is not idempotent across retries.
+ *
+ * @param facts the facts to append
+ * @throws IllegalArgumentException if the facts do not form a valid [AppendRequest]
+ */
+suspend fun FactAppender.append(storeName: StoreName, facts: List<FactInput>): AppendResult =
+    append(AppendRequest(storeName = storeName, facts = facts, idempotencyKey = IdempotencyKey()))

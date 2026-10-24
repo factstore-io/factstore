@@ -6,6 +6,7 @@ import com.apple.foundationdb.tuple.ByteArrayUtil
 import com.apple.foundationdb.subspace.Subspace
 import com.apple.foundationdb.tuple.Tuple
 import com.apple.foundationdb.tuple.Versionstamp
+import io.factstore.core.append
 import io.factstore.core.FactQueryItem
 import io.factstore.core.FactQuery
 import io.factstore.core.ReadDirection
