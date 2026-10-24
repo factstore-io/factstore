@@ -82,7 +82,7 @@ internal class FdbKeyspace(
     }
 }
 
-internal class StoreSubspace(val subspace: Subspace) {
+internal class StoreSubspace(private val subspace: Subspace) {
 
     context(tr: ReadTransaction)
     suspend fun getMetadata(storeId: StoreId): FdbStoreMetadata? =
@@ -102,7 +102,7 @@ internal class StoreSubspace(val subspace: Subspace) {
 
 }
 
-internal class StoreNameToIdIndexSubspace(val subspace: Subspace) {
+internal class StoreNameToIdIndexSubspace(private val subspace: Subspace) {
 
     context(tr: ReadTransaction)
     suspend fun lookUpStore(name: StoreName): StoreId? =
@@ -120,7 +120,7 @@ internal class StoreNameToIdIndexSubspace(val subspace: Subspace) {
 
 }
 
-internal class HeadSubspace(val subspace: Subspace) {
+internal class HeadSubspace(private val subspace: Subspace) {
 
     context(tr: ReadTransaction)
     suspend fun head(storeId: StoreId): FactPosition? =
@@ -143,7 +143,7 @@ internal class HeadSubspace(val subspace: Subspace) {
 
 }
 
-internal class FactSubspace(val subspace: Subspace) {
+internal class FactSubspace(private val subspace: Subspace) {
 
     context(tr: ReadTransaction)
     fun findFact(storeId: StoreId, factPosition: FactPosition): CompletableFuture<ByteArray?> {
@@ -172,7 +172,7 @@ internal class FactSubspace(val subspace: Subspace) {
 
 }
 
-internal class FactPositionIndexSubspace(val subspace: Subspace) {
+internal class FactPositionIndexSubspace(private val subspace: Subspace) {
 
     context(tr: ReadTransaction)
     suspend fun getPosition(storeId: StoreId, factId: FactId): FactPosition? =
@@ -192,7 +192,7 @@ internal class FactPositionIndexSubspace(val subspace: Subspace) {
 
 }
 
-internal class EventTypeIndexSubspace(val subspace: Subspace) {
+internal class EventTypeIndexSubspace(private val subspace: Subspace) {
 
     fun range(storeId: StoreId, factType: FactType): Range =
         subspace.range(Tuple.from(storeId.uuid, factType.value))
@@ -219,7 +219,7 @@ internal class EventTypeIndexSubspace(val subspace: Subspace) {
 
 }
 
-internal class SubjectIndexSubspace(val subspace: Subspace) {
+internal class SubjectIndexSubspace(private val subspace: Subspace) {
 
     fun range(storeId: StoreId, subject: Subject): Range =
         subspace.range(Tuple.from(storeId.uuid, subject.value))
@@ -245,7 +245,7 @@ internal class SubjectIndexSubspace(val subspace: Subspace) {
 
 }
 
-internal class TagsIndexSubspace(val subspace: Subspace) {
+internal class TagsIndexSubspace(private val subspace: Subspace) {
 
     fun getKey(storeId: StoreId, tag: Pair<TagKey, TagValue>, position: FactPosition): ByteArray =
         subspace.pack(Tuple.from(storeId.uuid, tag.first.value, tag.second.value, position))
@@ -274,7 +274,7 @@ internal class TagsIndexSubspace(val subspace: Subspace) {
 
 }
 
-internal class TagsTypeIndexSubspace(val subspace: Subspace) {
+internal class TagsTypeIndexSubspace(private val subspace: Subspace) {
 
     fun getKey(storeId: StoreId, factType: FactType, tag: Pair<TagKey, TagValue>, position: FactPosition): ByteArray =
         subspace.pack(Tuple.from(storeId.uuid, factType.value, tag.first.value, tag.second.value, position))
@@ -309,7 +309,7 @@ internal class TagsTypeIndexSubspace(val subspace: Subspace) {
 
 }
 
-internal class IdempotencySubspace(val subspace: Subspace) {
+internal class IdempotencySubspace(private val subspace: Subspace) {
 
     fun pack(storeId: StoreId, idempotencyKey: IdempotencyKey): ByteArray =
         subspace.pack(Tuple.from(storeId.uuid, idempotencyKey.value))

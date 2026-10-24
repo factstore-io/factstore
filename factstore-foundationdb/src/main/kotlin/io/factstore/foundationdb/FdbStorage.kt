@@ -73,7 +73,8 @@ internal interface FdbAccess {
 internal class FdbStorage(private val db: Database, override val keyspace: FdbKeyspace) : FdbAccess {
 
     // A supervisor scope, so that a failed attempt completes its future exceptionally for
-    // FoundationDB to retry rather than cancelling the caller; see SupervisedRetryTest.
+    // FoundationDB to retry. In a plain coroutineScope the failed attempt would cancel the scope,
+    // and with it every retry, which would then start in a cancelled scope and never run.
     override suspend fun <T> inReadTransaction(block: suspend ReadTransaction.() -> T): T =
         supervisorScope { db.readAsync { tr -> future { tr.block() } }.await() }
 

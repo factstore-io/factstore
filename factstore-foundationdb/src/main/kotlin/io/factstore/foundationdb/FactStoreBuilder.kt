@@ -17,12 +17,11 @@ suspend fun buildFdbFactStore(
     val db = FDB.instance().open(clusterFilePath)
     val root = DirectoryLayer.getDefault().createOrOpen(db, listOf("factstore")).await()
     val storage = FdbStorage(db, FdbKeyspace.under(root))
-    val streamer = FdbFactStreamer(storage, streamBatchSize = streamBatchSize)
     return FactStore(
         factAppender = FdbFactAppender(storage),
         factFinder = FdbFactFinder(storage),
-        factStreamer = streamer,
-        factSubscriber = streamer,
+        factStreamer = FdbFactStreamer(storage, streamBatchSize = streamBatchSize),
+        factSubscriber = FdbFactSubscriber(storage),
         storeFactory = FdbStoreFactory(storage),
         storeFinder = FdbStoreFinder(storage),
         storeRemover = FdbStoreRemover(storage),

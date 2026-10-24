@@ -47,7 +47,7 @@ const val FDB_API_VERSION = 730
 
 @TestInstance(PER_CLASS)
 @Testcontainers
-class FactStoreTest : AbstractFactStoreTest() {
+class FoundationDbFactStoreTest : AbstractFactStoreTest() {
 
     companion object {
 

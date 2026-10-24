@@ -1,10 +1,9 @@
 package io.factstore.foundationdb
 
+import io.factstore.core.Fact
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.buffer
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.produceIn
+import kotlinx.coroutines.flow.*
 
 /**
  * Groups the elements into batches of at most [maxSize], never waiting for a batch to fill.
@@ -33,3 +32,18 @@ internal fun <T> Flow<T>.batchedAsReady(maxSize: Int): Flow<List<T>> {
         }
     }
 }
+
+/**
+ * Turns batches of serialized facts into facts.
+ *
+ * The batches are read in their own coroutine, up to [readAhead] of them ahead of the consumer,
+ * so reading the next batches overlaps with processing the current one.
+ *
+ * Batches are how a store is read, not how its facts are consumed: each fact is emitted on its
+ * own, and batching is left to whoever transports it.
+ */
+internal fun Flow<List<ByteArray>>.toFacts(readAhead: Int): Flow<Fact> =
+    map { batch -> batch.map { it.toSerializableFdbFact().toFact() } }
+        .flowOn(Dispatchers.Default)
+        .buffer(readAhead)
+        .transform { facts -> facts.forEach { emit(it) } }
