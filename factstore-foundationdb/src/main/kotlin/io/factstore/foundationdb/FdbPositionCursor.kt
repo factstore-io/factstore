@@ -1,6 +1,5 @@
 package io.factstore.foundationdb
 
-import com.apple.foundationdb.Database
 import com.apple.foundationdb.KeySelector
 import com.apple.foundationdb.KeyValue
 import com.apple.foundationdb.StreamingMode
@@ -26,8 +25,8 @@ internal fun interface KeyReader {
     companion object {
 
         /** Reads every batch in a short transaction of its own, so no transaction stays open. */
-        fun inOwnTransactions(db: Database) = KeyReader { begin, end, limit, reverse ->
-            db.readAsync { tr -> tr.getRange(begin, end, limit, reverse, StreamingMode.WANT_ALL).asList() }.await()
+        fun inOwnTransactions(access: FdbAccess) = KeyReader { begin, end, limit, reverse ->
+            access.inReadTransaction { getRange(begin, end, limit, reverse, StreamingMode.WANT_ALL).asList().await() }
         }
 
         /** Reads within [tr], which records every range read for conflict checking at commit. */

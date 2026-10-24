@@ -1,56 +1,21 @@
 package io.factstore.foundationdb
 
-import com.apple.foundationdb.ReadTransaction
 import io.factstore.core.*
-import kotlinx.coroutines.future.await
-import java.util.concurrent.CompletableFuture
 
-class FdbFactFinder(private val fdbFactStore: FdbFactStore) : FactFinder {
+internal class FdbFactFinder(storage: FdbStorage) : FactFinder, FdbAccess by storage {
 
-    private val db = fdbFactStore.db
+    override suspend fun findById(request: FindByIdRequest): FindByIdResult = inReadTransaction {
+        val storeId = storeIdOf(request.storeName)
+            ?: return@inReadTransaction FindByIdResult.StoreNotFound(request.storeName)
 
-    private val factPositionSubspace = fdbFactStore.context.factPositionIndexSubspace
-
-    override suspend fun findById(request: FindByIdRequest): FindByIdResult =
-        db.readAsync { tr ->
-            with(tr) {
-                fdbFactStore.context.lookUpStoreIdByName(request.storeName).thenCompose { storeId ->
-                    if (storeId == null) {
-                        CompletableFuture.completedFuture(FindByIdResult.StoreNotFound(request.storeName))
-                    } else {
-                        request.factId.loadFact(storeId).thenApply { fact ->
-                            if (fact != null) FindByIdResult.Found(fact) else FindByIdResult.NotFound(request.factId)
-                        }
-                    }
-                }
-            }
-        }.await()
-
-    override suspend fun existsById(request: ExistsByIdRequest): ExistsByIdResult =
-        db.readAsync { tr ->
-            with(tr) {
-                fdbFactStore.context.lookUpStoreIdByName(request.storeName).thenCompose { storeId ->
-                    if (storeId == null) {
-                        CompletableFuture.completedFuture(ExistsByIdResult.StoreNotFound(request.storeName))
-                    } else {
-                        request.factId.existsById(storeId).thenApply { exists ->
-                            if (exists) ExistsByIdResult.Exists else ExistsByIdResult.DoesNotExist
-                        }
-                    }
-                }
-            }
-        }.await()
-
-    context(transaction: ReadTransaction)
-    private fun FactId.loadFact(storeId: StoreId): CompletableFuture<Fact?> {
-        return with(fdbFactStore) {
-            storeId.run { this@loadFact.loadFactById().thenApply { it?.fact } }
-        }
+        loadFact(storeId, request.factId)?.let(FindByIdResult::Found) ?: FindByIdResult.NotFound(request.factId)
     }
 
-    context(transaction: ReadTransaction)
-    private fun FactId.existsById(storeId: StoreId): CompletableFuture<Boolean> {
-        return factPositionSubspace.exists(storeId, this)
+    override suspend fun existsById(request: ExistsByIdRequest): ExistsByIdResult = inReadTransaction {
+        val storeId = storeIdOf(request.storeName)
+            ?: return@inReadTransaction ExistsByIdResult.StoreNotFound(request.storeName)
+
+        if (positionOf(storeId, request.factId) != null) ExistsByIdResult.Exists else ExistsByIdResult.DoesNotExist
     }
 
 }

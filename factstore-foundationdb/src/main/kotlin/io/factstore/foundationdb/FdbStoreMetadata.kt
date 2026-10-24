@@ -12,7 +12,7 @@ import java.time.Instant
 import java.util.UUID
 
 @Serializable
-data class FdbStoreMetadata(
+internal data class FdbStoreMetadata(
     @Contextual
     val storeId: UUID,
     val name: String,
@@ -20,11 +20,11 @@ data class FdbStoreMetadata(
     val createdAtNanos: Int,
 )
 
-fun FdbStoreMetadata.encode(): ByteArray = Avro.encodeToByteArray(this)
+internal fun FdbStoreMetadata.encode(): ByteArray = Avro.encodeToByteArray(this)
 
-fun ByteArray.toFdbStoreMetadata(): FdbStoreMetadata = Avro.decodeFromByteArray(this)
+internal fun ByteArray.toFdbStoreMetadata(): FdbStoreMetadata = Avro.decodeFromByteArray(this)
 
-fun FdbStoreMetadata.toStoreMetadata(): StoreMetadata = StoreMetadata(
+internal fun FdbStoreMetadata.toStoreMetadata(): StoreMetadata = StoreMetadata(
     id = StoreId(storeId),
     name = StoreName(name),
     createdAt = Instant.ofEpochSecond(createdAtEpochSeconds, createdAtNanos.toLong()),

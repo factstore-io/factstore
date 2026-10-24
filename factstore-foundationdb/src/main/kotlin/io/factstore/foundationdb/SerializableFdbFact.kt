@@ -1,11 +1,16 @@
 package io.factstore.foundationdb
 
+import com.github.avrokotlin.avro4k.Avro
+import io.factstore.core.*
 import kotlinx.serialization.Contextual
+import kotlinx.serialization.decodeFromByteArray
+import kotlinx.serialization.encodeToByteArray
+import java.time.Instant
 import kotlinx.serialization.Serializable
 import java.util.UUID
 
 @Serializable
-data class SerializableFdbFact(
+internal data class SerializableFdbFact(
     @Contextual
     val id: UUID,
     val type: String,
@@ -43,3 +48,28 @@ data class SerializableFdbFact(
         return result
     }
 }
+
+internal fun Fact.toSerializableFdbFact() = SerializableFdbFact(
+    id = id.uuid,
+    type = type.value,
+    subject = subject.value,
+    timeEpochSeconds = appendedAt.epochSecond,
+    timeNanos = appendedAt.nano,
+    metadata = metadata.entries.associate { it.key.value to it.value.value },
+    tags = tags.entries.associate { it.key.value to it.value.value },
+    payload = payload.data,
+)
+
+internal fun SerializableFdbFact.encodeToByteArray() = Avro.encodeToByteArray(this)
+
+internal fun ByteArray.toSerializableFdbFact() = Avro.decodeFromByteArray<SerializableFdbFact>(this)
+
+internal fun SerializableFdbFact.toFact() = Fact(
+    id = FactId(id),
+    type = FactType(type),
+    payload = FactPayload(data = payload),
+    subject = Subject(subject),
+    appendedAt = Instant.ofEpochSecond(timeEpochSeconds, timeNanos.toLong()),
+    metadata = metadata.entries.associate { it.key.toMetadataKey() to it.value.toMetadataValue() },
+    tags = tags.entries.associate { it.key.toTagKey() to it.value.toTagValue() }
+)

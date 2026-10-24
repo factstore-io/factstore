@@ -1,36 +1,26 @@
 package io.factstore.foundationdb
 
 import io.factstore.core.*
-import kotlinx.coroutines.future.await
 import java.time.Instant
 
-class FdbStoreFactory(
-    private val store: FdbFactStore
-) : StoreFactory {
+internal class FdbStoreFactory(storage: FdbStorage) : StoreFactory, FdbAccess by storage {
 
-    override suspend fun create(request: CreateStoreRequest): CreateStoreResult {
-        // create...
-        return store.db.runAsync { tr ->
-            with(tr) {
-                // check if name is already taken
-                store.context.lookUpStoreIdByName(request.storeName).thenApply { id ->
-                    if (id != null) {
-                        return@thenApply CreateStoreResult.NameAlreadyExists(request.storeName)
-                    } else {
-                        val id = StoreId.generate()
-                        val createdAt = Instant.now()
-                        val metadata = FdbStoreMetadata(
-                            storeId = id.uuid,
-                            name = request.storeName.value,
-                            createdAtEpochSeconds = createdAt.epochSecond,
-                            createdAtNanos = createdAt.nano,
-                        )
-                        store.context.saveMetadata(metadata, tr)
-                        CreateStoreResult.Created(id)
-                    }
-                }
-            }
-        }.await()
+    override suspend fun create(request: CreateStoreRequest): CreateStoreResult = inTransaction {
+        if (storeIdOf(request.storeName) != null) {
+            return@inTransaction CreateStoreResult.NameAlreadyExists(request.storeName)
+        }
+
+        val id = StoreId.generate()
+        val createdAt = Instant.now()
+        saveMetadata(
+            FdbStoreMetadata(
+                storeId = id.uuid,
+                name = request.storeName.value,
+                createdAtEpochSeconds = createdAt.epochSecond,
+                createdAtNanos = createdAt.nano,
+            )
+        )
+        CreateStoreResult.Created(id)
     }
 
 }

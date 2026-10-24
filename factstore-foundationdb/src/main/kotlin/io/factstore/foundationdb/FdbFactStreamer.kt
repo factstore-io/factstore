@@ -1,29 +1,11 @@
 package io.factstore.foundationdb
 
-import com.apple.foundationdb.KeySelector
 import com.apple.foundationdb.KeyValue
-import com.apple.foundationdb.Range
 import com.apple.foundationdb.ReadTransaction
 import com.apple.foundationdb.StreamingMode
-import com.apple.foundationdb.Transaction
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.future.await
-import kotlinx.coroutines.withContext
 import io.factstore.core.*
-import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.channels.BufferOverflow.SUSPEND
-import kotlinx.coroutines.flow.buffer
-import kotlinx.coroutines.flow.emptyFlow
-import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.emitAll
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.take
-import kotlinx.coroutines.flow.transform
-import java.util.concurrent.CompletableFuture
-
-private const val DEFAULT_BATCH_SIZE = 10_000
-private const val RAW_CHANNEL_CAPACITY = 4
+import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.future.await
 
 /**
  * The number of entries a [FactStreamer] stream reads per transaction.
@@ -44,34 +26,27 @@ internal const val STREAM_BATCH_SIZE = 256
 private const val STREAM_PREFETCH_BATCHES = 4
 
 /** Turns the entries of a batch into the serialized facts behind them, within the batch's transaction. */
-private typealias BatchLoader = (ReadTransaction, List<KeyValue>) -> CompletableFuture<List<ByteArray>>
+private typealias BatchLoader = suspend ReadTransaction.(List<KeyValue>) -> List<ByteArray>
 
 /**
- * FoundationDB streaming engine.
+ * Streams the facts of a store up to its head when called: a [FactStreamer] on FoundationDB.
  *
- * Backs the bounded [FactStreamer], which pins the store's head when called and then
- * scans an index up to it in batches ([scanPinned]), as well as the live
- * [FactSubscriber], which resolves a start cursor and then follows the head
- * indefinitely ([scan]).
+ * A stream pins the store's head when it is opened ([pin]), and then reads the facts, or the
+ * index entries of a query, up to that head in batches, each in its own transaction.
  *
- * @param streamBatchSize the number of entries a [FactStreamer] stream reads per transaction
+ * @param streamBatchSize the number of entries a stream reads per transaction
  */
-class FdbFactStreamer(
-    private val store: FdbFactStore,
-    private val deserializationDispatcher: CoroutineDispatcher = Dispatchers.Default,
+internal class FdbFactStreamer(
+    storage: FdbStorage,
     private val streamBatchSize: Int = STREAM_BATCH_SIZE,
-) : FactStreamer, FactSubscriber {
+) : FactStreamer, FdbAccess by storage {
 
     init {
         require(streamBatchSize > 0) { "The stream batch size must be positive, but was $streamBatchSize." }
     }
 
     /** The sources of a stream read every batch in a transaction of its own. */
-    internal val sources = QuerySources(store.context, KeyReader.inOwnTransactions(store.db), streamBatchSize)
-
-    // -------------------------------------------------------------------------
-    // Stream (bounded, pinned at call time)
-    // -------------------------------------------------------------------------
+    internal val sources = QuerySources(keyspace, KeyReader.inOwnTransactions(storage), streamBatchSize)
 
     override suspend fun streamFacts(request: StreamFactsRequest): StreamFactsResult {
         val pinned = when (val pinned = pin(request.storeName, request.continueAfter)) {
@@ -94,7 +69,7 @@ class FdbFactStreamer(
                 // The continuation marks a position, and needs no entry of its own in this index.
                 continueAfterKey = pinned.continueAfter?.let(range.keyOf),
                 limit = request.limit,
-            ) { tr, entries -> loadFacts(tr, pinned.storeId, entries.map { range.positionOf(it.key) }) }
+            ) { entries -> loadFacts(pinned.storeId, entries.map { range.positionOf(it.key) }) }
         } else {
             positionsOf { source().continuingAfter(pinned.continueAfter) }.loadFacts(pinned.storeId, request.limit)
         }
@@ -104,7 +79,7 @@ class FdbFactStreamer(
 
     /** Every fact of the store up to [head]: the facts are stored in position order, so they are their own index. */
     private fun allFacts(pinned: Pinned.Resolved, head: FactPosition, request: StreamFactsRequest): Flow<Fact> {
-        val factSubspace = store.context.factSubspace
+        val factSubspace = keyspace.factSubspace
         return scanPinned(
             keys = PinnedKeys(
                 range = factSubspace.getRange(pinned.storeId),
@@ -113,7 +88,7 @@ class FdbFactStreamer(
             ),
             continueAfterKey = pinned.continueAfter?.let { factSubspace.getFactKey(pinned.storeId, it) },
             limit = request.limit,
-        ) { _, entries -> CompletableFuture.completedFuture(entries.map { it.value }) }
+        ) { entries -> entries.map { it.value } }
     }
 
     /**
@@ -140,28 +115,15 @@ class FdbFactStreamer(
      * Resolves the store, its current head and the continuation in one read, so that a stream
      * cannot see them from different moments.
      */
-    private suspend fun pin(storeName: StoreName, continueAfter: FactId?): Pinned =
-        read { tr ->
-            with(tr) {
-                store.context.lookUpStoreIdByName(storeName).thenCompose { storeId ->
-                    if (storeId == null) {
-                        CompletableFuture.completedFuture(Pinned.StoreMissing)
-                    } else {
-                        store.getHead(storeId, tr).thenCompose { head ->
-                            if (continueAfter == null) {
-                                CompletableFuture.completedFuture(Pinned.Resolved(storeId, head, null))
-                            } else {
-                                store.context.factPositionIndexSubspace.getPosition(storeId, continueAfter)
-                                    .thenApply { position ->
-                                        if (position == null) Pinned.ContinuationMissing(continueAfter)
-                                        else Pinned.Resolved(storeId, head, position)
-                                    }
-                            }
-                        }
-                    }
-                }
-            }
+    private suspend fun pin(storeName: StoreName, continueAfter: FactId?): Pinned = inReadTransaction {
+        val storeId = storeIdOf(storeName) ?: return@inReadTransaction Pinned.StoreMissing
+        val head = headOf(storeId)
+        val position = continueAfter?.let {
+            positionOf(storeId, it)
+                ?: return@inReadTransaction Pinned.ContinuationMissing(it)
         }
+        Pinned.Resolved(storeId, head, position)
+    }
 
     /**
      * Streams the facts behind [keys], at most [limit] of them.
@@ -174,7 +136,7 @@ class FdbFactStreamer(
         limit: Limit,
         load: BatchLoader,
     ): Flow<Fact> =
-        readPinnedBatches(keys, continueAfterKey, limit, load).toFacts(readAhead = STREAM_PREFETCH_BATCHES)
+        readPinnedBatches(keys, continueAfterKey, limit, load).toFacts(STREAM_PREFETCH_BATCHES)
 
     /**
      * Reads the serialized facts behind [keys], at most [limit] of them, and emits them batch by batch.
@@ -206,10 +168,10 @@ class FdbFactStreamer(
 
     /** Reads, in one transaction, up to [size] of the [keys] that follow [cursor], and the facts behind them. */
     private suspend fun readBatch(keys: PinnedKeys, cursor: ByteArray?, size: Int, load: BatchLoader): Batch =
-        read { tr ->
+        inReadTransaction {
             val (begin, end) = keys.remainingAfter(cursor)
-            tr.getRange(begin, end, size, keys.reverse, StreamingMode.WANT_ALL).asList()
-                .thenCompose { entries -> load(tr, entries).thenApply { facts -> Batch(entries, facts) } }
+            val entries = getRange(begin, end, size, keys.reverse, StreamingMode.WANT_ALL).asList().await()
+            Batch(entries, load(entries))
         }
 
     /** The entries one batch read, and the serialized facts behind them. */
@@ -225,192 +187,21 @@ class FdbFactStreamer(
     private fun Flow<FactPosition>.loadFacts(storeId: StoreId, limit: Limit): Flow<Fact> =
         (limit.value?.let { take(it) } ?: this)
             .batchedAsReady(streamBatchSize)
-            .map { positions -> read { tr -> loadFacts(tr, storeId, positions) } }
-            .toFacts(readAhead = STREAM_PREFETCH_BATCHES)
+            .map { positions -> inReadTransaction { loadFacts(storeId, positions) } }
+            .toFacts(STREAM_PREFETCH_BATCHES)
 
     /**
-     * Turns batches of serialized facts into facts.
+     * Loads the serialized facts at [positions], in their order.
      *
-     * The batches are read in their own coroutine, up to [readAhead] of them ahead of the
-     * consumer, so reading the next batches overlaps with processing the current one.
-     *
-     * Batches are how a store is read, not how its facts are consumed: each fact is emitted on
-     * its own, and batching is left to whoever transports it.
+     * Every read is issued before the first is awaited, so they all run at once and the batch
+     * costs one round trip rather than one per fact.
      */
-    private fun Flow<List<ByteArray>>.toFacts(readAhead: Int): Flow<Fact> =
-        buffer(capacity = readAhead, onBufferOverflow = SUSPEND)
-            .map { serializedFacts ->
-                withContext(deserializationDispatcher) {
-                    serializedFacts.map { it.toSerializableFdbFact().toFact() }
-                }
-            }
-            .transform { facts -> facts.forEach { emit(it) } }
-
-    /** Loads the serialized facts at [positions], in their order. */
-    private fun loadFacts(
-        tr: ReadTransaction,
-        storeId: StoreId,
-        positions: List<FactPosition>,
-    ): CompletableFuture<List<ByteArray>> {
-        val futures = positions.map { position ->
-            with(tr) { store.context.factSubspace.findFact(storeId, position) }.thenApply { fact ->
-                // An index entry and its fact are written, and removed, in the same transaction.
-                fact ?: error("Store $storeId has an index entry at $position without a fact.")
-            }
-        }
-        return CompletableFuture.allOf(*futures.toTypedArray()).thenApply { futures.map { it.resultNow() } }
-    }
-
-    // -------------------------------------------------------------------------
-    // Subscribe (live tail)
-    // -------------------------------------------------------------------------
-
-    override suspend fun subscribe(request: SubscribeRequest): SubscribeResult {
-        val storeName = request.storeName
-
-        val storeId = read { tr ->
-            with(tr) { store.context.lookUpStoreIdByName(storeName) }
-        } ?: return SubscribeResult.StoreNotFound(storeName)
-
-        val cursorResult = with(storeId) { resolveInitialCursor(request.startPosition) }
-        val initialCursor = when (cursorResult) {
-            is CursorResult.Found -> cursorResult.key
-            is CursorResult.FactNotFound -> return SubscribeResult.ContinuationNotFound(cursorResult.factId)
-            CursorResult.Beginning -> null
-        }
-
-        return SubscribeResult.FactStream(scan(storeId, initialCursor))
-    }
-
-    // -------------------------------------------------------------------------
-    // Shared scan pipeline
-    // -------------------------------------------------------------------------
-
-    /**
-     * Reads the store's facts from [beginCursor] onwards in batches, waiting for the next append
-     * whenever it runs out.
-     *
-     * The facts are read in the store's own order, which is the order they are stored in, so a
-     * subscription needs no index.
-     */
-    private fun scan(
-        storeId: StoreId,
-        beginCursor: ByteArray?,
-    ): Flow<Fact> =
-        readBatches(storeId, beginCursor)
-            .map { keyValues -> keyValues.map { it.value } }
-            .toFacts(readAhead = RAW_CHANNEL_CAPACITY)
-
-    private fun readBatches(
-        storeId: StoreId,
-        beginCursor: ByteArray?,
-    ): Flow<List<KeyValue>> = flow {
-        val globalRange = store.context.factSubspace.getRange(storeId)
-        var lastSeenKey = beginCursor
-        while (true) {
-            val readResult = store.db.runAsync { tr ->
-                readNextBatch(lastSeenKey, globalRange, tr)
-                    .thenApply { batch -> batch.toReadResult(tr, storeId) }
-            }.await()
-            when (readResult) {
-                is ReadResult.BatchResult -> {
-                    lastSeenKey = readResult.batch.last().key
-                    emit(readResult.batch)
-                }
-
-                is ReadResult.WatchResult -> readResult.waitForFacts()
-            }
+    context(tr: ReadTransaction)
+    private suspend fun loadFacts(storeId: StoreId, positions: List<FactPosition>): List<ByteArray> {
+        val reads = positions.map { position -> position to keyspace.factSubspace.findFact(storeId, position) }
+        return reads.map { (position, read) ->
+            // An index entry and its fact are written, and removed, in the same transaction.
+            read.await() ?: error("Store $storeId has an index entry at $position without a fact.")
         }
     }
-
-    private fun readNextBatch(
-        lastSeenKey: ByteArray?,
-        globalRange: Range,
-        tr: ReadTransaction
-    ): CompletableFuture<List<KeyValue>> {
-        val beginSelector =
-            if (lastSeenKey == null)
-                KeySelector.firstGreaterOrEqual(globalRange.begin)
-            else
-                KeySelector.firstGreaterThan(lastSeenKey)
-
-        return tr.snapshot().getRange(
-            beginSelector,
-            KeySelector.firstGreaterOrEqual(globalRange.end),
-            DEFAULT_BATCH_SIZE,
-            false,
-            StreamingMode.WANT_ALL
-        ).asList()
-    }
-
-    /** An empty batch means the live tail is caught up: wait for the next append, then resume. */
-    private fun List<KeyValue>.toReadResult(tr: Transaction, storeId: StoreId): ReadResult =
-        if (isNotEmpty()) {
-            ReadResult.BatchResult(this)
-        } else {
-            val watchFuture = tr.watch(store.context.headSubspace.headKey(storeId))
-            ReadResult.WatchResult { watchFuture.await() }
-        }
-
-    // -------------------------------------------------------------------------
-    // Cursor handling (subscribe)
-    // -------------------------------------------------------------------------
-
-    sealed interface CursorResult {
-        data object Beginning : CursorResult
-
-        @JvmInline
-        value class Found(val key: ByteArray) : CursorResult
-
-        @JvmInline
-        value class FactNotFound(val factId: FactId) : CursorResult
-    }
-
-    context(storeId: StoreId)
-    private suspend fun resolveInitialCursor(startPosition: StartPosition): CursorResult =
-        when (startPosition) {
-            StartPosition.Beginning -> CursorResult.Beginning
-            StartPosition.End -> {
-                val key = getCurrentEndKey()
-                if (key == null) CursorResult.Beginning else CursorResult.Found(key)
-            }
-
-            is StartPosition.ContinueAfter -> {
-                val key = getKeyForFactOrNull(startPosition.factId)
-                if (key == null) CursorResult.FactNotFound(startPosition.factId)
-                else CursorResult.Found(key)
-            }
-        }
-
-    context(storeId: StoreId)
-    private suspend fun getKeyForFactOrNull(factId: FactId): ByteArray? =
-        read { tr ->
-            with(tr) {
-                store.context.factPositionIndexSubspace.getPosition(storeId, factId)
-                    .thenApply { position ->
-                        position?.let { store.context.factSubspace.getFactKey(storeId, it) }
-                    }
-            }
-        }
-
-    context(storeId: StoreId)
-    private suspend fun getCurrentEndKey(): ByteArray? =
-        read { tr ->
-            store.getHead(storeId, tr)
-                .thenApply { position ->
-                    position?.let { store.context.factSubspace.getFactKey(storeId, it) }
-                }
-        }
-
-    // -------------------------------------------------------------------------
-    // Internal types
-    // -------------------------------------------------------------------------
-
-    private sealed interface ReadResult {
-        data class BatchResult(val batch: List<KeyValue>) : ReadResult
-        data class WatchResult(val waitForFacts: suspend () -> Unit) : ReadResult
-    }
-
-    private suspend fun <T> read(trBlock: (ReadTransaction) -> CompletableFuture<T>): T =
-        store.db.readAsync(trBlock).await()
 }
