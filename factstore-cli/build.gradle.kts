@@ -1,6 +1,6 @@
 plugins {
-    alias(libs.plugins.kotlin.jvm)
-    alias(libs.plugins.allopen)
+    id("factstore.kotlin-jvm")
+    alias(libs.plugins.kotlin.allopen)
     alias(libs.plugins.quarkus)
     alias(libs.plugins.kotlin.serialization)
 }
@@ -27,14 +27,14 @@ val nativeBuild = providers.systemProperty("quarkus.native.enabled")
     .orNull == "true"
 
 dependencies {
-    implementation(enforcedPlatform(libs.io.quarkus.platform.quarkus.bom))
+    implementation(enforcedPlatform(libs.quarkus.bom))
     implementation("io.quarkus:quarkus-kotlin")
     implementation("io.quarkus:quarkus-arc")
     implementation("io.quarkus:quarkus-config-yaml")
     implementation("io.quarkus:quarkus-grpc")
 
     // The command line itself; see the note on Mordant's backends above.
-    implementation(libs.com.github.ajalt.clikt) {
+    implementation(libs.clikt) {
         exclude(group = "com.github.ajalt.mordant", module = "mordant-jvm-jna")
         exclude(group = "com.github.ajalt.mordant", module = "mordant-jvm-jna-jvm")
         if (nativeBuild) {
@@ -49,17 +49,11 @@ dependencies {
         exclude(group = "io.grpc", module = "grpc-netty-shaded")
     }
     implementation("io.grpc:grpc-netty")
-    implementation(libs.org.jetbrains.kotlinx.kotlinx.serialization.json)
+    implementation(libs.kotlinx.serialization.json)
 
-    testImplementation(libs.org.junit.jupiter.junit.jupiter.api)
-    testImplementation(libs.org.junit.jupiter.junit.jupiter.engine)
-    testImplementation(libs.org.junit.platform.junit.platform.launcher)
-    testImplementation(libs.org.assertj.assertj.core)
-}
-
-java {
-    sourceCompatibility = JavaVersion.VERSION_25
-    targetCompatibility = JavaVersion.VERSION_25
+    testImplementation(libs.bundles.testing)
+    testRuntimeOnly(libs.junit.jupiter.engine)
+    testRuntimeOnly(libs.junit.platform.launcher)
 }
 
 // Quarkus needs CDI bean classes to be proxyable, which Kotlin classes are not by default.
@@ -69,11 +63,7 @@ allOpen {
 
 kotlin {
     compilerOptions {
-        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_25
+        // Quarkus reads parameter names by reflection, for CDI and REST.
         javaParameters = true
     }
-}
-
-tasks.test {
-    useJUnitPlatform()
 }

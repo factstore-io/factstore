@@ -1,5 +1,5 @@
 plugins {
-    alias(libs.plugins.kotlin.jvm)
+    id("factstore.kotlin-jvm")
     alias(libs.plugins.protobuf)
 }
 
@@ -8,7 +8,7 @@ plugins {
 // forces onto it. protobuf 4.x enforces gencode <= runtime at class-init, so a skew
 // here is a startup crash, not a warning.
 val quarkusManaged = configurations.detachedConfiguration(
-    dependencies.enforcedPlatform(libs.io.quarkus.platform.quarkus.bom.get()),
+    dependencies.enforcedPlatform(libs.quarkus.bom.get()),
     dependencies.create("com.google.protobuf:protobuf-java"),
     dependencies.create("io.grpc:grpc-stub"),
 )
@@ -29,14 +29,14 @@ dependencies {
     // constraints to every consumer, so the client cannot drift from the server.
     // `platform`, not `enforcedPlatform`: these are published artifacts, and a library
     // should recommend versions to its consumers, not force them.
-    api(platform(libs.io.quarkus.platform.quarkus.bom))
+    api(platform(libs.quarkus.bom))
     api("io.grpc:grpc-stub")
     api("io.grpc:grpc-protobuf")
     api("com.google.protobuf:protobuf-kotlin")
     // grpc-kotlin is not in the Quarkus BOM -- Quarkus has no coroutine stub support,
     // so this is the one version this project must choose for itself.
-    api(libs.io.grpc.grpc.kotlin.stub)
-    api(libs.org.jetbrains.kotlinx.kotlinx.coroutines.core)
+    api(libs.grpc.kotlin.stub)
+    api(libs.kotlinx.coroutines.core)
 }
 
 protobuf {
@@ -48,7 +48,7 @@ protobuf {
             artifact = "io.grpc:protoc-gen-grpc-java:$grpcVersion"
         }
         create("grpckt") {
-            artifact = "io.grpc:protoc-gen-grpc-kotlin:${libs.versions.grpcKotlin.get()}:jdk8@jar"
+            artifact = "io.grpc:protoc-gen-grpc-kotlin:${libs.versions.grpc.kotlin.get()}:jdk8@jar"
         }
     }
     generateProtoTasks {
@@ -62,8 +62,4 @@ protobuf {
             }
         }
     }
-}
-
-kotlin {
-    jvmToolchain(25)
 }

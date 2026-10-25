@@ -1,5 +1,5 @@
 plugins {
-    alias(libs.plugins.kotlin.jvm)
+    id("factstore.kotlin-jvm")
 }
 
 dependencies {
@@ -13,8 +13,4 @@ dependencies {
 
 tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
     compilerOptions { freeCompilerArgs.add("-opt-in=kotlin.RequiresOptIn") }
-}
-
-kotlin {
-    jvmToolchain(25)
 }
