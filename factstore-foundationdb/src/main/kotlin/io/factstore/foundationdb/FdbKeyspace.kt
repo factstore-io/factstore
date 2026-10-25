@@ -19,6 +19,7 @@ import io.factstore.core.TagKey
 import io.factstore.core.TagValue
 import io.factstore.core.toFactId
 import kotlinx.coroutines.future.await
+import java.util.UUID
 import java.util.concurrent.CompletableFuture
 
 /*
@@ -85,88 +86,91 @@ internal class FdbKeyspace(
 
 internal class StoreSubspace(private val subspace: Subspace) {
 
+    /** The metadata of every store. */
+    val range: Range = subspace.range()
+
     context(tr: ReadTransaction)
-    suspend fun getMetadata(storeId: StoreId): FdbStoreMetadata? =
-        tr[subspace.pack(Tuple.from(storeId.uuid))].await()?.toFdbStoreMetadata()
+    suspend fun metadataOf(storeId: StoreId): FdbStoreMetadata? =
+        tr[keyOf(storeId.uuid)].await()?.toFdbStoreMetadata()
 
     context(tr: Transaction)
-    fun saveMetadata(metadata: FdbStoreMetadata) {
-        tr[subspace.pack(Tuple.from(metadata.storeId))] = metadata.encode()
+    fun save(metadata: FdbStoreMetadata) {
+        tr[keyOf(metadata.storeId)] = metadata.encode()
     }
-
-    fun range(): Range = subspace.range()
 
     context(tr: Transaction)
     fun clear(storeId: StoreId) {
-        tr.clear(subspace.pack(Tuple.from(storeId.uuid)))
+        tr.clear(keyOf(storeId.uuid))
     }
+
+    private fun keyOf(storeId: UUID): ByteArray = subspace.pack(Tuple.from(storeId))
 
 }
 
 internal class StoreNameToIdIndexSubspace(private val subspace: Subspace) {
 
     context(tr: ReadTransaction)
-    suspend fun lookUpStore(name: StoreName): StoreId? =
-        tr[subspace.pack(Tuple.from(name.value))].await()?.let { StoreId(Tuple.fromBytes(it).getUUID(0)) }
+    suspend fun storeIdOf(name: StoreName): StoreId? =
+        tr[keyOf(name)].await()?.let { StoreId(Tuple.fromBytes(it).getUUID(0)) }
 
     context(tr: Transaction)
     fun save(name: StoreName, storeId: StoreId) {
-        tr[subspace.pack(Tuple.from(name.value))] = Tuple.from(storeId.uuid).pack()
+        tr[keyOf(name)] = Tuple.from(storeId.uuid).pack()
     }
 
     context(tr: Transaction)
     fun clear(name: StoreName) {
-        tr.clear(subspace.pack(Tuple.from(name.value)))
+        tr.clear(keyOf(name))
     }
+
+    private fun keyOf(name: StoreName): ByteArray = subspace.pack(Tuple.from(name.value))
 
 }
 
 internal class HeadSubspace(private val subspace: Subspace) {
 
     context(tr: ReadTransaction)
-    suspend fun head(storeId: StoreId): FactPosition? =
-        tr[subspace.pack(Tuple.from(storeId.uuid))].await()?.let { Tuple.fromBytes(it).getVersionstamp(0) }
+    suspend fun headOf(storeId: StoreId): FactPosition? =
+        tr[keyOf(storeId)].await()?.let { Tuple.fromBytes(it).getVersionstamp(0) }
 
-    fun headKey(storeId: StoreId): ByteArray =
-        subspace.pack(storeId.uuid)
+    /** The key holding the position of the store's newest fact, which moves with every append. */
+    fun keyOf(storeId: StoreId): ByteArray = subspace.pack(Tuple.from(storeId.uuid))
 
     context(tr: Transaction)
     fun save(storeId: StoreId, incompleteVersionstamp: Versionstamp) {
-        val headKey = subspace.pack(storeId.uuid)
         val positionValue = Tuple.from(incompleteVersionstamp).packWithVersionstamp()
-        tr.mutate(SET_VERSIONSTAMPED_VALUE, headKey, positionValue)
+        tr.mutate(SET_VERSIONSTAMPED_VALUE, keyOf(storeId), positionValue)
     }
 
     context(tr: Transaction)
     fun clear(storeId: StoreId) {
-        tr.clear(subspace.pack(storeId.uuid))
+        tr.clear(keyOf(storeId))
     }
 
 }
 
 internal class FactSubspace(private val subspace: Subspace) {
 
+    /** The serialized fact at [position], read when the future is awaited. */
     context(tr: ReadTransaction)
-    fun findFact(storeId: StoreId, factPosition: FactPosition): CompletableFuture<ByteArray?> {
-        val factKey = subspace.pack(Tuple.from(storeId.uuid, factPosition))
-        return tr[factKey]
-    }
+    fun factAt(storeId: StoreId, position: FactPosition): CompletableFuture<ByteArray?> =
+        tr[keyOf(storeId, position)]
 
     context(tr: Transaction)
-    fun saveFact(storeId: StoreId, incompleteVersionstamp: Versionstamp, serializedFact: ByteArray) {
+    fun save(storeId: StoreId, incompleteVersionstamp: Versionstamp, serializedFact: ByteArray) {
         val globalPositionKey = subspace.packWithVersionstamp(
             Tuple.from(storeId.uuid, incompleteVersionstamp)
         )
         tr.mutate(SET_VERSIONSTAMPED_KEY, globalPositionKey, serializedFact)
     }
 
-    fun getFactKey(storeId: StoreId, factPosition: FactPosition): ByteArray =
-        subspace.pack(Tuple.from(storeId.uuid, factPosition))
+    fun keyOf(storeId: StoreId, position: FactPosition): ByteArray =
+        subspace.pack(Tuple.from(storeId.uuid, position))
 
-    fun getRange(storeId: StoreId): Range = subspace.rangeOf(storeId)
+    fun rangeOf(storeId: StoreId): Range = subspace.rangeOf(storeId)
 
     context(tr: Transaction)
-    fun clearRange(storeId: StoreId) {
+    fun clear(storeId: StoreId) {
         tr.clear(subspace.rangeOf(storeId))
     }
 
@@ -175,20 +179,22 @@ internal class FactSubspace(private val subspace: Subspace) {
 internal class FactPositionIndexSubspace(private val subspace: Subspace) {
 
     context(tr: ReadTransaction)
-    suspend fun getPosition(storeId: StoreId, factId: FactId): FactPosition? =
-        tr[subspace.pack(Tuple.from(storeId.uuid, factId.uuid))].await()?.let { Tuple.fromBytes(it).getVersionstamp(0) }
+    suspend fun positionOf(storeId: StoreId, factId: FactId): FactPosition? =
+        tr[keyOf(storeId, factId)].await()?.let { Tuple.fromBytes(it).getVersionstamp(0) }
 
     context(tr: Transaction)
-    fun savePosition(storeId: StoreId, factId: FactId, incompleteVersionstamp: Versionstamp) {
-        val key = subspace.pack(Tuple.from(storeId.uuid, factId.uuid))
+    fun save(storeId: StoreId, factId: FactId, incompleteVersionstamp: Versionstamp) {
         val value = Tuple.from(incompleteVersionstamp).packWithVersionstamp()
-        tr.mutate(SET_VERSIONSTAMPED_VALUE, key, value)
+        tr.mutate(SET_VERSIONSTAMPED_VALUE, keyOf(storeId, factId), value)
     }
 
     context(tr: Transaction)
-    fun clearRange(storeId: StoreId) {
+    fun clear(storeId: StoreId) {
         tr.clear(subspace.rangeOf(storeId))
     }
+
+    private fun keyOf(storeId: StoreId, factId: FactId): ByteArray =
+        subspace.pack(Tuple.from(storeId.uuid, factId.uuid))
 
 }
 
@@ -227,7 +233,7 @@ internal class TypeIndexSubspace(private val subspace: Subspace) {
         IndexRange(subspace, Tuple.from(storeId.uuid, type.value))
 
     context(tr: Transaction)
-    fun clearRange(storeId: StoreId) {
+    fun clear(storeId: StoreId) {
         tr.clear(subspace.rangeOf(storeId))
     }
 
@@ -239,7 +245,7 @@ internal class SubjectIndexSubspace(private val subspace: Subspace) {
         IndexRange(subspace, Tuple.from(storeId.uuid, subject.value))
 
     context(tr: Transaction)
-    fun clearRange(storeId: StoreId) {
+    fun clear(storeId: StoreId) {
         tr.clear(subspace.rangeOf(storeId))
     }
 
@@ -251,7 +257,7 @@ internal class TagsIndexSubspace(private val subspace: Subspace) {
         IndexRange(subspace, Tuple.from(storeId.uuid, tag.key.value, tag.value.value))
 
     context(tr: Transaction)
-    fun clearRange(storeId: StoreId) {
+    fun clear(storeId: StoreId) {
         tr.clear(subspace.rangeOf(storeId))
     }
 
@@ -263,7 +269,7 @@ internal class TagsTypeIndexSubspace(private val subspace: Subspace) {
         IndexRange(subspace, Tuple.from(storeId.uuid, type.value, tag.key.value, tag.value.value))
 
     context(tr: Transaction)
-    fun clearRange(storeId: StoreId) {
+    fun clear(storeId: StoreId) {
         tr.clear(subspace.rangeOf(storeId))
     }
 
@@ -271,17 +277,16 @@ internal class TagsTypeIndexSubspace(private val subspace: Subspace) {
 
 internal class IdempotencySubspace(private val subspace: Subspace) {
 
-    fun pack(storeId: StoreId, idempotencyKey: IdempotencyKey): ByteArray =
+    fun keyOf(storeId: StoreId, idempotencyKey: IdempotencyKey): ByteArray =
         subspace.pack(Tuple.from(storeId.uuid, idempotencyKey.value))
 
     context(tr: Transaction)
     fun save(storeId: StoreId, idempotencyKey: IdempotencyKey) {
-        val key = pack(storeId, idempotencyKey)
-        tr[key] = EMPTY_BYTE_ARRAY
+        tr[keyOf(storeId, idempotencyKey)] = EMPTY_BYTE_ARRAY
     }
 
     context(tr: Transaction)
-    fun clearRange(storeId: StoreId) {
+    fun clear(storeId: StoreId) {
         tr.clear(subspace.rangeOf(storeId))
     }
 

@@ -11,7 +11,7 @@ import kotlinx.coroutines.future.await
 internal class FdbStoreFinder(storage: FdbStorage) : StoreFinder, FdbAccess by storage {
 
     override suspend fun listAll(): List<StoreMetadata> = inReadTransaction {
-        getRange(keyspace.storeSubspace.range()).asList().await()
+        getRange(keyspace.storeSubspace.range).asList().await()
             .map { kv -> kv.value.toFdbStoreMetadata().toStoreMetadata() }
     }
 

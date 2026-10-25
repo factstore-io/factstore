@@ -78,11 +78,11 @@ internal class FdbFactStreamer(
         val factSubspace = keyspace.factSubspace
         return scanPinned(
             keys = PinnedKeys(
-                range = factSubspace.getRange(pinned.storeId),
-                pinnedEndKey = factSubspace.getFactKey(pinned.storeId, head),
+                range = factSubspace.rangeOf(pinned.storeId),
+                pinnedEndKey = factSubspace.keyOf(pinned.storeId, head),
                 direction = request.direction,
             ),
-            continueAfterKey = pinned.continueAfter?.let { factSubspace.getFactKey(pinned.storeId, it) },
+            continueAfterKey = pinned.continueAfter?.let { factSubspace.keyOf(pinned.storeId, it) },
             limit = request.limit,
         ) { entries -> entries.map { it.value } }
     }
@@ -184,7 +184,7 @@ internal class FdbFactStreamer(
      */
     context(tr: ReadTransaction)
     private suspend fun loadFacts(storeId: StoreId, positions: List<FactPosition>): List<ByteArray> {
-        val reads = positions.map { position -> position to keyspace.factSubspace.findFact(storeId, position) }
+        val reads = positions.map { position -> position to keyspace.factSubspace.factAt(storeId, position) }
         return reads.map { (position, read) ->
             // An index entry and its fact are written, and removed, in the same transaction.
             read.await() ?: error("Store $storeId has an index entry at $position without a fact.")
