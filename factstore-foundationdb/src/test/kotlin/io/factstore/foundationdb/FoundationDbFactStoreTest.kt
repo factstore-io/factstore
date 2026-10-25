@@ -140,7 +140,7 @@ class FoundationDbFactStoreTest : AbstractFactStoreTest() {
     @ParameterizedTest(name = "{0}")
     @MethodSource("singleRangeQueries")
     fun testQueryOfOneIndexRangeIsScanned(description: String, query: FactQuery, singleRange: Boolean) {
-        val streamer = FdbFactStreamer(FdbStorage(db, FdbKeyspace.under(Subspace(Tuple.from("test")))))
+        val streamer = FdbFactStreamer(FdbStorage(db, FdbKeyspace(Subspace(Tuple.from("test")))))
         val head = Versionstamp.complete(ByteArray(10))
 
         val plan = with(streamer.sources) { query.toPlan(StoreId(UUID.randomUUID()), head, ReadDirection.Forward) }

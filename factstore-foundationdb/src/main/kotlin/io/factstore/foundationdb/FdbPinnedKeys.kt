@@ -17,7 +17,8 @@ import io.factstore.core.ReadDirection
  */
 internal class PinnedKeys(range: Range, pinnedEndKey: ByteArray?, direction: ReadDirection) {
 
-    val reverse = direction.isReverse()
+    /** Whether the keys are read from the end of the range: the `reverse` flag of FoundationDB's `getRange`. */
+    val reverse = direction == ReadDirection.Backward
 
     private val first = KeySelector.firstGreaterOrEqual(range.begin)
 
@@ -38,19 +39,4 @@ internal class PinnedKeys(range: Range, pinnedEndKey: ByteArray?, direction: Rea
 
     /** Orders positions the way this scan reads them. */
     val readingOrder: Comparator<FactPosition> = direction.toComparator()
-}
-
-/**
- * Converts a [ReadDirection] to the reverse boolean expected by FDB's getRange.
- */
-internal fun ReadDirection.isReverse(): Boolean = this == ReadDirection.Backward
-
-/**
- * Orders positions the way a read in this direction visits them: ascending forward, descending
- * backward. Used wherever positions are compared in application code, such as when cursors are
- * merged into a union or an intersection.
- */
-internal fun ReadDirection.toComparator(): Comparator<FactPosition> = when (this) {
-    ReadDirection.Forward -> compareBy { it }
-    ReadDirection.Backward -> compareByDescending { it }
 }

@@ -52,36 +52,18 @@ private const val IDEMPOTENCY_KEYS = 200
 
 private val EMPTY_BYTE_ARRAY = ByteArray(0)
 
-/** Where FactStore keeps its keys: one subspace per kind of record, all under one root. */
-internal class FdbKeyspace(
-    val storeSubspace: StoreSubspace,
-    val storeNameToIdIndex: StoreNameToIdIndexSubspace,
-    val factSubspace: FactSubspace,
-    val headSubspace: HeadSubspace,
-    val factPositionIndexSubspace: FactPositionIndexSubspace,
-    val typeIndexSubspace: TypeIndexSubspace,
-    val subjectIndexSubspace: SubjectIndexSubspace,
-    val tagsIndexSubspace: TagsIndexSubspace,
-    val tagsTypeIndexSubspace: TagsTypeIndexSubspace,
-    val idempotencySubspace: IdempotencySubspace,
-) {
-
-    companion object {
-
-        /** The subspaces of a fact store kept under [root]. */
-        fun under(root: Subspace): FdbKeyspace = FdbKeyspace(
-            storeSubspace = StoreSubspace(root.subspace(Tuple.from(STORES))),
-            storeNameToIdIndex = StoreNameToIdIndexSubspace(root.subspace(Tuple.from(STORE_INDEX))),
-            factSubspace = FactSubspace(root.subspace(Tuple.from(FACTS))),
-            headSubspace = HeadSubspace(root.subspace(Tuple.from(HEAD_INDEX))),
-            factPositionIndexSubspace = FactPositionIndexSubspace(root.subspace(Tuple.from(FACT_POSITIONS))),
-            typeIndexSubspace = TypeIndexSubspace(root.subspace(Tuple.from(TYPE_INDEX))),
-            subjectIndexSubspace = SubjectIndexSubspace(root.subspace(Tuple.from(SUBJECT_INDEX))),
-            tagsIndexSubspace = TagsIndexSubspace(root.subspace(Tuple.from(TAGS_INDEX))),
-            tagsTypeIndexSubspace = TagsTypeIndexSubspace(root.subspace(Tuple.from(TAGS_TYPE_INDEX))),
-            idempotencySubspace = IdempotencySubspace(root.subspace(Tuple.from(IDEMPOTENCY_KEYS))),
-        )
-    }
+/** Where FactStore keeps its keys: one subspace per kind of record, all under [root]. */
+internal class FdbKeyspace(root: Subspace) {
+    val storeSubspace = StoreSubspace(root[STORES])
+    val storeNameToIdIndex = StoreNameToIdIndexSubspace(root[STORE_INDEX])
+    val factSubspace = FactSubspace(root[FACTS])
+    val headSubspace = HeadSubspace(root[HEAD_INDEX])
+    val factPositionIndexSubspace = FactPositionIndexSubspace(root[FACT_POSITIONS])
+    val typeIndexSubspace = TypeIndexSubspace(root[TYPE_INDEX])
+    val subjectIndexSubspace = SubjectIndexSubspace(root[SUBJECT_INDEX])
+    val tagsIndexSubspace = TagsIndexSubspace(root[TAGS_INDEX])
+    val tagsTypeIndexSubspace = TagsTypeIndexSubspace(root[TAGS_TYPE_INDEX])
+    val idempotencySubspace = IdempotencySubspace(root[IDEMPOTENCY_KEYS])
 }
 
 internal class StoreSubspace(private val subspace: Subspace) {

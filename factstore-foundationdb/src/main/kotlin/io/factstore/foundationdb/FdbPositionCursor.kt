@@ -247,3 +247,13 @@ internal fun PositionSource.positions(): Flow<FactPosition> = flow {
         advance()
     }
 }
+
+/**
+ * Orders positions the way a read in this direction visits them: ascending forward, descending
+ * backward. Used wherever positions are compared in application code, such as when cursors are
+ * merged into a union or an intersection.
+ */
+internal fun ReadDirection.toComparator(): Comparator<FactPosition> = when (this) {
+    ReadDirection.Forward -> compareBy { it }
+    ReadDirection.Backward -> compareByDescending { it }
+}

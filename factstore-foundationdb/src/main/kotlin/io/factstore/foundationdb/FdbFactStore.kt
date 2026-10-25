@@ -5,7 +5,20 @@ import com.apple.foundationdb.directory.DirectoryLayer
 import io.factstore.core.FactStore
 import kotlinx.coroutines.future.await
 
+/** The directory FactStore keeps all of its keys under, created on first use. */
+private const val ROOT_DIRECTORY = "factstore"
+
 /**
+ * Connects to a FoundationDB cluster and returns a [FactStore] on it.
+ *
+ * Every key lives under the `factstore` directory of the cluster, which is created if it does
+ * not exist yet, so the cluster may be shared with other applications.
+ *
+ * FoundationDB fixes its API version once per process: calling this again with another
+ * [apiVersion] fails, while calling it with the same one connects again.
+ *
+ * @param clusterFilePath the cluster file that says where the cluster is
+ * @param apiVersion the FoundationDB API version to select
  * @param streamBatchSize the number of entries a stream reads per transaction; see [STREAM_BATCH_SIZE]
  */
 suspend fun buildFdbFactStore(
@@ -15,8 +28,8 @@ suspend fun buildFdbFactStore(
 ): FactStore {
     FDB.selectAPIVersion(apiVersion)
     val db = FDB.instance().open(clusterFilePath)
-    val root = DirectoryLayer.getDefault().createOrOpen(db, listOf("factstore")).await()
-    val storage = FdbStorage(db, FdbKeyspace.under(root))
+    val root = DirectoryLayer.getDefault().createOrOpen(db, listOf(ROOT_DIRECTORY)).await()
+    val storage = FdbStorage(db, FdbKeyspace(root))
     return FactStore(
         factAppender = FdbFactAppender(storage),
         factFinder = FdbFactFinder(storage),
@@ -27,4 +40,3 @@ suspend fun buildFdbFactStore(
         storeRemover = FdbStoreRemover(storage),
     )
 }
-
