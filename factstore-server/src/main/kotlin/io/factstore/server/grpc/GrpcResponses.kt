@@ -110,9 +110,7 @@ internal fun StoreMetadata.toProto(): FactStoreProto.StoreInfo = storeInfo {
     createdAt = this@toProto.createdAt.toTimestamp()
 }
 
-typealias GrpcAppendFactsResponse = FactStoreProto.AppendFactsResponse
-
-internal fun AppendResult.toGrpcResponse(): GrpcAppendFactsResponse =
+internal fun AppendResult.toGrpcResponse(): FactStoreProto.AppendFactsResponse =
     appendFactsResponse {
         when (this@toGrpcResponse) {
             is AppendResult.Appended -> appended = factsAppended {
@@ -126,9 +124,7 @@ internal fun AppendResult.toGrpcResponse(): GrpcAppendFactsResponse =
         }
     }
 
-typealias GrpcGetFactResponse = FactStoreProto.GetFactResponse
-
-internal fun FindByIdResult.toGrpcResponse(): GrpcGetFactResponse =
+internal fun FindByIdResult.toGrpcResponse(): FactStoreProto.GetFactResponse =
     getFactResponse {
         when (this@toGrpcResponse) {
             is FindByIdResult.Found -> found = factFound { fact = this@toGrpcResponse.fact.toProto() }
@@ -137,9 +133,7 @@ internal fun FindByIdResult.toGrpcResponse(): GrpcGetFactResponse =
         }
     }
 
-typealias GrpcFactExistsResponse = FactStoreProto.FactExistsResponse
-
-internal fun ExistsByIdResult.toGrpcResponse(): GrpcFactExistsResponse =
+internal fun ExistsByIdResult.toGrpcResponse(): FactStoreProto.FactExistsResponse =
     factExistsResponse {
         when (this@toGrpcResponse) {
             ExistsByIdResult.Exists -> present = factPresent { }
@@ -148,9 +142,7 @@ internal fun ExistsByIdResult.toGrpcResponse(): GrpcFactExistsResponse =
         }
     }
 
-typealias GrpcCreateStoreResponse = FactStoreProto.CreateStoreResponse
-
-internal fun CreateStoreResult.toGrpcResponse(): GrpcCreateStoreResponse =
+internal fun CreateStoreResult.toGrpcResponse(): FactStoreProto.CreateStoreResponse =
     createStoreResponse {
         when (this@toGrpcResponse) {
             is CreateStoreResult.Created ->
@@ -165,9 +157,7 @@ internal fun List<StoreMetadata>.toGrpcResponse(): FactStoreProto.ListStoresResp
         stores += this@toGrpcResponse.map { it.toProto() }
     }
 
-typealias GrpcDeleteStoreResponse = FactStoreProto.DeleteStoreResponse
-
-internal fun RemoveStoreResult.toGrpcResponse(): GrpcDeleteStoreResponse =
+internal fun RemoveStoreResult.toGrpcResponse(): FactStoreProto.DeleteStoreResponse =
     deleteStoreResponse {
         when (this@toGrpcResponse) {
             is RemoveStoreResult.StoreRemoved -> deleted = storeDeleted { }
@@ -175,17 +165,13 @@ internal fun RemoveStoreResult.toGrpcResponse(): GrpcDeleteStoreResponse =
         }
     }
 
-typealias GrpcFindStoreByNameResult = FactStoreProto.GetStoreResponse
-
-internal fun FindStoreByNameResult.toGrpcResponse(): GrpcFindStoreByNameResult =
+internal fun FindStoreByNameResult.toGrpcResponse(): FactStoreProto.GetStoreResponse =
     when (this) {
         is FindStoreByNameResult.Found -> getStoreResponse { found = storeFound { store = storeMetadata.toProto() } }
         is FindStoreByNameResult.NotFound -> getStoreResponse { notFound = storeNotFound { storeName = this@toGrpcResponse.storeName.value } }
     }
 
-typealias GrpcStoreExistsResponse = FactStoreProto.StoreExistsResponse
-
-internal fun ExistsStoreByNameResult.toGrpcResponse(): GrpcStoreExistsResponse =
+internal fun ExistsStoreByNameResult.toGrpcResponse(): FactStoreProto.StoreExistsResponse =
     when (this) {
         ExistsStoreByNameResult.StoreExists -> storeExistsResponse { present = storePresent { } }
         ExistsStoreByNameResult.StoreAbsent -> storeExistsResponse { absent = storeAbsent { } }

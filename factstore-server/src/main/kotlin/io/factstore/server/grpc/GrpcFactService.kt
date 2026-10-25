@@ -2,6 +2,7 @@ package io.factstore.server.grpc
 
 import io.factstore.core.*
 import io.factstore.grpc.v1.FactServiceGrpcKt
+import io.factstore.grpc.v1.FactStoreProto
 import io.factstore.grpc.v1.FactStoreProto.*
 import io.factstore.grpc.v1.continuationNotFound
 import io.factstore.grpc.v1.storeNotFound
@@ -32,7 +33,7 @@ class GrpcFactService(
     // Parsing and the store lookup must happen per call rather than when the Flow is built,
     // so the bodies of the streaming RPCs are wrapped in `flow { }` and only run on collection.
 
-    override fun streamFacts(request: GrpcStreamFactsRequest): Flow<StreamFactsResponse> = flow {
+    override fun streamFacts(request: FactStoreProto.StreamFactsRequest): Flow<StreamFactsResponse> = flow {
         emitAll(
             when (val result = factStore.streamFacts(request.toDomainRequest())) {
                 is StreamFactsResult.StoreNotFound -> flowOf(streamFactsResponse {
