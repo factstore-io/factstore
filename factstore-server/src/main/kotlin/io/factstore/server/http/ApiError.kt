@@ -2,7 +2,6 @@ package io.factstore.server.http
 
 import io.factstore.core.FactId
 import io.factstore.core.StoreName
-import jakarta.ws.rs.core.HttpHeaders.CONTENT_TYPE
 import jakarta.ws.rs.core.MediaType.APPLICATION_JSON
 import jakarta.ws.rs.core.Response
 import jakarta.ws.rs.core.Response.Status.CONFLICT
@@ -13,7 +12,7 @@ data class ApiError(
     val message: String,
     val reason: Reason,
     val code: Int,
-    val details: Map<String, Any?>? = null,
+    val details: Map<String, String> = emptyMap(),
 )
 
 enum class Reason {
@@ -24,64 +23,62 @@ enum class Reason {
     InternalError,
 }
 
-fun ApiError.toResponse(): Response =
+internal fun ApiError.toResponse(): Response =
     Response
         .status(code)
         .entity(this)
-        .header(CONTENT_TYPE, APPLICATION_JSON)
+        .type(APPLICATION_JSON)
         .build()
 
-
-fun apiErrorResponse(
+internal fun apiErrorResponse(
     status: Response.StatusType,
     reason: Reason,
     message: String,
-    details: Map<String, Any?>? = null,
+    details: Map<String, String> = emptyMap(),
 ): Response =
     ApiError(
-        status = "Failure",
         message = message,
         reason = reason,
         code = status.statusCode,
-        details = details
+        details = details,
     ).toResponse()
 
-fun storeNotFoundError(storeName: StoreName): Response = apiErrorResponse(
+internal fun storeNotFoundError(storeName: StoreName): Response = apiErrorResponse(
     status = NOT_FOUND,
     reason = Reason.NotFound,
     message = "Store '$storeName' not found.",
     details = mapOf("kind" to "store", "name" to storeName.value)
 )
 
-fun factNotFoundError(factId: FactId): Response = apiErrorResponse(
+internal fun factNotFoundError(factId: FactId): Response = apiErrorResponse(
     status = NOT_FOUND,
     reason = Reason.NotFound,
     message = "Fact '${factId.uuid}' not found.",
-    details = mapOf("kind" to "fact", "id" to factId.uuid)
+    details = mapOf("kind" to "fact", "id" to factId.uuid.toString())
 )
 
-fun continuationNotFoundError(factId: FactId): Response = apiErrorResponse(
+internal fun continuationNotFoundError(factId: FactId): Response = apiErrorResponse(
     status = NOT_FOUND,
     reason = Reason.NotFound,
     message = "The fact '${factId.uuid}' to continue after does not exist.",
-    details = mapOf("kind" to "continuation", "id" to factId.uuid)
+    details = mapOf("kind" to "continuation", "id" to factId.uuid.toString())
 )
 
-fun afterFactNotFoundError(factId: FactId): Response = apiErrorResponse(
+internal fun afterFactNotFoundError(factId: FactId): Response = apiErrorResponse(
     status = NOT_FOUND,
     reason = Reason.NotFound,
     message = "The fact '${factId.uuid}' the append condition checks after does not exist.",
-    details = mapOf("kind" to "afterFact", "id" to factId.uuid)
+    details = mapOf("kind" to "afterFact", "id" to factId.uuid.toString())
 )
 
-fun storeAlreadyExistsError(storeName: StoreName): Response = apiErrorResponse(
+internal fun storeAlreadyExistsError(storeName: StoreName): Response = apiErrorResponse(
     status = CONFLICT,
     reason = Reason.AlreadyExists,
     message = "Store '$storeName' already exists.",
     details = mapOf("name" to storeName.value),
 )
 
-fun appendConditionViolatedError(): Response = apiErrorResponse(
+internal fun appendConditionViolatedError(): Response = apiErrorResponse(
     status = CONFLICT,
     reason = Reason.ConditionViolated,
     message = "The append condition was not satisfied.",

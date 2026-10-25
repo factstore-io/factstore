@@ -71,7 +71,7 @@ internal fun unexpectedError(e: Throwable): ApiError {
         message = "An unexpected error occurred.",
         reason = Reason.InternalError,
         code = INTERNAL_SERVER_ERROR.statusCode,
-        details = mapOf("errorId" to errorId),
+        details = mapOf("errorId" to errorId.toString()),
     )
 }
 
