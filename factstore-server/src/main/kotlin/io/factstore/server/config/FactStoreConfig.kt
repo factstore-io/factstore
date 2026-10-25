@@ -13,8 +13,8 @@ interface FactStoreConfig {
 
     fun foundationdb(): FoundationDbConfig
 
-    fun interface StorageConfig {
-        fun type(): String
+    interface StorageConfig {
+        fun type(): StorageType
     }
 
     interface FoundationDbConfig {
@@ -22,3 +22,6 @@ interface FactStoreConfig {
         fun apiVersion(): Int
     }
 }
+
+/** The backends the server can store facts in, as `factstore.storage.type` names them. */
+enum class StorageType { MEMORY, FOUNDATIONDB }

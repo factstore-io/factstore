@@ -1,43 +1,32 @@
 plugins {
-    alias(libs.plugins.kotlin.jvm)
+    id("factstore.kotlin-jvm")
     alias(libs.plugins.kotlin.serialization)
 }
 
 dependencies {
     constraints {
-        implementation(libs.com.fasterxml.jackson.core.jackson.databind) {
+        implementation(libs.jackson.databind) {
             because("avro 1.12.1 constrains jackson-databind to 2.20.0, which is vulnerable")
         }
     }
 
     implementation(project(":factstore-specification"))
-    implementation(libs.org.jetbrains.kotlinx.kotlinx.coroutines.core)
+    implementation(libs.kotlinx.coroutines.core)
 
     // foundation db client
-    implementation(libs.org.foundationdb.fdb.java)
+    implementation(libs.fdb.java)
 
     // serialization
-    implementation(libs.org.jetbrains.kotlinx.kotlinx.serialization.json)
-    implementation(libs.com.github.avro.kotlin.avro4k.avro4k.core)
+    implementation(libs.kotlinx.serialization.json)
+    implementation(libs.avro4k.core)
 
     // test
     testImplementation(project(":factstore-testing"))
-    testImplementation(libs.org.assertj.assertj.core)
-    testImplementation(libs.earth.adi.testcontainers.foundationdb)
-    testImplementation(libs.org.testcontainers.junit.jupiter)
-    testImplementation(libs.org.junit.jupiter.junit.jupiter.api)
-    testImplementation(libs.org.junit.jupiter.junit.jupiter.params)
-    testRuntimeOnly(libs.org.junit.jupiter.junit.jupiter.engine)
-    testRuntimeOnly(libs.org.junit.platform.junit.platform.launcher)
-}
-
-java {
-    sourceCompatibility = JavaVersion.VERSION_25
-    targetCompatibility = JavaVersion.VERSION_25
-}
-
-kotlin {
-    jvmToolchain(25)
+    testImplementation(libs.testcontainers.foundationdb)
+    testImplementation(libs.testcontainers.junit.jupiter)
+    testImplementation(libs.bundles.testing)
+    testRuntimeOnly(libs.junit.jupiter.engine)
+    testRuntimeOnly(libs.junit.platform.launcher)
 }
 
 tasks.test {
@@ -45,6 +34,4 @@ tasks.test {
         "--enable-native-access=ALL-UNNAMED",
         "--sun-misc-unsafe-memory-access=allow"
     )
-    useJUnitPlatform()
 }
-

@@ -26,8 +26,8 @@ class FactStreamLinesTest {
         val lines = flowOf(fact1, fact2).toFactStreamLines().toList()
 
         assertThat(lines).containsExactly(
-            FactStreamLineHttp.FactLine(fact1.toFactHttp()),
-            FactStreamLineHttp.FactLine(fact2.toFactHttp()),
+            FactStreamLineHttp.FactLine(fact1.toHttp()),
+            FactStreamLineHttp.FactLine(fact2.toHttp()),
             FactStreamLineHttp.EndLine(FactStreamEndHttp(count = 2)),
         )
     }
@@ -49,7 +49,7 @@ class FactStreamLinesTest {
         }.toFactStreamLines().toList()
 
         assertThat(lines).hasSize(2)
-        assertThat(lines[0]).isEqualTo(FactStreamLineHttp.FactLine(fact1.toFactHttp()))
+        assertThat(lines[0]).isEqualTo(FactStreamLineHttp.FactLine(fact1.toHttp()))
         val error = (lines[1] as FactStreamLineHttp.ErrorLine).error
         assertThat(error.reason).isEqualTo(Reason.InternalError)
         assertThat(error.message).doesNotContain("backend failure")
@@ -64,8 +64,8 @@ class FactStreamLinesTest {
         val lines = flowOf(fact1, fact2).toSubscriptionLines().take(2).toList()
 
         assertThat(lines).containsExactly(
-            FactStreamLineHttp.FactLine(fact1.toFactHttp()),
-            FactStreamLineHttp.FactLine(fact2.toFactHttp()),
+            FactStreamLineHttp.FactLine(fact1.toHttp()),
+            FactStreamLineHttp.FactLine(fact2.toHttp()),
         )
     }
 
@@ -78,10 +78,10 @@ class FactStreamLinesTest {
             delay(200.milliseconds)
             emit(fact2)
         }.toSubscriptionLines(heartbeatEvery = 20.milliseconds)
-            .takeWhile { it != FactStreamLineHttp.FactLine(fact2.toFactHttp()) }
+            .takeWhile { it != FactStreamLineHttp.FactLine(fact2.toHttp()) }
             .toList()
 
-        assertThat(lines.first()).isEqualTo(FactStreamLineHttp.FactLine(fact1.toFactHttp()))
+        assertThat(lines.first()).isEqualTo(FactStreamLineHttp.FactLine(fact1.toHttp()))
         assertThat(lines.drop(1)).isNotEmpty().allMatch { it is FactStreamLineHttp.HeartbeatLine }
     }
 
@@ -94,7 +94,7 @@ class FactStreamLinesTest {
         }.toSubscriptionLines().toList()
 
         assertThat(lines).hasSize(2)
-        assertThat(lines[0]).isEqualTo(FactStreamLineHttp.FactLine(fact1.toFactHttp()))
+        assertThat(lines[0]).isEqualTo(FactStreamLineHttp.FactLine(fact1.toHttp()))
         val error = (lines[1] as FactStreamLineHttp.ErrorLine).error
         assertThat(error.reason).isEqualTo(Reason.InternalError)
         assertThat(error.message).doesNotContain("backend failure")
@@ -107,7 +107,7 @@ class FactStreamLinesTest {
         // must not look like a complete stream.
         val lines = flowOf(fact1).toSubscriptionLines().toList()
 
-        assertThat(lines).containsExactly(FactStreamLineHttp.FactLine(fact1.toFactHttp()))
+        assertThat(lines).containsExactly(FactStreamLineHttp.FactLine(fact1.toHttp()))
     }
 
     private fun fact() = Fact(

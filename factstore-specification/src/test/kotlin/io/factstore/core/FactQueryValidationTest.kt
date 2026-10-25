@@ -45,7 +45,7 @@ class FactQueryValidationTest {
         assertThat(assertThrows<IllegalArgumentException> { FactQueryItem(types = types) }.message)
             .contains("not match more than ${FactQueryItem.MAX_TYPES} types")
         assertThat(assertThrows<IllegalArgumentException> { FactQueryItem(tags = tags) }.message)
-            .contains("At most ${FactInput.MAX_TAGS} tags")
+            .contains("not require more than ${FactInput.MAX_TAGS} tags")
     }
 
     @Test

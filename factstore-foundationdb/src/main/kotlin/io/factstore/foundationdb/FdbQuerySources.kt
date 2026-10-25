@@ -36,11 +36,23 @@ internal class QuerySources(
         anyOf(items.map { it.toSource(storeId, head, direction) }, direction)
 
     /**
+     * How this query is read up to [head]: from one index range, or by combining several.
+     *
+     * A source without anything combined is a single cursor, and this is the one place that
+     * relies on it: the sources are built here, so here is where their shape is known.
+     */
+    fun FactQuery.toPlan(storeId: StoreId, head: FactPosition?, direction: ReadDirection): QueryPlan =
+        when (val source = toSource(storeId, head, direction)) {
+            is PositionCursor -> QueryPlan.SingleRange(source.index, source.keys)
+            else -> QueryPlan.Combined { toSource(storeId, head, direction) }
+        }
+
+    /**
      * The positions of the facts this item matches: every predicate it sets must hold, while a
      * predicate holding several values matches any of them.
      */
     private fun FactQueryItem.toSource(storeId: StoreId, head: FactPosition?, direction: ReadDirection): PositionSource {
-        val tags = tags.map { (key, value) -> key to value }
+        val tags = tags.entries
 
         val predicates = buildList {
             if (subjects.isNotEmpty()) {
@@ -76,50 +88,44 @@ internal class QuerySources(
         if (sources.size == 1) sources.single() else AnyOf(sources, direction)
 
     private fun subjectCursor(storeId: StoreId, subject: Subject, head: FactPosition?, direction: ReadDirection) =
-        keyspace.subjectIndexSubspace.let { index ->
-            cursor(
-                keys = index.pinnedKeys(storeId, subject, head, direction),
-                positionOf = { key -> index.unpackPosition(key) },
-                keyOf = { position -> index.getKey(storeId, subject, position) },
-            )
-        }
+        cursor(keyspace.subjectIndexSubspace.indexRange(storeId, subject), head, direction)
 
     private fun typeCursor(storeId: StoreId, type: FactType, head: FactPosition?, direction: ReadDirection) =
-        keyspace.eventTypeIndexSubspace.let { index ->
-            cursor(
-                keys = index.pinnedKeys(storeId, type, head, direction),
-                positionOf = { key -> index.unpackPosition(key) },
-                keyOf = { position -> index.getKey(storeId, type, position) },
-            )
-        }
+        cursor(keyspace.typeIndexSubspace.indexRange(storeId, type), head, direction)
 
     private fun typeTagCursor(
         storeId: StoreId,
         type: FactType,
-        tag: Pair<TagKey, TagValue>,
+        tag: Map.Entry<TagKey, TagValue>,
         head: FactPosition?,
         direction: ReadDirection,
-    ) = keyspace.tagsTypeIndexSubspace.let { index ->
-        cursor(
-            keys = index.pinnedKeys(storeId, type, tag, head, direction),
-            positionOf = { key -> index.unpackPosition(key) },
-            keyOf = { position -> index.getKey(storeId, type, tag, position) },
-        )
+    ) = cursor(keyspace.tagsTypeIndexSubspace.indexRange(storeId, type, tag), head, direction)
+
+    private fun tagCursor(storeId: StoreId, tag: Map.Entry<TagKey, TagValue>, head: FactPosition?, direction: ReadDirection) =
+        cursor(keyspace.tagsIndexSubspace.indexRange(storeId, tag), head, direction)
+
+    /** A cursor over one index range, reading its keys up to [head] in [direction]. */
+    private fun cursor(index: IndexRange, head: FactPosition?, direction: ReadDirection) =
+        PositionCursor(reader, index, index.pinnedKeys(head, direction), batchSize)
+}
+
+/** How a query is read: one index range scanned as it is, or several combined by cursors. */
+internal sealed interface QueryPlan {
+
+    /**
+     * The query is one index range, whose keys are scanned directly, index entries and facts
+     * together. That is the case for one subject, one type, one tag, or one type and tag.
+     */
+    class SingleRange(val index: IndexRange, val keys: PinnedKeys) : QueryPlan
+
+    /**
+     * The query combines several index ranges through a tree of cursors.
+     *
+     * Cursors are consumed as they are read, so every read builds a tree of its own: that is what
+     * keeps a stream repeatable, rather than letting a second collection find the cursors of the
+     * first used up.
+     */
+    class Combined(private val build: () -> PositionSource) : QueryPlan {
+        fun newSource(): PositionSource = build()
     }
-
-    private fun tagCursor(storeId: StoreId, tag: Pair<TagKey, TagValue>, head: FactPosition?, direction: ReadDirection) =
-        keyspace.tagsIndexSubspace.let { index ->
-            cursor(
-                keys = index.pinnedKeys(storeId, tag, head, direction),
-                positionOf = { key -> index.unpackPosition(key) },
-                keyOf = { position -> index.getKey(storeId, tag, position) },
-            )
-        }
-
-    /** A cursor over the [keys] of one index, which says how its keys and positions map to each other. */
-    private fun cursor(
-        keys: PinnedKeys,
-        positionOf: (ByteArray) -> FactPosition,
-        keyOf: (FactPosition) -> ByteArray,
-    ) = PositionCursor(reader, keys, batchSize, positionOf, keyOf)
 }

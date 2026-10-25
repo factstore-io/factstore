@@ -23,7 +23,7 @@ class AppendRequestTest {
                     payload = """MORE_DATA""".toFactPayload(),
                 ),
             ),
-            idempotencyKey = IdempotencyKey(),
+            idempotencyKey = IdempotencyKey.generate(),
             condition = AppendCondition.None,
         )
 
@@ -81,5 +81,5 @@ class AppendRequestTest {
     )
 
     private fun request(facts: List<FactInput>) =
-        AppendRequest(StoreName("test-store"), facts, IdempotencyKey())
+        AppendRequest(StoreName("test-store"), facts, IdempotencyKey.generate())
 }

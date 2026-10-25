@@ -3,55 +3,63 @@ package io.factstore.client.operations
 import io.factstore.client.exceptions.StoreNameAlreadyExistsException
 import io.factstore.client.exceptions.StoreNotFoundException
 import io.factstore.client.internal.grpcCall
-import io.factstore.client.internal.toDomain
+import io.factstore.client.internal.toModel
+import io.factstore.client.internal.withCallTimeout
 import io.factstore.client.model.StoreInfo
+import io.factstore.grpc.v1.FactStoreProto.CreateStoreResponse
+import io.factstore.grpc.v1.FactStoreProto.DeleteStoreResponse
+import io.factstore.grpc.v1.FactStoreProto.GetStoreResponse
+import io.factstore.grpc.v1.FactStoreProto.StoreExistsResponse
 import io.factstore.grpc.v1.StoreServiceGrpcKt.StoreServiceCoroutineStub
 import io.factstore.grpc.v1.createStoreRequest
 import io.factstore.grpc.v1.deleteStoreRequest
 import io.factstore.grpc.v1.getStoreRequest
 import io.factstore.grpc.v1.listStoresRequest
 import io.factstore.grpc.v1.storeExistsRequest
-import java.time.Duration
-import java.util.concurrent.TimeUnit
+import kotlin.time.Duration
 
 class StoreOperations internal constructor(
     private val stub: StoreServiceCoroutineStub,
     private val callTimeout: Duration,
 ) {
-    private fun timedStub() = stub.withDeadlineAfter(callTimeout.toMillis(), TimeUnit.MILLISECONDS)
 
     suspend fun create(name: String): String = grpcCall {
-        val response = timedStub().createStore(createStoreRequest { this.name = name })
-        when {
-            response.hasCreated() -> response.created.id
-            response.hasNameAlreadyExists() -> throw StoreNameAlreadyExistsException(name)
-            else -> error("Unexpected response: $response")
+        val response = stub.withCallTimeout(callTimeout).createStore(createStoreRequest { this.name = name })
+        when (response.outcomeCase) {
+            CreateStoreResponse.OutcomeCase.CREATED -> response.created.id
+            CreateStoreResponse.OutcomeCase.NAME_ALREADY_EXISTS -> throw StoreNameAlreadyExistsException(name)
+            CreateStoreResponse.OutcomeCase.OUTCOME_NOT_SET, null -> error("Unexpected response: $response")
         }
     }
 
     suspend fun get(name: String): StoreInfo = grpcCall {
-        val response = timedStub().getStore(getStoreRequest { this.name = name })
-        when {
-            response.hasFound() -> response.found.store.toDomain()
-            response.hasNotFound() -> throw StoreNotFoundException(name)
-            else -> error("Unexpected response: $response")
+        val response = stub.withCallTimeout(callTimeout).getStore(getStoreRequest { this.name = name })
+        when (response.outcomeCase) {
+            GetStoreResponse.OutcomeCase.FOUND -> response.found.store.toModel()
+            GetStoreResponse.OutcomeCase.NOT_FOUND -> throw StoreNotFoundException(name)
+            GetStoreResponse.OutcomeCase.OUTCOME_NOT_SET, null -> error("Unexpected response: $response")
         }
     }
 
     suspend fun list(): List<StoreInfo> = grpcCall {
-        timedStub().listStores(listStoresRequest {}).storesList.map { it.toDomain() }
+        stub.withCallTimeout(callTimeout).listStores(listStoresRequest {}).storesList.map { it.toModel() }
     }
 
     suspend fun delete(name: String): Unit = grpcCall {
-        val response = timedStub().deleteStore(deleteStoreRequest { this.name = name })
-        when {
-            response.hasDeleted() -> Unit
-            response.hasNotFound() -> throw StoreNotFoundException(name)
-            else -> error("Unexpected response: $response")
+        val response = stub.withCallTimeout(callTimeout).deleteStore(deleteStoreRequest { this.name = name })
+        when (response.outcomeCase) {
+            DeleteStoreResponse.OutcomeCase.DELETED -> Unit
+            DeleteStoreResponse.OutcomeCase.NOT_FOUND -> throw StoreNotFoundException(name)
+            DeleteStoreResponse.OutcomeCase.OUTCOME_NOT_SET, null -> error("Unexpected response: $response")
         }
     }
 
     suspend fun exists(name: String): Boolean = grpcCall {
-        timedStub().storeExists(storeExistsRequest { this.name = name }).hasPresent()
+        val response = stub.withCallTimeout(callTimeout).storeExists(storeExistsRequest { this.name = name })
+        when (response.outcomeCase) {
+            StoreExistsResponse.OutcomeCase.PRESENT -> true
+            StoreExistsResponse.OutcomeCase.ABSENT -> false
+            StoreExistsResponse.OutcomeCase.OUTCOME_NOT_SET, null -> error("Unexpected response: $response")
+        }
     }
 }

@@ -109,7 +109,7 @@ class SubscriptionResourceTest {
             .contentType(JSON)
             .extract().`as`(ApiError::class.java)
 
-        assertThat(error.details?.get("kind")).isEqualTo("continuation")
+        assertThat(error.details["kind"]).isEqualTo("continuation")
     }
 
     /**

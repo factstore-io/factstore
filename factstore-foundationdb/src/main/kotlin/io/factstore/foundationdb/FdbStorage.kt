@@ -7,6 +7,7 @@ import com.apple.foundationdb.tuple.Versionstamp
 import io.factstore.core.Fact
 import io.factstore.core.FactId
 import io.factstore.core.StoreId
+import io.factstore.core.StoreMetadata
 import io.factstore.core.StoreName
 import kotlinx.coroutines.future.await
 import kotlinx.coroutines.future.future
@@ -41,7 +42,7 @@ internal interface FdbAccess {
 
     /** The metadata of the store, or `null` if there is none. */
     context(tr: ReadTransaction)
-    suspend fun metadataOf(storeId: StoreId): FdbStoreMetadata?
+    suspend fun metadataOf(storeId: StoreId): StoreMetadata?
 
     /** The position of the store's newest fact, or `null` if it has none. */
     context(tr: ReadTransaction)
@@ -57,7 +58,7 @@ internal interface FdbAccess {
 
     /** Registers a new store under its name. */
     context(tr: Transaction)
-    fun saveMetadata(metadata: FdbStoreMetadata)
+    fun saveMetadata(metadata: StoreMetadata)
 
     /**
      * Writes [facts] and their index entries, in order.
@@ -83,30 +84,30 @@ internal class FdbStorage(private val db: Database, override val keyspace: FdbKe
 
     context(tr: ReadTransaction)
     override suspend fun storeIdOf(name: StoreName): StoreId? =
-        keyspace.storeNameToIdIndex.lookUpStore(name)
+        keyspace.storeNameToIdIndex.storeIdOf(name)
 
     context(tr: ReadTransaction)
-    override suspend fun metadataOf(storeId: StoreId): FdbStoreMetadata? =
-        keyspace.storeSubspace.getMetadata(storeId)
+    override suspend fun metadataOf(storeId: StoreId): StoreMetadata? =
+        keyspace.storeSubspace.metadataOf(storeId)
 
     context(tr: ReadTransaction)
     override suspend fun headOf(storeId: StoreId): FactPosition? =
-        keyspace.headSubspace.head(storeId)
+        keyspace.headSubspace.headOf(storeId)
 
     context(tr: ReadTransaction)
     override suspend fun positionOf(storeId: StoreId, factId: FactId): FactPosition? =
-        keyspace.factPositionIndexSubspace.getPosition(storeId, factId)
+        keyspace.factPositionIndexSubspace.positionOf(storeId, factId)
 
     context(tr: ReadTransaction)
     override suspend fun loadFact(storeId: StoreId, factId: FactId): Fact? {
         val position = positionOf(storeId, factId) ?: return null
-        return keyspace.factSubspace.findFact(storeId, position).await()?.toSerializableFdbFact()?.toFact()
+        return keyspace.factSubspace.factAt(storeId, position).await()?.toSerializableFdbFact()?.toFact()
     }
 
     context(tr: Transaction)
-    override fun saveMetadata(metadata: FdbStoreMetadata) {
-        keyspace.storeSubspace.saveMetadata(metadata)
-        keyspace.storeNameToIdIndex.save(StoreName(metadata.name), StoreId(metadata.storeId))
+    override fun saveMetadata(metadata: StoreMetadata) {
+        keyspace.storeSubspace.save(metadata)
+        keyspace.storeNameToIdIndex.save(metadata.name, metadata.id)
     }
 
     context(tr: Transaction)
@@ -114,13 +115,15 @@ internal class FdbStorage(private val db: Database, override val keyspace: FdbKe
         facts.forEachIndexed { index, fact ->
             val position = Versionstamp.incomplete(index)
             with(keyspace) {
-                factSubspace.saveFact(storeId, position, fact.toSerializableFdbFact().encodeToByteArray())
-                factPositionIndexSubspace.savePosition(storeId, fact.id, position)
+                factSubspace.save(storeId, position, fact.toSerializableFdbFact().encodeToByteArray())
+                factPositionIndexSubspace.save(storeId, fact.id, position)
                 headSubspace.save(storeId, position)
-                eventTypeIndexSubspace.save(storeId, fact.id, fact.type, position)
-                subjectIndexSubspace.save(storeId, fact.id, fact.subject, position)
-                tagsIndexSubspace.save(storeId, fact.id, fact.tags, position)
-                tagsTypeIndexSubspace.save(storeId, fact.id, fact.type, fact.tags, position)
+                typeIndexSubspace.indexRange(storeId, fact.type).save(fact.id, position)
+                subjectIndexSubspace.indexRange(storeId, fact.subject).save(fact.id, position)
+                fact.tags.forEach { tag ->
+                    tagsIndexSubspace.indexRange(storeId, tag).save(fact.id, position)
+                    tagsTypeIndexSubspace.indexRange(storeId, fact.type, tag).save(fact.id, position)
+                }
             }
         }
     }

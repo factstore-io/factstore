@@ -1,27 +1,11 @@
 plugins {
-    alias(libs.plugins.kotlin.jvm)
+    id("factstore.kotlin-jvm")
 }
 
 dependencies {
-    implementation(libs.org.jetbrains.kotlinx.kotlinx.coroutines.core)
+    implementation(libs.kotlinx.coroutines.core)
 
-    testImplementation(libs.org.assertj.assertj.core)
-    testImplementation(libs.org.junit.jupiter.junit.jupiter.api)
-    testImplementation(libs.org.junit.jupiter.junit.jupiter.params)
-    testRuntimeOnly(libs.org.junit.jupiter.junit.jupiter.engine)
-    testRuntimeOnly(libs.org.junit.platform.junit.platform.launcher)
+    testImplementation(libs.bundles.testing)
+    testRuntimeOnly(libs.junit.jupiter.engine)
+    testRuntimeOnly(libs.junit.platform.launcher)
 }
-
-java {
-    sourceCompatibility = JavaVersion.VERSION_25
-    targetCompatibility = JavaVersion.VERSION_25
-}
-
-kotlin {
-    jvmToolchain(25)
-}
-
-tasks.test {
-    useJUnitPlatform()
-}
-

@@ -60,40 +60,42 @@ The implementation uses Kotlin coroutine mutexes to ensure thread-safe access to
 // Create a new in-memory fact store
 val store: FactStore = MemoryFactStore()
 
-// Create a fact store instance
-val request = CreateFactStoreRequest(StoreName("my-store"))
-val result = store.handle(request)
-val storeId = (result as CreateFactStoreResult.Created).id
+// Create a store
+val storeName = StoreName("my-store")
+store.createStore(CreateStoreRequest(storeName))
 
-// Append facts
-val fact = Fact(
-    id = FactId.generate(),
-    type = "UserCreated".toFactType(),
-    payload = """{"username": "Alice"}""".toFactPayload(),
-    subjectRef = SubjectRef("USER", "user-123"),
-    appendedAt = Instant.now()
+// Append a fact; its id and appendedAt are assigned by the store
+val result = store.append(
+    storeName,
+    FactInput(
+        type = "UserCreated".toFactType(),
+        subject = "user/123".toSubject(),
+        payload = """{"username": "Alice"}""".toFactPayload(),
+    ),
 )
+val factId = (result as AppendResult.Appended).factIds.single()
 
-store.append(storeId, fact)
+// Find a fact by its id
+val found = store.findFactById(FindFactByIdRequest(storeName, factId))
 
-// Find facts
-val foundFact = store.findById(storeId, fact.id)
-val allFacts = store.findBySubject(storeId, SubjectRef("USER", "user-123"))
-
-// Stream facts
-store.stream(storeId).collect { fact ->
-    println("Streamed: $fact")
-}
+// Stream the facts of a subject
+val stream = store.streamFacts(
+    StreamFactsRequest(
+        storeName = storeName,
+        query = FactQuery(listOf(FactQueryItem(subjects = setOf("user/123".toSubject())))),
+        direction = ReadDirection.Forward,
+    )
+)
+(stream as StreamFactsResult.FactStream).facts.collect { fact -> println("Streamed: $fact") }
 ```
 
 ## Implementation Details
 
 ### Internal Data Structures
 
-- **stores**: Map of StoreId → StoreMetadata for storing metadata
-- **nameIndex**: Map of store name → StoreId for fast lookups
-- **facts**: Map of StoreId → List<Fact> for storing facts
-- **idempotencyKeys**: Map of StoreId → Set<UUID> for tracking idempotency
+- **stores**: Map of StoreName → MemoryStore, one entry per store
+- **MemoryStore**: a store's metadata, its facts in append order, the idempotency keys it has seen,
+  and its head (the number of facts) as a `MutableStateFlow` that subscriptions watch
 
 ### Lock Strategy
 

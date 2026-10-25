@@ -28,7 +28,7 @@ internal class FdbFactAppender(storage: FdbStorage) : FactAppender, FdbAccess by
         val storeId = storeIdOf(request.storeName)
             ?: return@inTransaction AppendResult.StoreNotFound(request.storeName)
 
-        val idempotencyKey = keyspace.idempotencySubspace.pack(storeId, request.idempotencyKey)
+        val idempotencyKey = keyspace.idempotencySubspace.keyOf(storeId, request.idempotencyKey)
         if (get(idempotencyKey).await() != null) return@inTransaction AppendResult.AlreadyApplied
 
         // A condition naming a fact the store does not have cannot be judged at all
@@ -92,7 +92,7 @@ internal class FdbFactAppender(storage: FdbStorage) : FactAppender, FdbAccess by
     /** The id of the subject's newest fact, or `null` if it has none. */
     context(tr: Transaction)
     private suspend fun Subject.lastFactId(storeId: StoreId): FactId? =
-        tr.getRange(keyspace.subjectIndexSubspace.range(storeId, this), LIMIT_ONE, REVERSED)
+        tr.getRange(keyspace.subjectIndexSubspace.indexRange(storeId, this).range, LIMIT_ONE, REVERSED)
             .asList()
             .await()
             .firstOrNull()?.let { Tuple.fromBytes(it.value).getFirstAsFactId() }

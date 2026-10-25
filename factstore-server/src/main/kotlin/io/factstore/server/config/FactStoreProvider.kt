@@ -6,7 +6,7 @@ import io.factstore.memory.MemoryFactStore
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.quarkus.runtime.Startup
 import jakarta.enterprise.context.ApplicationScoped
-import jakarta.ws.rs.Produces
+import jakarta.enterprise.inject.Produces
 import kotlinx.coroutines.runBlocking
 
 private val logger = KotlinLogging.logger {}
@@ -14,45 +14,30 @@ private val logger = KotlinLogging.logger {}
 /**
  * Dynamic FactStore provider that chooses the implementation based on configuration.
  *
- * This provider reads the `factstore.storage.type` configuration property at runtime
+ * This provider reads the `factstore.storage.type` configuration property once, at startup,
  * and instantiates the appropriate FactStore implementation:
  * - "memory": Uses the in-memory implementation for testing
  * - "foundationdb": Uses the FoundationDB implementation for production
  *
- * The configuration is dynamic and can be changed at runtime without rebuilding.
- * This allows the same application to run with different storage backends
- * depending on the deployment environment.
+ * The property is read from the runtime configuration, so the same build can run with either
+ * backend; changing it takes a restart.
  */
 @ApplicationScoped
 class FactStoreProvider(
     val config: FactStoreConfig
 ) {
 
-    companion object {
-
-        const val STORAGE_TYPE_MEMORY = "memory"
-        const val STORAGE_TYPE_FOUNDATIONDB = "foundationdb"
-
-    }
-
     @Startup
     @Produces
     @ApplicationScoped
     fun factStore(): FactStore = runBlocking {
-        val storageType = config.storage().type().lowercase()
-        val store = when (storageType) {
-            STORAGE_TYPE_MEMORY -> MemoryFactStore()
-            STORAGE_TYPE_FOUNDATIONDB -> buildFdbFactStore()
-
-            else -> {
-                throw IllegalArgumentException(
-                    "Unsupported storage type: $storageType. " +
-                            "Supported types: memory, foundationdb"
-                )
-            }
+        val type = config.storage().type()
+        val store = when (type) {
+            StorageType.MEMORY -> MemoryFactStore()
+            StorageType.FOUNDATIONDB -> buildFdbFactStore()
         }
 
-        logger.info { "FactStore initialized successfully with type: $storageType" }
+        logger.info { "FactStore initialized successfully with type: $type" }
         store
     }
 

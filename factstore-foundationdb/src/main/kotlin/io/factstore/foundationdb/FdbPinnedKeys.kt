@@ -3,11 +3,6 @@ package io.factstore.foundationdb
 import com.apple.foundationdb.KeySelector
 import com.apple.foundationdb.Range
 import io.factstore.core.ReadDirection
-import io.factstore.core.FactType
-import io.factstore.core.StoreId
-import io.factstore.core.Subject
-import io.factstore.core.TagKey
-import io.factstore.core.TagValue
 
 /**
  * The keys of [range] up to and including [pinnedEndKey], read in [direction].
@@ -22,7 +17,8 @@ import io.factstore.core.TagValue
  */
 internal class PinnedKeys(range: Range, pinnedEndKey: ByteArray?, direction: ReadDirection) {
 
-    val reverse = direction.isReverse()
+    /** Whether the keys are read from the end of the range: the `reverse` flag of FoundationDB's `getRange`. */
+    val reverse = direction == ReadDirection.Backward
 
     private val first = KeySelector.firstGreaterOrEqual(range.begin)
 
@@ -43,67 +39,4 @@ internal class PinnedKeys(range: Range, pinnedEndKey: ByteArray?, direction: Rea
 
     /** Orders positions the way this scan reads them. */
     val readingOrder: Comparator<FactPosition> = direction.toComparator()
-}
-
-/** The keys of one subject's index in this store, up to the fact at [head], or all of them without one. */
-internal fun SubjectIndexSubspace.pinnedKeys(
-    storeId: StoreId,
-    subject: Subject,
-    head: FactPosition?,
-    direction: ReadDirection,
-): PinnedKeys = PinnedKeys(
-    range = range(storeId, subject),
-    pinnedEndKey = head?.let { getKey(storeId, subject, it) },
-    direction = direction,
-)
-
-/** The keys of one type's index in this store, up to the fact at [head], or all of them without one. */
-internal fun EventTypeIndexSubspace.pinnedKeys(
-    storeId: StoreId,
-    type: FactType,
-    head: FactPosition?,
-    direction: ReadDirection,
-): PinnedKeys = PinnedKeys(
-    range = range(storeId, type),
-    pinnedEndKey = head?.let { getKey(storeId, type, it) },
-    direction = direction,
-)
-
-/** The keys of one type-and-tag combination's index in this store, up to the fact at [head], or all of them without one. */
-internal fun TagsTypeIndexSubspace.pinnedKeys(
-    storeId: StoreId,
-    type: FactType,
-    tag: Pair<TagKey, TagValue>,
-    head: FactPosition?,
-    direction: ReadDirection,
-): PinnedKeys = PinnedKeys(
-    range = range(storeId, type, tag),
-    pinnedEndKey = head?.let { getKey(storeId, type, tag, it) },
-    direction = direction,
-)
-
-/** The keys of one tag's index in this store, up to the fact at [head], or all of them without one. */
-internal fun TagsIndexSubspace.pinnedKeys(
-    storeId: StoreId,
-    tag: Pair<TagKey, TagValue>,
-    head: FactPosition?,
-    direction: ReadDirection,
-): PinnedKeys = PinnedKeys(
-    range = range(storeId, tag),
-    pinnedEndKey = head?.let { getKey(storeId, tag, it) },
-    direction = direction,
-)
-
-/**
- * Converts a [ReadDirection] to the reverse boolean expected by FDB's getRange.
- */
-internal fun ReadDirection.isReverse(): Boolean = this == ReadDirection.Backward
-
-/**
- * Comparator for [FactPosition] respecting [ReadDirection].
- * Used when direction must be applied in application code (e.g. after intersection).
- */
-internal fun ReadDirection.toComparator(): Comparator<FactPosition> = when (this) {
-    ReadDirection.Forward -> compareBy { it }
-    ReadDirection.Backward -> compareByDescending { it }
 }

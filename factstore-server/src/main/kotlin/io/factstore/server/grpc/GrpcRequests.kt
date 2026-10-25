@@ -10,7 +10,7 @@ import io.factstore.core.ReadDirection as CoreReadDirection
  */
 
 /** Every read states its direction: an unset or unknown direction is invalid input. */
-internal fun FactStoreProto.ReadDirection.toCore(): CoreReadDirection = when (this) {
+internal fun FactStoreProto.ReadDirection.toDomain(): CoreReadDirection = when (this) {
     FactStoreProto.ReadDirection.READ_DIRECTION_FORWARD -> CoreReadDirection.Forward
     FactStoreProto.ReadDirection.READ_DIRECTION_BACKWARD -> CoreReadDirection.Backward
     else -> throw IllegalArgumentException(
@@ -60,61 +60,47 @@ internal fun FactStoreProto.AppendCondition.toDomain(): AppendCondition = when (
     )
 }
 
-typealias GrpcAppendRequest = FactStoreProto.AppendFactsRequest
-
-internal fun GrpcAppendRequest.toDomainRequest(): AppendRequest = parseRequest {
+internal fun FactStoreProto.AppendFactsRequest.toDomainRequest(): AppendRequest = parseRequest {
     AppendRequest(
         storeName = storeName.asStoreName(),
         facts = factsList.map { it.toDomain() },
-        idempotencyKey = if (hasIdempotencyKey()) IdempotencyKey(idempotencyKey.asUuid()) else IdempotencyKey(),
+        idempotencyKey = if (hasIdempotencyKey()) IdempotencyKey(idempotencyKey.asUuid()) else IdempotencyKey.generate(),
         condition = if (hasCondition()) condition.toDomain() else AppendCondition.None,
     )
 }
 
-typealias GrpcCreateStoreRequest = FactStoreProto.CreateStoreRequest
-
-internal fun GrpcCreateStoreRequest.toDomainRequest(): CreateStoreRequest = parseRequest {
+internal fun FactStoreProto.CreateStoreRequest.toDomainRequest(): CreateStoreRequest = parseRequest {
     CreateStoreRequest(name.asStoreName())
 }
 
-typealias GrpcDeleteStoreRequest = FactStoreProto.DeleteStoreRequest
-
-internal fun GrpcDeleteStoreRequest.toDomainRequest(): RemoveStoreRequest = parseRequest {
+internal fun FactStoreProto.DeleteStoreRequest.toDomainRequest(): RemoveStoreRequest = parseRequest {
     RemoveStoreRequest(name.asStoreName())
 }
 
-typealias GrpcFindStoreByNameRequest = FactStoreProto.GetStoreRequest
-
-internal fun GrpcFindStoreByNameRequest.toDomainRequest(): FindStoreByNameRequest = parseRequest {
+internal fun FactStoreProto.GetStoreRequest.toDomainRequest(): FindStoreByNameRequest = parseRequest {
     FindStoreByNameRequest(name.asStoreName())
 }
 
-typealias GrpcGetFactRequest = FactStoreProto.GetFactRequest
-
-internal fun GrpcGetFactRequest.toDomainRequest(): FindByIdRequest = parseRequest {
-    FindByIdRequest(
+internal fun FactStoreProto.GetFactRequest.toDomainRequest(): FindFactByIdRequest = parseRequest {
+    FindFactByIdRequest(
         storeName = storeName.asStoreName(),
         factId = factId.asFactId(),
     )
 }
 
-typealias GrpcFactExistsRequest = FactStoreProto.FactExistsRequest
-
-internal fun GrpcFactExistsRequest.toDomainRequest(): ExistsByIdRequest = parseRequest {
-    ExistsByIdRequest(
+internal fun FactStoreProto.FactExistsRequest.toDomainRequest(): ExistsFactByIdRequest = parseRequest {
+    ExistsFactByIdRequest(
         storeName = storeName.asStoreName(),
         factId = factId.asFactId(),
     )
 }
 
-typealias GrpcStreamFactsRequest = FactStoreProto.StreamFactsRequest
-
-internal fun GrpcStreamFactsRequest.toDomainRequest(): StreamFactsRequest = parseRequest {
+internal fun FactStoreProto.StreamFactsRequest.toDomainRequest(): StreamFactsRequest = parseRequest {
     StreamFactsRequest(
         storeName = storeName.asStoreName(),
         query = if (hasQuery()) query.toDomain() else null,
         continueAfter = if (hasContinueAfterFactId()) continueAfterFactId.asFactId() else null,
-        direction = direction.toCore(),
+        direction = direction.toDomain(),
         limit = if (hasLimit()) Limit.of(limit) else Limit.None,
     )
 }
@@ -127,9 +113,7 @@ internal fun FactStoreProto.FactQueryItem.toDomain(): FactQueryItem = FactQueryI
 
 internal fun FactStoreProto.FactQuery.toDomain(): FactQuery = FactQuery(itemsList.map { it.toDomain() })
 
-typealias GrpcSubscribeFactsRequest = FactStoreProto.SubscribeFactsRequest
-
-internal fun GrpcSubscribeFactsRequest.toDomainRequest(): SubscribeRequest = parseRequest {
+internal fun FactStoreProto.SubscribeFactsRequest.toDomainRequest(): SubscribeRequest = parseRequest {
     val startPosition = when (startPositionCase) {
         FactStoreProto.SubscribeFactsRequest.StartPositionCase.FROM_END -> StartPosition.End
         FactStoreProto.SubscribeFactsRequest.StartPositionCase.CONTINUE_AFTER_FACT_ID ->
@@ -143,8 +127,6 @@ internal fun GrpcSubscribeFactsRequest.toDomainRequest(): SubscribeRequest = par
     )
 }
 
-typealias GrpcExistsStoreRequest = FactStoreProto.StoreExistsRequest
-
-internal fun GrpcExistsStoreRequest.toDomainRequest(): ExistsStoreByNameRequest = parseRequest {
+internal fun FactStoreProto.StoreExistsRequest.toDomainRequest(): ExistsStoreByNameRequest = parseRequest {
     ExistsStoreByNameRequest(name.asStoreName())
 }

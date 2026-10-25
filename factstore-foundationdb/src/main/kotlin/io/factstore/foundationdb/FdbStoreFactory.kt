@@ -5,21 +5,13 @@ import java.time.Instant
 
 internal class FdbStoreFactory(storage: FdbStorage) : StoreFactory, FdbAccess by storage {
 
-    override suspend fun create(request: CreateStoreRequest): CreateStoreResult = inTransaction {
+    override suspend fun createStore(request: CreateStoreRequest): CreateStoreResult = inTransaction {
         if (storeIdOf(request.storeName) != null) {
             return@inTransaction CreateStoreResult.NameAlreadyExists(request.storeName)
         }
 
         val id = StoreId.generate()
-        val createdAt = Instant.now()
-        saveMetadata(
-            FdbStoreMetadata(
-                storeId = id.uuid,
-                name = request.storeName.value,
-                createdAtEpochSeconds = createdAt.epochSecond,
-                createdAtNanos = createdAt.nano,
-            )
-        )
+        saveMetadata(StoreMetadata(id = id, name = request.storeName, createdAt = Instant.now()))
         CreateStoreResult.Created(id)
     }
 

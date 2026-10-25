@@ -2,13 +2,13 @@ import io.quarkus.gradle.tasks.QuarkusDev
 import io.quarkus.gradle.tasks.QuarkusRun
 
 plugins {
-    alias(libs.plugins.kotlin.jvm)
-    alias(libs.plugins.allopen)
+    id("factstore.kotlin-jvm")
+    alias(libs.plugins.kotlin.allopen)
     alias(libs.plugins.quarkus)
 }
 
 dependencies {
-    implementation(enforcedPlatform(libs.io.quarkus.platform.quarkus.bom))
+    implementation(enforcedPlatform(libs.quarkus.bom))
     implementation("io.quarkus:quarkus-rest")
     implementation("io.quarkus:quarkus-rest-jackson")
     implementation("io.quarkus:quarkus-grpc")
@@ -23,8 +23,7 @@ dependencies {
     implementation("io.quarkus:quarkus-container-image-docker")
     implementation(libs.quarkus.quinoa)
     implementation("com.google.protobuf:protobuf-kotlin")
-    implementation(libs.coroutines.jdk)
-
+    implementation(libs.kotlinx.coroutines.jdk9)
 
     // factstore libs
     implementation(project(":factstore-proto"))
@@ -32,16 +31,11 @@ dependencies {
     implementation(project(":factstore-foundationdb"))
     implementation(project(":factstore-memory"))
 
-    implementation(libs.io.github.oshai.kotlin.logging)
+    implementation(libs.kotlin.logging)
 
     testImplementation("io.quarkus:quarkus-junit")
     testImplementation("io.rest-assured:rest-assured")
-    testImplementation(libs.org.assertj.assertj.core)
-}
-
-java {
-    sourceCompatibility = JavaVersion.VERSION_25
-    targetCompatibility = JavaVersion.VERSION_25
+    testImplementation(libs.assertj.core)
 }
 
 allOpen {
@@ -53,7 +47,7 @@ allOpen {
 
 kotlin {
     compilerOptions {
-        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_25
+        // Quarkus reads parameter names by reflection, for CDI and REST.
         javaParameters = true
     }
 }

@@ -24,6 +24,13 @@ internal fun FdbStoreMetadata.encode(): ByteArray = Avro.encodeToByteArray(this)
 
 internal fun ByteArray.toFdbStoreMetadata(): FdbStoreMetadata = Avro.decodeFromByteArray(this)
 
+internal fun StoreMetadata.toFdbStoreMetadata(): FdbStoreMetadata = FdbStoreMetadata(
+    storeId = id.uuid,
+    name = name.value,
+    createdAtEpochSeconds = createdAt.epochSecond,
+    createdAtNanos = createdAt.nano,
+)
+
 internal fun FdbStoreMetadata.toStoreMetadata(): StoreMetadata = StoreMetadata(
     id = StoreId(storeId),
     name = StoreName(name),

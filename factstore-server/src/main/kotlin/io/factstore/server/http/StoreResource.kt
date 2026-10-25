@@ -1,7 +1,6 @@
 package io.factstore.server.http
 
 import io.factstore.core.FactStore
-import io.factstore.server.publishTo
 import jakarta.ws.rs.*
 import jakarta.ws.rs.core.MediaType.APPLICATION_JSON
 import jakarta.ws.rs.core.Response
@@ -17,7 +16,7 @@ class StoreResource(
     suspend fun createStore(
         request: CreateStoreHttpRequest,
     ): Response =
-        request.toDomainRequest().publishTo(store).toResponse()
+        store.createStore(request.toDomainRequest()).toResponse()
 
     @GET
     @Path("/{name}")
@@ -25,19 +24,19 @@ class StoreResource(
     suspend fun findStore(
         @PathParam("name") name: String,
     ): Response =
-        findStoreByNameRequest(name).publishTo(store).toResponse()
+        store.findStoreByName(findStoreByNameRequest(name)).toResponse()
 
     @HEAD
     @Path("/{name}")
-    suspend fun existsByName(
+    suspend fun existsStoreByName(
         @PathParam("name") name: String,
     ): Response =
-        existsStoreByNameRequest(name).publishTo(store).toResponse()
+        store.existsStoreByName(existsStoreByNameRequest(name)).toResponse()
 
     @GET
     @Produces(APPLICATION_JSON)
     suspend fun listFactStores(): Response =
-        store.listAll().toResponse()
+        store.listStores().toResponse()
 
     @DELETE
     @Consumes(APPLICATION_JSON)
@@ -46,6 +45,6 @@ class StoreResource(
     suspend fun removeStore(
         @PathParam("name") name: String,
     ): Response =
-        removeStoreRequest(name).publishTo(store).toResponse()
+        store.removeStore(removeStoreRequest(name)).toResponse()
 
 }

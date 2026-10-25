@@ -10,6 +10,8 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.produceIn
 import java.time.Instant
 
@@ -110,9 +112,7 @@ internal fun StoreMetadata.toProto(): FactStoreProto.StoreInfo = storeInfo {
     createdAt = this@toProto.createdAt.toTimestamp()
 }
 
-typealias GrpcAppendFactsResponse = FactStoreProto.AppendFactsResponse
-
-internal fun AppendResult.toGrpcResponse(): GrpcAppendFactsResponse =
+internal fun AppendResult.toGrpcResponse(): FactStoreProto.AppendFactsResponse =
     appendFactsResponse {
         when (this@toGrpcResponse) {
             is AppendResult.Appended -> appended = factsAppended {
@@ -121,36 +121,30 @@ internal fun AppendResult.toGrpcResponse(): GrpcAppendFactsResponse =
             }
             is AppendResult.AlreadyApplied -> alreadyApplied = alreadyApplied { }
             is AppendResult.AppendConditionViolated -> conditionViolated = conditionViolated { }
-            is AppendResult.StoreNotFound -> storeNotFound = storeNotFound { storeName = this@toGrpcResponse.storeName.value }
+            is AppendResult.StoreNotFound -> storeNotFound = storeName.toStoreNotFound()
             is AppendResult.AfterFactNotFound -> afterFactNotFound = afterFactNotFound { factId = this@toGrpcResponse.factId.uuid.toString() }
         }
     }
 
-typealias GrpcGetFactResponse = FactStoreProto.GetFactResponse
-
-internal fun FindByIdResult.toGrpcResponse(): GrpcGetFactResponse =
+internal fun FindFactByIdResult.toGrpcResponse(): FactStoreProto.GetFactResponse =
     getFactResponse {
         when (this@toGrpcResponse) {
-            is FindByIdResult.Found -> found = factFound { fact = this@toGrpcResponse.fact.toProto() }
-            is FindByIdResult.NotFound -> notFound = factNotFound { }
-            is FindByIdResult.StoreNotFound -> storeNotFound = storeNotFound { storeName = this@toGrpcResponse.storeName.value }
+            is FindFactByIdResult.Found -> found = factFound { fact = this@toGrpcResponse.fact.toProto() }
+            is FindFactByIdResult.NotFound -> notFound = factNotFound { }
+            is FindFactByIdResult.StoreNotFound -> storeNotFound = storeName.toStoreNotFound()
         }
     }
 
-typealias GrpcFactExistsResponse = FactStoreProto.FactExistsResponse
-
-internal fun ExistsByIdResult.toGrpcResponse(): GrpcFactExistsResponse =
+internal fun ExistsFactByIdResult.toGrpcResponse(): FactStoreProto.FactExistsResponse =
     factExistsResponse {
         when (this@toGrpcResponse) {
-            ExistsByIdResult.Exists -> present = factPresent { }
-            ExistsByIdResult.DoesNotExist -> absent = factAbsent { }
-            is ExistsByIdResult.StoreNotFound -> storeNotFound = storeNotFound { storeName = this@toGrpcResponse.storeName.value }
+            ExistsFactByIdResult.Exists -> present = factPresent { }
+            ExistsFactByIdResult.DoesNotExist -> absent = factAbsent { }
+            is ExistsFactByIdResult.StoreNotFound -> storeNotFound = storeName.toStoreNotFound()
         }
     }
 
-typealias GrpcCreateStoreResponse = FactStoreProto.CreateStoreResponse
-
-internal fun CreateStoreResult.toGrpcResponse(): GrpcCreateStoreResponse =
+internal fun CreateStoreResult.toGrpcResponse(): FactStoreProto.CreateStoreResponse =
     createStoreResponse {
         when (this@toGrpcResponse) {
             is CreateStoreResult.Created ->
@@ -165,28 +159,41 @@ internal fun List<StoreMetadata>.toGrpcResponse(): FactStoreProto.ListStoresResp
         stores += this@toGrpcResponse.map { it.toProto() }
     }
 
-typealias GrpcDeleteStoreResponse = FactStoreProto.DeleteStoreResponse
-
-internal fun RemoveStoreResult.toGrpcResponse(): GrpcDeleteStoreResponse =
+internal fun RemoveStoreResult.toGrpcResponse(): FactStoreProto.DeleteStoreResponse =
     deleteStoreResponse {
         when (this@toGrpcResponse) {
-            is RemoveStoreResult.StoreRemoved -> deleted = storeDeleted { }
-            is RemoveStoreResult.StoreNotFound -> notFound = storeNotFound { storeName = this@toGrpcResponse.storeName.value }
+            is RemoveStoreResult.Removed -> deleted = storeDeleted { }
+            is RemoveStoreResult.NotFound -> notFound = storeName.toStoreNotFound()
         }
     }
 
-typealias GrpcFindStoreByNameResult = FactStoreProto.GetStoreResponse
-
-internal fun FindStoreByNameResult.toGrpcResponse(): GrpcFindStoreByNameResult =
+internal fun FindStoreByNameResult.toGrpcResponse(): FactStoreProto.GetStoreResponse =
     when (this) {
         is FindStoreByNameResult.Found -> getStoreResponse { found = storeFound { store = storeMetadata.toProto() } }
-        is FindStoreByNameResult.NotFound -> getStoreResponse { notFound = storeNotFound { storeName = this@toGrpcResponse.storeName.value } }
+        is FindStoreByNameResult.NotFound -> getStoreResponse { notFound = storeName.toStoreNotFound() }
     }
 
-typealias GrpcStoreExistsResponse = FactStoreProto.StoreExistsResponse
-
-internal fun ExistsStoreByNameResult.toGrpcResponse(): GrpcStoreExistsResponse =
+internal fun ExistsStoreByNameResult.toGrpcResponse(): FactStoreProto.StoreExistsResponse =
     when (this) {
-        ExistsStoreByNameResult.StoreExists -> storeExistsResponse { present = storePresent { } }
-        ExistsStoreByNameResult.StoreAbsent -> storeExistsResponse { absent = storeAbsent { } }
+        ExistsStoreByNameResult.Exists -> storeExistsResponse { present = storePresent { } }
+        ExistsStoreByNameResult.DoesNotExist -> storeExistsResponse { absent = storeAbsent { } }
     }
+
+internal fun StreamFactsResult.toGrpcResponses(): Flow<FactStoreProto.StreamFactsResponse> = when (this) {
+    is StreamFactsResult.StoreNotFound -> flowOf(streamFactsResponse { storeNotFound = storeName.toStoreNotFound() })
+    is StreamFactsResult.ContinuationNotFound ->
+        flowOf(streamFactsResponse { continuationNotFound = factId.toContinuationNotFound() })
+    is StreamFactsResult.FactStream -> facts.toProtoFactBatches().map { streamFactsResponse { batch = it } }
+}
+
+internal fun SubscribeResult.toGrpcResponses(): Flow<FactStoreProto.SubscribeFactsResponse> = when (this) {
+    is SubscribeResult.StoreNotFound -> flowOf(subscribeFactsResponse { storeNotFound = storeName.toStoreNotFound() })
+    is SubscribeResult.ContinuationNotFound ->
+        flowOf(subscribeFactsResponse { continuationNotFound = factId.toContinuationNotFound() })
+    is SubscribeResult.FactStream -> facts.toProtoFactBatches().map { subscribeFactsResponse { batch = it } }
+}
+
+private fun StoreName.toStoreNotFound(): FactStoreProto.StoreNotFound = storeNotFound { storeName = value }
+
+private fun FactId.toContinuationNotFound(): FactStoreProto.ContinuationNotFound =
+    continuationNotFound { factId = uuid.toString() }

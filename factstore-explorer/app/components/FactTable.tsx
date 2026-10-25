@@ -53,8 +53,8 @@ function FactRow({ fact, highlightNew }: FactRowProps) {
     // keep raw
   }
 
-  const tags = fact.tags ? Object.entries(fact.tags) : []
-  const metadata = fact.metadata ? Object.entries(fact.metadata) : []
+  const tags = Object.entries(fact.tags)
+  const metadata = Object.entries(fact.metadata)
 
   return (
     <>

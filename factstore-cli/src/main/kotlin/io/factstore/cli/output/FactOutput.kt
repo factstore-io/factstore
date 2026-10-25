@@ -33,7 +33,7 @@ internal suspend fun Flow<Fact>.writeTo(
         when (format) {
             OutputFormat.Table -> writeTable(FactColumns(terminal.size.width), out)
             OutputFormat.Json -> writeJsonArray(out)
-            OutputFormat.Ndjson -> collect { out.appendLine(compactJson.encodeToString(it)) }
+            OutputFormat.Ndjson -> collect { out.appendLine(compactJson.encodeToString(it.toJson())) }
         }
     } finally {
         out.flushIfPossible()
@@ -60,7 +60,7 @@ internal suspend fun Flow<Fact>.followTo(
     out: Appendable = bufferedStdout(),
 ): Unit = when (format) {
     OutputFormat.Table -> collect { terminal.println(it.toLine()) }
-    OutputFormat.Ndjson -> collect { out.appendLine(compactJson.encodeToString(it)).flushIfPossible() }
+    OutputFormat.Ndjson -> collect { out.appendLine(compactJson.encodeToString(it.toJson())).flushIfPossible() }
     OutputFormat.Json -> error("a followed stream cannot be one JSON array")
 }
 
@@ -158,7 +158,7 @@ private suspend fun Flow<Fact>.writeJsonArray(out: Appendable) {
     var first = true
     collect { fact ->
         out.appendLine(if (first) "[" else ",")
-        out.append(prettyJson.encodeToString(fact).prependIndent("  "))
+        out.append(prettyJson.encodeToString(fact.toJson()).prependIndent("  "))
         first = false
     }
     if (first) out.appendLine("[]") else out.appendLine().appendLine("]")

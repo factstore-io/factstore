@@ -10,8 +10,8 @@ import io.factstore.grpc.v1.StoreServiceGrpcKt.StoreServiceCoroutineStub
 import io.grpc.Channel
 import io.grpc.ManagedChannel
 import java.io.Closeable
-import java.time.Duration
 import java.util.concurrent.TimeUnit
+import kotlin.time.Duration
 
 class FactStoreClient private constructor(
     channel: Channel,
@@ -35,13 +35,10 @@ class FactStoreClient private constructor(
 
         operator fun invoke(
             channel: Channel,
-            callTimeout: Duration = Duration.ofSeconds(30),
+            callTimeout: Duration = FactStoreClientConfig.DEFAULT_CALL_TIMEOUT,
         ): FactStoreClient = FactStoreClient(channel, callTimeout, null)
     }
 }
 
 fun factStoreClient(block: FactStoreClientConfigBuilder.() -> Unit): FactStoreClient =
     FactStoreClient(FactStoreClientConfigBuilder().apply(block).build())
-
-fun factStoreClient(channel: Channel, callTimeout: Duration = Duration.ofSeconds(30)): FactStoreClient =
-    FactStoreClient(channel, callTimeout)

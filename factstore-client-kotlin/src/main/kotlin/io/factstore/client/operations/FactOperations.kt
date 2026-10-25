@@ -6,10 +6,11 @@ import io.factstore.client.exceptions.ContinuationNotFoundException
 import io.factstore.client.exceptions.FactNotFoundException
 import io.factstore.client.exceptions.StoreNotFoundException
 import io.factstore.client.internal.grpcCall
-import io.factstore.client.internal.toDomain
+import io.factstore.client.internal.toModel
 import io.factstore.client.internal.toFactStoreException
 import io.factstore.client.internal.toInstant
 import io.factstore.client.internal.toProto
+import io.factstore.client.internal.withCallTimeout
 import io.factstore.client.model.AppendCondition
 import io.factstore.client.model.AppendFactsBuilder
 import io.factstore.client.model.AppendOutcome
@@ -19,6 +20,11 @@ import io.factstore.client.model.FactInput
 import io.factstore.client.model.ReadDirection
 import io.factstore.client.model.SubscribeStartPosition
 import io.factstore.grpc.v1.FactServiceGrpcKt.FactServiceCoroutineStub
+import io.factstore.grpc.v1.FactStoreProto.AppendFactsResponse
+import io.factstore.grpc.v1.FactStoreProto.FactExistsResponse
+import io.factstore.grpc.v1.FactStoreProto.GetFactResponse
+import io.factstore.grpc.v1.FactStoreProto.StreamFactsResponse
+import io.factstore.grpc.v1.FactStoreProto.SubscribeFactsResponse
 import io.factstore.grpc.v1.appendFactsRequest
 import io.factstore.grpc.v1.factExistsRequest
 import io.factstore.grpc.v1.fromBeginning
@@ -30,37 +36,35 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.transform
-import java.time.Duration
-import java.util.concurrent.TimeUnit
+import kotlin.time.Duration
 
 class FactOperations internal constructor(
     private val stub: FactServiceCoroutineStub,
     private val callTimeout: Duration,
 ) {
-    private fun timedStub() = stub.withDeadlineAfter(callTimeout.toMillis(), TimeUnit.MILLISECONDS)
-
     suspend fun append(
         storeName: String,
         facts: List<FactInput>,
         idempotencyKey: String? = null,
         condition: AppendCondition? = null,
     ): AppendOutcome = grpcCall {
-        val response = timedStub().appendFacts(appendFactsRequest {
+        val response = stub.withCallTimeout(callTimeout).appendFacts(appendFactsRequest {
             this.storeName = storeName
             this.facts += facts.map { it.toProto() }
             idempotencyKey?.let { this.idempotencyKey = it }
             condition?.let { this.condition = it.toProto() }
         })
-        when {
-            response.hasAppended() -> AppendOutcome.Appended(
+        when (response.outcomeCase) {
+            AppendFactsResponse.OutcomeCase.APPENDED -> AppendOutcome.Appended(
                 factIds = response.appended.factIdsList.toList(),
                 appendedAt = response.appended.appendedAt.toInstant(),
             )
-            response.hasAlreadyApplied() -> AppendOutcome.AlreadyApplied
-            response.hasConditionViolated() -> throw AppendConditionViolatedException()
-            response.hasStoreNotFound() -> throw StoreNotFoundException(storeName)
-            response.hasAfterFactNotFound() -> throw AfterFactNotFoundException(response.afterFactNotFound.factId)
-            else -> error("Unexpected response: $response")
+            AppendFactsResponse.OutcomeCase.ALREADY_APPLIED -> AppendOutcome.AlreadyApplied
+            AppendFactsResponse.OutcomeCase.CONDITION_VIOLATED -> throw AppendConditionViolatedException()
+            AppendFactsResponse.OutcomeCase.STORE_NOT_FOUND -> throw StoreNotFoundException(storeName)
+            AppendFactsResponse.OutcomeCase.AFTER_FACT_NOT_FOUND ->
+                throw AfterFactNotFoundException(response.afterFactNotFound.factId)
+            AppendFactsResponse.OutcomeCase.OUTCOME_NOT_SET, null -> error("Unexpected response: $response")
         }
     }
 
@@ -72,28 +76,28 @@ class FactOperations internal constructor(
     ): AppendOutcome = append(storeName, AppendFactsBuilder().apply(block).build(), idempotencyKey, condition)
 
     suspend fun get(storeName: String, factId: String): Fact = grpcCall {
-        val response = timedStub().getFact(getFactRequest {
+        val response = stub.withCallTimeout(callTimeout).getFact(getFactRequest {
             this.storeName = storeName
             this.factId = factId
         })
-        when {
-            response.hasFound() -> response.found.fact.toDomain()
-            response.hasNotFound() -> throw FactNotFoundException(factId)
-            response.hasStoreNotFound() -> throw StoreNotFoundException(storeName)
-            else -> error("Unexpected response: $response")
+        when (response.outcomeCase) {
+            GetFactResponse.OutcomeCase.FOUND -> response.found.fact.toModel()
+            GetFactResponse.OutcomeCase.NOT_FOUND -> throw FactNotFoundException(factId)
+            GetFactResponse.OutcomeCase.STORE_NOT_FOUND -> throw StoreNotFoundException(storeName)
+            GetFactResponse.OutcomeCase.OUTCOME_NOT_SET, null -> error("Unexpected response: $response")
         }
     }
 
     suspend fun exists(storeName: String, factId: String): Boolean = grpcCall {
-        val response = timedStub().factExists(factExistsRequest {
+        val response = stub.withCallTimeout(callTimeout).factExists(factExistsRequest {
             this.storeName = storeName
             this.factId = factId
         })
-        when {
-            response.hasPresent() -> true
-            response.hasAbsent() -> false
-            response.hasStoreNotFound() -> throw StoreNotFoundException(storeName)
-            else -> error("Unexpected response: $response")
+        when (response.outcomeCase) {
+            FactExistsResponse.OutcomeCase.PRESENT -> true
+            FactExistsResponse.OutcomeCase.ABSENT -> false
+            FactExistsResponse.OutcomeCase.STORE_NOT_FOUND -> throw StoreNotFoundException(storeName)
+            FactExistsResponse.OutcomeCase.OUTCOME_NOT_SET, null -> error("Unexpected response: $response")
         }
     }
 
@@ -121,11 +125,12 @@ class FactOperations internal constructor(
         limit?.let { this.limit = it }
         continueAfter?.let { this.continueAfterFactId = it }
     }).toFactFlow { response ->
-        when {
-            response.hasBatch() -> response.batch.factsList.forEach { emit(it.toDomain()) }
-            response.hasStoreNotFound() -> throw StoreNotFoundException(storeName)
-            response.hasContinuationNotFound() -> throw ContinuationNotFoundException(response.continuationNotFound.factId)
-            else -> error("Unexpected stream message: $response")
+        when (response.messageCase) {
+            StreamFactsResponse.MessageCase.BATCH -> response.batch.factsList.forEach { emit(it.toModel()) }
+            StreamFactsResponse.MessageCase.STORE_NOT_FOUND -> throw StoreNotFoundException(storeName)
+            StreamFactsResponse.MessageCase.CONTINUATION_NOT_FOUND ->
+                throw ContinuationNotFoundException(response.continuationNotFound.factId)
+            StreamFactsResponse.MessageCase.MESSAGE_NOT_SET, null -> error("Unexpected stream message: $response")
         }
     }
 
@@ -141,11 +146,12 @@ class FactOperations internal constructor(
             is SubscribeStartPosition.ContinueAfter -> continueAfterFactId = startPosition.factId
         }
     }).toFactFlow { response ->
-        when {
-            response.hasBatch() -> response.batch.factsList.forEach { emit(it.toDomain()) }
-            response.hasStoreNotFound() -> throw StoreNotFoundException(storeName)
-            response.hasContinuationNotFound() -> throw ContinuationNotFoundException(response.continuationNotFound.factId)
-            else -> error("Unexpected stream message: $response")
+        when (response.messageCase) {
+            SubscribeFactsResponse.MessageCase.BATCH -> response.batch.factsList.forEach { emit(it.toModel()) }
+            SubscribeFactsResponse.MessageCase.STORE_NOT_FOUND -> throw StoreNotFoundException(storeName)
+            SubscribeFactsResponse.MessageCase.CONTINUATION_NOT_FOUND ->
+                throw ContinuationNotFoundException(response.continuationNotFound.factId)
+            SubscribeFactsResponse.MessageCase.MESSAGE_NOT_SET, null -> error("Unexpected stream message: $response")
         }
     }
 
@@ -154,7 +160,7 @@ class FactOperations internal constructor(
      * Turns the messages of a streaming RPC into facts, mapping gRPC status failures to
      * [io.factstore.client.exceptions.FactStoreException]s.
      *
-     * Streams are called on the plain stub rather than [timedStub]: a deadline would cut off
+     * Streams are called without a call timeout: a deadline would cut off
      * reading a long history.
      */
     private fun <R> Flow<R>.toFactFlow(decode: suspend FlowCollector<Fact>.(R) -> Unit): Flow<Fact> =

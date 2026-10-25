@@ -103,7 +103,7 @@ class FoundationDbFactStoreTest : AbstractFactStoreTest() {
     @Test
     fun testRemovingStoreLeavesNoKeysBehind(): Unit = runBlocking {
         val storeName = StoreName("store-to-remove-completely")
-        val storeId = (store.create(CreateStoreRequest(storeName)) as CreateStoreResult.Created).id
+        val storeId = (store.createStore(CreateStoreRequest(storeName)) as CreateStoreResult.Created).id
         val fact = FactInput(
             type = FactType("TEST_FACT_TYPE"),
             subject = Subject("TEST_SUBJECT"),
@@ -123,7 +123,7 @@ class FoundationDbFactStoreTest : AbstractFactStoreTest() {
         fun keysOfTheStore() = allKeys().filter { it.contains(storeIdBytes) || it.contains(nameBytes) }
         assertThat(keysOfTheStore()).isNotEmpty()
 
-        assertThat(store.remove(RemoveStoreRequest(storeName))).isInstanceOf(RemoveStoreResult.StoreRemoved::class.java)
+        assertThat(store.removeStore(RemoveStoreRequest(storeName))).isInstanceOf(RemoveStoreResult.Removed::class.java)
 
         // Facts included: a removed store is unreachable, so anything left behind would stay for good.
         assertThat(keysOfTheStore().map { ByteArrayUtil.printable(it) }).isEmpty()
@@ -140,12 +140,12 @@ class FoundationDbFactStoreTest : AbstractFactStoreTest() {
     @ParameterizedTest(name = "{0}")
     @MethodSource("singleRangeQueries")
     fun testQueryOfOneIndexRangeIsScanned(description: String, query: FactQuery, singleRange: Boolean) {
-        val streamer = FdbFactStreamer(FdbStorage(db, FdbKeyspace.under(Subspace(Tuple.from("test")))))
+        val streamer = FdbFactStreamer(FdbStorage(db, FdbKeyspace(Subspace(Tuple.from("test")))))
         val head = Versionstamp.complete(ByteArray(10))
 
-        val source = with(streamer.sources) { query.toSource(StoreId(UUID.randomUUID()), head, ReadDirection.Forward) }
+        val plan = with(streamer.sources) { query.toPlan(StoreId(UUID.randomUUID()), head, ReadDirection.Forward) }
 
-        assertThat(source is PositionCursor).isEqualTo(singleRange)
+        assertThat(plan is QueryPlan.SingleRange).isEqualTo(singleRange)
     }
 
     @Test

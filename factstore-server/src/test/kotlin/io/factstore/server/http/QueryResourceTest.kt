@@ -26,7 +26,7 @@ class QueryResourceTest {
     @Test
     @Order(1)
     @DisplayName("GET /v1/stores/{name}/facts/{factId} - Should return 200 when fact exists")
-    fun findById() {
+    fun findFactById() {
         // 1. Seed a fact
         val factId = seedFact(subject)
 

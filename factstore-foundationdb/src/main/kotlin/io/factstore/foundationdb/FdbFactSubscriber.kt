@@ -67,7 +67,7 @@ internal class FdbFactSubscriber(
             is StartPosition.ContinueAfter -> positionOf(storeId, position.factId)
                 ?: return@inReadTransaction Start.ContinuationMissing(position.factId)
         }
-        Start.Resolved(storeId, after?.let { keyspace.factSubspace.getFactKey(storeId, it) })
+        Start.Resolved(storeId, after?.let { keyspace.factSubspace.keyOf(storeId, it) })
     }
 
     /**
@@ -79,12 +79,12 @@ internal class FdbFactSubscriber(
      * that may write, although it never does.
      */
     private fun follow(storeId: StoreId, afterKey: ByteArray?): Flow<List<ByteArray>> = flow {
-        val facts = keyspace.factSubspace.getRange(storeId)
+        val facts = keyspace.factSubspace.rangeOf(storeId)
         var cursor = afterKey
         while (true) {
             val next = inTransaction {
                 val entries = readAfter(facts, cursor)
-                if (entries.isEmpty()) Next.Wait(watch(keyspace.headSubspace.headKey(storeId)))
+                if (entries.isEmpty()) Next.Wait(watch(keyspace.headSubspace.keyOf(storeId)))
                 else Next.Batch(entries)
             }
             when (next) {

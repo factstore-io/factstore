@@ -28,7 +28,7 @@ class FactStoreConfigurationTest {
     fun `should be able to create fact store with memory implementation`() {
         runBlocking {
             // This is a basic smoke test to ensure the FactStore works
-            val result = factStore.create(
+            val result = factStore.createStore(
                 io.factstore.core.CreateStoreRequest(
                     io.factstore.core.StoreName("test-store")
                 )

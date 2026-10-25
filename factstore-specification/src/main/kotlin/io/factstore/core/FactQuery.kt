@@ -88,7 +88,9 @@ data class FactQueryItem(
         require(types.size <= MAX_TYPES) {
             "A query item must not match more than $MAX_TYPES types, but matched ${types.size}."
         }
-        requireSatisfiableTagCount(tags)
+        require(tags.size <= FactInput.MAX_TAGS) {
+            "A query item must not require more than ${FactInput.MAX_TAGS} tags, since no fact carries more, but required ${tags.size}."
+        }
     }
 
     /** Whether [fact] satisfies every predicate this item sets. */
@@ -96,17 +98,5 @@ data class FactQueryItem(
         if (subjects.isNotEmpty() && fact.subject !in subjects) return false
         if (types.isNotEmpty() && fact.type !in types) return false
         return tags.all { (key, value) -> fact.tags[key] == value }
-    }
-}
-
-/**
- * Rejects a tag requirement that no fact could ever satisfy.
- *
- * A fact matches only if it carries every required tag, and no fact carries
- * more than [FactInput.MAX_TAGS], so requiring more would silently match nothing.
- */
-internal fun requireSatisfiableTagCount(tags: Map<TagKey, TagValue>) {
-    require(tags.size <= FactInput.MAX_TAGS) {
-        "At most ${FactInput.MAX_TAGS} tags can be required, since no fact carries more, but ${tags.size} were."
     }
 }

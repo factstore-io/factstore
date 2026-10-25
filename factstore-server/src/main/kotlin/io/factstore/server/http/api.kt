@@ -93,13 +93,13 @@ data class FactQueryHttp(
 )
 
 data class FactHttp(
-    val id: UUID?,
+    val id: UUID,
     val type: String,
     val subject: String,
-    val appendedAt: Instant?,
+    val appendedAt: Instant,
     val payload: FactPayloadHttp,
-    val metadata: Map<String, String>?,
-    val tags: Map<String, String>?
+    val metadata: Map<String, String>,
+    val tags: Map<String, String>,
 )
 
 /**
