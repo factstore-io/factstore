@@ -247,8 +247,8 @@ internal class SubjectIndexSubspace(private val subspace: Subspace) {
 
 internal class TagsIndexSubspace(private val subspace: Subspace) {
 
-    fun indexRange(storeId: StoreId, tag: Pair<TagKey, TagValue>) =
-        IndexRange(subspace, Tuple.from(storeId.uuid, tag.first.value, tag.second.value))
+    fun indexRange(storeId: StoreId, tag: Map.Entry<TagKey, TagValue>) =
+        IndexRange(subspace, Tuple.from(storeId.uuid, tag.key.value, tag.value.value))
 
     context(tr: Transaction)
     fun clearRange(storeId: StoreId) {
@@ -259,8 +259,8 @@ internal class TagsIndexSubspace(private val subspace: Subspace) {
 
 internal class TagsTypeIndexSubspace(private val subspace: Subspace) {
 
-    fun indexRange(storeId: StoreId, type: FactType, tag: Pair<TagKey, TagValue>) =
-        IndexRange(subspace, Tuple.from(storeId.uuid, type.value, tag.first.value, tag.second.value))
+    fun indexRange(storeId: StoreId, type: FactType, tag: Map.Entry<TagKey, TagValue>) =
+        IndexRange(subspace, Tuple.from(storeId.uuid, type.value, tag.key.value, tag.value.value))
 
     context(tr: Transaction)
     fun clearRange(storeId: StoreId) {

@@ -120,8 +120,8 @@ internal class FdbStorage(private val db: Database, override val keyspace: FdbKe
                 typeIndexSubspace.indexRange(storeId, fact.type).save(fact.id, position)
                 subjectIndexSubspace.indexRange(storeId, fact.subject).save(fact.id, position)
                 fact.tags.forEach { tag ->
-                    tagsIndexSubspace.indexRange(storeId, tag.toPair()).save(fact.id, position)
-                    tagsTypeIndexSubspace.indexRange(storeId, fact.type, tag.toPair()).save(fact.id, position)
+                    tagsIndexSubspace.indexRange(storeId, tag).save(fact.id, position)
+                    tagsTypeIndexSubspace.indexRange(storeId, fact.type, tag).save(fact.id, position)
                 }
             }
         }

@@ -52,7 +52,7 @@ internal class QuerySources(
      * predicate holding several values matches any of them.
      */
     private fun FactQueryItem.toSource(storeId: StoreId, head: FactPosition?, direction: ReadDirection): PositionSource {
-        val tags = tags.toList()
+        val tags = tags.entries
 
         val predicates = buildList {
             if (subjects.isNotEmpty()) {
@@ -96,12 +96,12 @@ internal class QuerySources(
     private fun typeTagCursor(
         storeId: StoreId,
         type: FactType,
-        tag: Pair<TagKey, TagValue>,
+        tag: Map.Entry<TagKey, TagValue>,
         head: FactPosition?,
         direction: ReadDirection,
     ) = cursor(keyspace.tagsTypeIndexSubspace.indexRange(storeId, type, tag), head, direction)
 
-    private fun tagCursor(storeId: StoreId, tag: Pair<TagKey, TagValue>, head: FactPosition?, direction: ReadDirection) =
+    private fun tagCursor(storeId: StoreId, tag: Map.Entry<TagKey, TagValue>, head: FactPosition?, direction: ReadDirection) =
         cursor(keyspace.tagsIndexSubspace.indexRange(storeId, tag), head, direction)
 
     /** A cursor over one index range, reading its keys up to [head] in [direction]. */
