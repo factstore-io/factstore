@@ -2,7 +2,7 @@ package io.factstore.server.info
 
 import io.factstore.server.config.FactStoreConfig
 import jakarta.enterprise.context.ApplicationScoped
-import jakarta.ws.rs.Produces
+import jakarta.enterprise.inject.Produces
 import org.eclipse.microprofile.config.inject.ConfigProperty
 
 @ApplicationScoped

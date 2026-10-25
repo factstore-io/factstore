@@ -6,7 +6,7 @@ import io.factstore.memory.MemoryFactStore
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.quarkus.runtime.Startup
 import jakarta.enterprise.context.ApplicationScoped
-import jakarta.ws.rs.Produces
+import jakarta.enterprise.inject.Produces
 import kotlinx.coroutines.runBlocking
 
 private val logger = KotlinLogging.logger {}
