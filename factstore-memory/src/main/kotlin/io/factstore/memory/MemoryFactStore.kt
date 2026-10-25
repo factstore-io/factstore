@@ -1,137 +1,138 @@
 package io.factstore.memory
 
 import io.factstore.core.*
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asFlow
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.time.Instant
-import java.util.UUID
-import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * In-memory implementation of FactStore for testing and evaluation purposes.
  *
- * This implementation abstracts logical [StoreName]s from internal [UUID] identifiers.
- * Thread-safety is ensured through the use of coroutine mutexes.
+ * Stores are kept by name, each with everything that belongs to it. Thread-safety is ensured by
+ * one coroutine mutex, [lock], which guards every store and every read of one.
  */
 class MemoryFactStore : FactStore {
 
-    // Store metadata: Internal ID -> StoreMetadata
-    private val stores = mutableMapOf<UUID, StoreMetadata>()
+    /** One store: its metadata, its facts in append order, and the idempotency keys it has seen. */
+    private class MemoryStore(val metadata: StoreMetadata) {
 
-    // Logical Name -> Internal ID (The "Name Resolver")
-    private val nameToId = mutableMapOf<String, UUID>()
+        val facts = mutableListOf<Fact>()
 
-    // Store facts: Internal ID -> list of facts
-    private val facts = mutableMapOf<UUID, MutableList<Fact>>()
+        val idempotencyKeys = mutableSetOf<IdempotencyKey>()
 
-    // Store idempotency tracking: Internal ID -> (IdempotencyKey -> exists flag)
-    private val idempotencyKeys = mutableMapOf<UUID, MutableSet<UUID>>()
+        /** The number of facts, which subscriptions watch to learn that facts were appended. */
+        val head = MutableStateFlow(0)
+    }
+
+    private val stores = mutableMapOf<StoreName, MemoryStore>()
 
     private val lock = Mutex()
-
-    // ===== Helper: Name Resolution =====
-
-    private fun resolveId(name: StoreName): UUID? = nameToId[name.value]
 
     // ===== StoreFactory Implementation =====
 
     override suspend fun create(request: CreateStoreRequest): CreateStoreResult = lock.withLock {
-        if (nameToId.containsKey(request.storeName.value)) {
+        if (request.storeName in stores) {
             return CreateStoreResult.NameAlreadyExists(request.storeName)
         }
 
         val id = StoreId.generate()
-        val metadata = StoreMetadata(
-            id = id,
-            name = request.storeName,
-            createdAt = Instant.now()
-        )
-
-        stores[id.uuid] = metadata
-        nameToId[request.storeName.value] = id.uuid
-        facts[id.uuid] = mutableListOf()
-        idempotencyKeys[id.uuid] = mutableSetOf()
-
+        stores[request.storeName] = MemoryStore(StoreMetadata(id = id, name = request.storeName, createdAt = Instant.now()))
         CreateStoreResult.Created(id)
     }
 
     // ===== StoreFinder Implementation =====
 
     override suspend fun listAll(): List<StoreMetadata> = lock.withLock {
-        stores.values.toList()
+        stores.values.map { it.metadata }
     }
 
     override suspend fun existsByName(request: ExistsStoreByNameRequest): ExistsStoreByNameResult = lock.withLock {
-        if (nameToId.containsKey(request.storeName.value)) {
-            ExistsStoreByNameResult.StoreExists
-        } else {
-            ExistsStoreByNameResult.StoreAbsent
-        }
+        if (request.storeName in stores) ExistsStoreByNameResult.StoreExists else ExistsStoreByNameResult.StoreAbsent
     }
 
     override suspend fun findByName(request: FindStoreByNameRequest): FindStoreByNameResult = lock.withLock {
-        resolveId(request.storeName)?.let { stores[it] }?.let { FindStoreByNameResult.Found(it) } ?: FindStoreByNameResult.NotFound(request.storeName)
+        stores[request.storeName]?.let { FindStoreByNameResult.Found(it.metadata) }
+            ?: FindStoreByNameResult.NotFound(request.storeName)
     }
 
+    // ===== StoreRemover Implementation =====
+
+    override suspend fun remove(request: RemoveStoreRequest): RemoveStoreResult = lock.withLock {
+        if (stores.remove(request.storeName) != null) RemoveStoreResult.StoreRemoved(request.storeName)
+        else RemoveStoreResult.StoreNotFound(request.storeName)
+    }
+
+    // ===== FactAppender Implementation =====
+
     override suspend fun append(request: AppendRequest): AppendResult = lock.withLock {
-        val storeId = resolveId(request.storeName) ?: return AppendResult.StoreNotFound(request.storeName)
+        val store = stores[request.storeName] ?: return AppendResult.StoreNotFound(request.storeName)
 
-        // Check idempotency
-        val idempotencySet = idempotencyKeys[storeId] ?: error("Idempotency set should be initialized for store $storeId")
-        if (idempotencySet.contains(request.idempotencyKey.value)) {
-            return AppendResult.AlreadyApplied
-        }
-
-        val appendedAt = Instant.now()
-        val materializedFacts = request.facts.map { it.toFact(FactId.generate(), appendedAt) }
+        if (request.idempotencyKey in store.idempotencyKeys) return AppendResult.AlreadyApplied
 
         // A condition naming a fact the store does not have cannot be judged at all
         request.condition.afterFactIds()
-            .firstOrNull { after -> facts[storeId]?.none { it.id == after } ?: true }
+            .firstOrNull { store.indexOf(it) == null }
             ?.let { return AppendResult.AfterFactNotFound(it) }
 
-        // Check append condition
-        if (!checkAppendCondition(storeId, request.condition)) {
-            return AppendResult.AppendConditionViolated
+        if (!store.satisfies(request.condition)) return AppendResult.AppendConditionViolated
+
+        val appendedAt = Instant.now()
+        val facts = request.facts.map { it.toFact(FactId.generate(), appendedAt) }
+        store.facts += facts
+        store.idempotencyKeys += request.idempotencyKey
+        store.head.value = store.facts.size
+
+        AppendResult.Appended(facts.map { it.id }, appendedAt)
+    }
+
+    /** Whether the condition holds for this store's facts as they are now. Must be called while holding [lock]. */
+    private fun MemoryStore.satisfies(condition: AppendCondition): Boolean = when (condition) {
+        AppendCondition.None -> true
+        is AppendCondition.ExpectedLastFact ->
+            facts.findLast { it.subject == condition.subject }?.id == condition.expectedLastFactId
+        is AppendCondition.All -> condition.conditions.all { satisfies(it) }
+        is AppendCondition.NoneMatch -> {
+            // The fact exists: unknown ones are turned away before conditions are checked
+            val start = condition.after?.let { after -> facts.indexOfFirst { it.id == after } + 1 } ?: 0
+            facts.subList(start, facts.size).none { condition.query.matches(it) }
         }
+    }
 
-        // Append facts
-        facts[storeId]?.addAll(materializedFacts)
-        idempotencySet.add(request.idempotencyKey.value)
-
-        AppendResult.Appended(materializedFacts.map { it.id }, appendedAt)
+    /** The facts every [AppendCondition.NoneMatch] in this condition checks after. */
+    private fun AppendCondition.afterFactIds(): List<FactId> = when (this) {
+        AppendCondition.None, is AppendCondition.ExpectedLastFact -> emptyList()
+        is AppendCondition.All -> conditions.flatMap { it.afterFactIds() }
+        is AppendCondition.NoneMatch -> listOfNotNull(after)
     }
 
     // ===== FactFinder Implementation =====
 
     override suspend fun findById(request: FindByIdRequest): FindByIdResult = lock.withLock {
-        val internalId = resolveId(request.storeName) ?: return FindByIdResult.StoreNotFound(request.storeName)
-        val fact = facts[internalId]?.find { it.id == request.factId }
-        fact?.let { FindByIdResult.Found(it) } ?: FindByIdResult.NotFound(request.factId)
+        val store = stores[request.storeName] ?: return FindByIdResult.StoreNotFound(request.storeName)
+        store.facts.find { it.id == request.factId }?.let { FindByIdResult.Found(it) }
+            ?: FindByIdResult.NotFound(request.factId)
     }
 
     override suspend fun existsById(request: ExistsByIdRequest): ExistsByIdResult = lock.withLock {
-        val internalId = resolveId(request.storeName) ?: return ExistsByIdResult.StoreNotFound(request.storeName)
-        val exists = facts[internalId]?.any { it.id == request.factId } ?: false
-        if (exists) ExistsByIdResult.Exists else ExistsByIdResult.DoesNotExist
+        val store = stores[request.storeName] ?: return ExistsByIdResult.StoreNotFound(request.storeName)
+        if (store.indexOf(request.factId) != null) ExistsByIdResult.Exists else ExistsByIdResult.DoesNotExist
     }
 
     // ===== FactStreamer Implementation =====
 
     override suspend fun streamFacts(request: StreamFactsRequest): StreamFactsResult = lock.withLock {
-        val internalId = resolveId(request.storeName) ?: return StreamFactsResult.StoreNotFound(request.storeName)
-        val store = facts[internalId] ?: return StreamFactsResult.StoreNotFound(request.storeName)
+        val store = stores[request.storeName] ?: return StreamFactsResult.StoreNotFound(request.storeName)
         val continuation = request.continueAfter?.let {
-            store.continuationIndex(it) ?: return StreamFactsResult.ContinuationNotFound(it)
+            store.indexOf(it) ?: return StreamFactsResult.ContinuationNotFound(it)
         }
         val query = request.query
         StreamFactsResult.FactStream(
-            store.pinnedStream(continuation, request.direction, request.limit) { query == null || query.matches(it) }
+            store.facts.pinnedStream(continuation, request.direction, request.limit) { query == null || query.matches(it) }
         )
     }
 
@@ -165,87 +166,45 @@ class MemoryFactStore : FactStore {
         }
     }
 
-    /** Where the fact sits among this store's facts, or `null` if the store does not hold it. */
-    private fun List<Fact>.continuationIndex(factId: FactId): Int? =
-        indexOfFirst { it.id == factId }.takeIf { it >= 0 }
-
     // ===== FactSubscriber Implementation =====
 
     override suspend fun subscribe(request: SubscribeRequest): SubscribeResult = lock.withLock {
-        val storeName = request.storeName
-        val internalId = resolveId(storeName) ?: return SubscribeResult.StoreNotFound(storeName)
-        val store = facts[internalId] ?: return SubscribeResult.StoreNotFound(storeName)
+        val store = stores[request.storeName] ?: return SubscribeResult.StoreNotFound(request.storeName)
 
         val startIndex = when (val position = request.startPosition) {
             StartPosition.Beginning -> 0
-            StartPosition.End -> store.size
-            is StartPosition.ContinueAfter -> {
-                val index = store.indexOfFirst { it.id == position.factId }
-                if (index == -1) return SubscribeResult.ContinuationNotFound(position.factId)
-                index + 1
-            }
+            StartPosition.End -> store.facts.size
+            is StartPosition.ContinueAfter ->
+                store.indexOf(position.factId)?.plus(1) ?: return SubscribeResult.ContinuationNotFound(position.factId)
         }
 
-        SubscribeResult.FactStream(scanFlow(internalId, startIndex))
+        SubscribeResult.FactStream(store.follow(startIndex))
     }
 
-    /** Follows the store from [startIndex] onwards; a subscription never ends on its own. */
-    private fun scanFlow(internalId: UUID, startIndex: Int) = flow {
-        var currentIndex = startIndex
-        while (true) {
-            val batch = lock.withLock {
-                val store = facts[internalId]
-                val head = store?.size ?: 0
-                if (store != null && currentIndex < head) {
-                    val newFacts = store.subList(currentIndex, head).toList()
-                    currentIndex = head
-                    newFacts
-                } else {
-                    emptyList()
-                }
-            }
-            if (batch.isEmpty()) delay(100.milliseconds)
-            // The subscription follows the store's order: each fact is emitted on its own, and
-            // batching is left to whoever transports it.
-            else batch.forEach { fact -> emit(fact) }
-        }
-    }
-
-    private fun checkAppendCondition(storeId: UUID, condition: AppendCondition): Boolean {
-        return when (condition) {
-            AppendCondition.None -> true
-            is AppendCondition.ExpectedLastFact -> {
-                val store = facts[storeId]?.toList() ?: return false
-                val lastFact = store.findLast { it.subject == condition.subject }
-                lastFact?.id == condition.expectedLastFactId
-            }
-            is AppendCondition.All -> condition.conditions.all { checkAppendCondition(storeId, it) }
-            is AppendCondition.NoneMatch -> {
-                val store = facts[storeId]?.toList() ?: return false
-                // The fact exists: unknown ones are turned away before conditions are checked
-                val startIndex = condition.after?.let { after -> store.indexOfFirst { it.id == after } + 1 } ?: 0
-                store.drop(startIndex).none { condition.query.matches(it) }
+    /**
+     * Follows the store from [startIndex] onwards; a subscription never ends on its own.
+     *
+     * It wakes up whenever [MemoryStore.head] moves and reads everything appended since its last
+     * read, so several appends in quick succession are read together.
+     */
+    private fun MemoryStore.follow(startIndex: Int): Flow<Fact> = flow {
+        var next = startIndex
+        head.collect { size ->
+            if (size > next) {
+                val batch = lock.withLock { facts.subList(next, size).toList() }
+                next = size
+                // The subscription follows the store's order: each fact is emitted on its own, and
+                // batching is left to whoever transports it.
+                batch.forEach { emit(it) }
             }
         }
     }
 
-    /** The facts every [AppendCondition.NoneMatch] in this condition checks after. */
-    private fun AppendCondition.afterFactIds(): List<FactId> = when (this) {
-        AppendCondition.None, is AppendCondition.ExpectedLastFact -> emptyList()
-        is AppendCondition.All -> conditions.flatMap { it.afterFactIds() }
-        is AppendCondition.NoneMatch -> listOfNotNull(after)
-    }
+    // ===== Helpers =====
 
-    override suspend fun remove(request: RemoveStoreRequest): RemoveStoreResult {
-        val storeId = resolveId(request.storeName) ?: return RemoveStoreResult.StoreNotFound(request.storeName)
-        lock.withLock {
-            nameToId.remove(request.storeName.value)
-            stores.remove(storeId)
-            facts.remove(storeId)
-            idempotencyKeys.remove(storeId)
-        }
-        return RemoveStoreResult.StoreRemoved(request.storeName)
-    }
+    /** Where the fact sits among this store's facts, or `null` if the store does not hold it. */
+    private fun MemoryStore.indexOf(factId: FactId): Int? =
+        facts.indexOfFirst { it.id == factId }.takeIf { it >= 0 }
 
     /** The facts in reading order, visited lazily and without copying them. */
     private fun List<Fact>.inReadingOrder(direction: ReadDirection): Sequence<Fact> = when (direction) {
