@@ -7,6 +7,7 @@ import com.apple.foundationdb.tuple.Versionstamp
 import io.factstore.core.Fact
 import io.factstore.core.FactId
 import io.factstore.core.StoreId
+import io.factstore.core.StoreMetadata
 import io.factstore.core.StoreName
 import kotlinx.coroutines.future.await
 import kotlinx.coroutines.future.future
@@ -41,7 +42,7 @@ internal interface FdbAccess {
 
     /** The metadata of the store, or `null` if there is none. */
     context(tr: ReadTransaction)
-    suspend fun metadataOf(storeId: StoreId): FdbStoreMetadata?
+    suspend fun metadataOf(storeId: StoreId): StoreMetadata?
 
     /** The position of the store's newest fact, or `null` if it has none. */
     context(tr: ReadTransaction)
@@ -57,7 +58,7 @@ internal interface FdbAccess {
 
     /** Registers a new store under its name. */
     context(tr: Transaction)
-    fun saveMetadata(metadata: FdbStoreMetadata)
+    fun saveMetadata(metadata: StoreMetadata)
 
     /**
      * Writes [facts] and their index entries, in order.
@@ -86,7 +87,7 @@ internal class FdbStorage(private val db: Database, override val keyspace: FdbKe
         keyspace.storeNameToIdIndex.storeIdOf(name)
 
     context(tr: ReadTransaction)
-    override suspend fun metadataOf(storeId: StoreId): FdbStoreMetadata? =
+    override suspend fun metadataOf(storeId: StoreId): StoreMetadata? =
         keyspace.storeSubspace.metadataOf(storeId)
 
     context(tr: ReadTransaction)
@@ -104,9 +105,9 @@ internal class FdbStorage(private val db: Database, override val keyspace: FdbKe
     }
 
     context(tr: Transaction)
-    override fun saveMetadata(metadata: FdbStoreMetadata) {
+    override fun saveMetadata(metadata: StoreMetadata) {
         keyspace.storeSubspace.save(metadata)
-        keyspace.storeNameToIdIndex.save(StoreName(metadata.name), StoreId(metadata.storeId))
+        keyspace.storeNameToIdIndex.save(metadata.name, metadata.id)
     }
 
     context(tr: Transaction)

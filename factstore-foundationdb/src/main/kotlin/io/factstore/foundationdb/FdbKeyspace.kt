@@ -10,6 +10,7 @@ import com.apple.foundationdb.tuple.Tuple
 import com.apple.foundationdb.tuple.Versionstamp
 import io.factstore.core.FactId
 import io.factstore.core.StoreId
+import io.factstore.core.StoreMetadata
 import io.factstore.core.StoreName
 import io.factstore.core.FactType
 import io.factstore.core.IdempotencyKey
@@ -19,7 +20,6 @@ import io.factstore.core.TagKey
 import io.factstore.core.TagValue
 import io.factstore.core.toFactId
 import kotlinx.coroutines.future.await
-import java.util.UUID
 import java.util.concurrent.CompletableFuture
 
 /*
@@ -86,24 +86,26 @@ internal class FdbKeyspace(
 
 internal class StoreSubspace(private val subspace: Subspace) {
 
-    /** The metadata of every store. */
-    val range: Range = subspace.range()
-
     context(tr: ReadTransaction)
-    suspend fun metadataOf(storeId: StoreId): FdbStoreMetadata? =
-        tr[keyOf(storeId.uuid)].await()?.toFdbStoreMetadata()
+    suspend fun metadataOf(storeId: StoreId): StoreMetadata? =
+        tr[keyOf(storeId)].await()?.toFdbStoreMetadata()?.toStoreMetadata()
+
+    /** The metadata of every store. */
+    context(tr: ReadTransaction)
+    suspend fun all(): List<StoreMetadata> =
+        tr.getRange(subspace.range()).asList().await().map { it.value.toFdbStoreMetadata().toStoreMetadata() }
 
     context(tr: Transaction)
-    fun save(metadata: FdbStoreMetadata) {
-        tr[keyOf(metadata.storeId)] = metadata.encode()
+    fun save(metadata: StoreMetadata) {
+        tr[keyOf(metadata.id)] = metadata.toFdbStoreMetadata().encode()
     }
 
     context(tr: Transaction)
     fun clear(storeId: StoreId) {
-        tr.clear(keyOf(storeId.uuid))
+        tr.clear(keyOf(storeId))
     }
 
-    private fun keyOf(storeId: UUID): ByteArray = subspace.pack(Tuple.from(storeId))
+    private fun keyOf(storeId: StoreId): ByteArray = subspace.pack(Tuple.from(storeId.uuid))
 
 }
 

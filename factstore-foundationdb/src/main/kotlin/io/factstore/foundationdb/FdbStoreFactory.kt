@@ -11,15 +11,7 @@ internal class FdbStoreFactory(storage: FdbStorage) : StoreFactory, FdbAccess by
         }
 
         val id = StoreId.generate()
-        val createdAt = Instant.now()
-        saveMetadata(
-            FdbStoreMetadata(
-                storeId = id.uuid,
-                name = request.storeName.value,
-                createdAtEpochSeconds = createdAt.epochSecond,
-                createdAtNanos = createdAt.nano,
-            )
-        )
+        saveMetadata(StoreMetadata(id = id, name = request.storeName, createdAt = Instant.now()))
         CreateStoreResult.Created(id)
     }
 

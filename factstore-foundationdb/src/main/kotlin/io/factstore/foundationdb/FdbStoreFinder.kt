@@ -6,14 +6,10 @@ import io.factstore.core.FindStoreByNameRequest
 import io.factstore.core.FindStoreByNameResult
 import io.factstore.core.StoreFinder
 import io.factstore.core.StoreMetadata
-import kotlinx.coroutines.future.await
 
 internal class FdbStoreFinder(storage: FdbStorage) : StoreFinder, FdbAccess by storage {
 
-    override suspend fun listAll(): List<StoreMetadata> = inReadTransaction {
-        getRange(keyspace.storeSubspace.range).asList().await()
-            .map { kv -> kv.value.toFdbStoreMetadata().toStoreMetadata() }
-    }
+    override suspend fun listAll(): List<StoreMetadata> = inReadTransaction { keyspace.storeSubspace.all() }
 
     override suspend fun existsByName(request: ExistsStoreByNameRequest): ExistsStoreByNameResult = inReadTransaction {
         if (storeIdOf(request.storeName) != null) ExistsStoreByNameResult.StoreExists
@@ -27,6 +23,6 @@ internal class FdbStoreFinder(storage: FdbStorage) : StoreFinder, FdbAccess by s
         val metadata = metadataOf(id)
             ?: error("Store name '${request.storeName.value}' resolved to ID $id " +
                 "but no metadata record exists — index/metadata out of sync")
-        FindStoreByNameResult.Found(metadata.toStoreMetadata())
+        FindStoreByNameResult.Found(metadata)
     }
 }
