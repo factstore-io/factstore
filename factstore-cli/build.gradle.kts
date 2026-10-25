@@ -49,6 +49,7 @@ dependencies {
         exclude(group = "io.grpc", module = "grpc-netty-shaded")
     }
     implementation("io.grpc:grpc-netty")
+    implementation(libs.org.jetbrains.kotlinx.kotlinx.serialization.json)
 
     testImplementation(libs.org.junit.jupiter.junit.jupiter.api)
     testImplementation(libs.org.junit.jupiter.junit.jupiter.engine)

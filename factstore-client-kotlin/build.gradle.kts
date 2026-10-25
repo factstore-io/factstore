@@ -1,6 +1,5 @@
 plugins {
     alias(libs.plugins.kotlin.jvm)
-    alias(libs.plugins.kotlin.serialization)
 }
 
 dependencies {
@@ -8,7 +7,6 @@ dependencies {
     // :factstore-proto. `api` so that callers holding a FactStoreClient can name
     // the proto types it returns.
     api(project(":factstore-proto"))
-    api(libs.org.jetbrains.kotlinx.kotlinx.serialization.json)
     // Version supplied by the Quarkus BOM, which :factstore-proto exports.
     implementation("io.grpc:grpc-netty-shaded")
 }

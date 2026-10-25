@@ -93,6 +93,6 @@ internal fun FactQueryItem.toProto(): FactStoreProto.FactQueryItem = factQueryIt
 }
 
 internal fun ReadDirection.toProto(): FactStoreProto.ReadDirection = when (this) {
-    ReadDirection.FORWARD -> FactStoreProto.ReadDirection.READ_DIRECTION_FORWARD
-    ReadDirection.BACKWARD -> FactStoreProto.ReadDirection.READ_DIRECTION_BACKWARD
+    ReadDirection.Forward -> FactStoreProto.ReadDirection.READ_DIRECTION_FORWARD
+    ReadDirection.Backward -> FactStoreProto.ReadDirection.READ_DIRECTION_BACKWARD
 }

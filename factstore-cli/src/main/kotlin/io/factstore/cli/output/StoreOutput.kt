@@ -21,8 +21,8 @@ internal fun List<StoreInfo>.writeTo(
         when (format) {
             OutputFormat.Table ->
                 if (isEmpty()) terminal.println("No stores found.") else terminal.println(toStoreTable())
-            OutputFormat.Json -> out.appendLine(prettyJson.encodeToString(this))
-            OutputFormat.Ndjson -> forEach { out.appendLine(compactJson.encodeToString(it)) }
+            OutputFormat.Json -> out.appendLine(prettyJson.encodeToString(map { it.toJson() }))
+            OutputFormat.Ndjson -> forEach { out.appendLine(compactJson.encodeToString(it.toJson())) }
         }
     } finally {
         out.flushIfPossible()

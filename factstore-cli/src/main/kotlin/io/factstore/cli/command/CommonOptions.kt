@@ -95,7 +95,7 @@ fun ParameterHolder.continueAfterOption() = option(
 fun ParameterHolder.directionOption() = option(
     "--direction",
     help = "Read oldest first (forward) or newest first (backward)",
-).enum<ReadDirection>(key = { it.name.lowercase() }).default(ReadDirection.FORWARD)
+).enum<ReadDirection>(key = { it.name.lowercase() }).default(ReadDirection.Forward)
 
 /** `--limit`: how many facts at most; absent means all of them. */
 fun ParameterHolder.limitOption() = option(
