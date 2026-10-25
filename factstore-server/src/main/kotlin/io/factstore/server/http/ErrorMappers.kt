@@ -39,8 +39,8 @@ class ErrorMappers {
 
     @ServerExceptionMapper
     fun streamOutcome(e: StreamApiException): Response = when (e) {
-        is StreamApiException.StoreNotFoundException -> storeNotFoundError(e.storeName)
-        is StreamApiException.ContinuationNotFoundException -> continuationNotFoundError(e.factId)
+        is StreamApiException.StoreNotFound -> storeNotFoundError(e.storeName)
+        is StreamApiException.ContinuationNotFound -> continuationNotFoundError(e.factId)
     }
 
     /** Responses produced by the framework, such as 404, 405 or 415, keep their status and headers. */

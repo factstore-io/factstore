@@ -97,8 +97,8 @@ internal fun streamOfLines(lines: suspend () -> Flow<FactStreamLineHttp>): Multi
 }
 
 internal fun StreamFactsResult.toFactStreamLines(): Flow<FactStreamLineHttp> = when (this) {
-    is StreamFactsResult.StoreNotFound -> throw StreamApiException.StoreNotFoundException(storeName)
-    is StreamFactsResult.ContinuationNotFound -> throw StreamApiException.ContinuationNotFoundException(factId)
+    is StreamFactsResult.StoreNotFound -> throw StreamApiException.StoreNotFound(storeName)
+    is StreamFactsResult.ContinuationNotFound -> throw StreamApiException.ContinuationNotFound(factId)
     is StreamFactsResult.FactStream -> facts.toFactStreamLines()
 }
 
@@ -127,8 +127,8 @@ internal fun Flow<Fact>.toFactStreamLines(): Flow<FactStreamLineHttp> = flow {
 // ─── Subscriptions ────────────────────────────────────────────────────────────
 
 internal fun SubscribeResult.toSubscriptionLines(): Flow<FactStreamLineHttp> = when (this) {
-    is SubscribeResult.StoreNotFound -> throw StreamApiException.StoreNotFoundException(storeName)
-    is SubscribeResult.ContinuationNotFound -> throw StreamApiException.ContinuationNotFoundException(factId)
+    is SubscribeResult.StoreNotFound -> throw StreamApiException.StoreNotFound(storeName)
+    is SubscribeResult.ContinuationNotFound -> throw StreamApiException.ContinuationNotFound(factId)
     is SubscribeResult.FactStream -> facts.toSubscriptionLines()
 }
 
@@ -192,9 +192,9 @@ private sealed interface SubscriptionSignal {
 }
 
 /** A stream cannot return a response, so its outcomes are thrown and rendered by [ErrorMappers]. */
-sealed class StreamApiException : RuntimeException() {
-    data class StoreNotFoundException(val storeName: StoreName) : StreamApiException()
-    data class ContinuationNotFoundException(val factId: FactId) : StreamApiException()
+sealed class StreamApiException(message: String) : RuntimeException(message) {
+    class StoreNotFound(val storeName: StoreName) : StreamApiException("Store '$storeName' not found.")
+    class ContinuationNotFound(val factId: FactId) : StreamApiException("No fact '${factId.uuid}' to continue after.")
 }
 
 // ─── Facts and stores in their HTTP shape ─────────────────────────────────────
