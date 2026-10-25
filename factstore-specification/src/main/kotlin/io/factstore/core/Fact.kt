@@ -77,16 +77,12 @@ data class FactPayload(
         }
     }
 
-    override fun equals(other: Any?): Boolean {
-        if (this === other) return true
-        if (javaClass != other?.javaClass) return false
-
-        other as FactPayload
-
-        return data.contentEquals(other.data)
-    }
+    override fun equals(other: Any?): Boolean = other is FactPayload && data.contentEquals(other.data)
 
     override fun hashCode(): Int = data.contentHashCode()
+
+    // The bytes are opaque and may be large or sensitive, so only their size is shown.
+    override fun toString(): String = "FactPayload(${data.size} bytes)"
 }
 
 

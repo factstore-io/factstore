@@ -27,24 +27,54 @@ interface FactFinder {
     suspend fun existsFactById(request: ExistsFactByIdRequest): ExistsFactByIdResult
 }
 
+/**
+ * Requests one fact of a store.
+ *
+ * @property storeName the store holding the fact
+ * @property factId the id of the fact
+ */
 data class FindFactByIdRequest(
     val storeName: StoreName,
     val factId: FactId,
 )
 
+/**
+ * The outcome of [FactFinder.findFactById].
+ */
 sealed interface FindFactByIdResult {
+
+    /** The store holds the fact. */
     data class Found(val fact: Fact): FindFactByIdResult
+
+    /** The store holds no fact with that id. */
     data class NotFound(val factId: FactId): FindFactByIdResult
+
+    /** The requested store does not exist. */
     data class StoreNotFound(val storeName: StoreName): FindFactByIdResult
 }
 
+/**
+ * Asks whether a store holds a fact.
+ *
+ * @property storeName the store to look in
+ * @property factId the id of the fact
+ */
 data class ExistsFactByIdRequest(
     val storeName: StoreName,
     val factId: FactId,
 )
 
+/**
+ * The outcome of [FactFinder.existsFactById].
+ */
 sealed interface ExistsFactByIdResult {
+
+    /** The store holds the fact. */
     data object Exists: ExistsFactByIdResult
+
+    /** The store holds no fact with that id. */
     data object DoesNotExist: ExistsFactByIdResult
+
+    /** The requested store does not exist. */
     data class StoreNotFound(val storeName: StoreName): ExistsFactByIdResult
 }
