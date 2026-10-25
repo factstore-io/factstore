@@ -19,7 +19,7 @@ class ServerInfoProducer {
     ) = ServerInfo(
         app = appName,
         version = version,
-        storageBackend = config.storage().type()
+        storageBackend = config.storage().type().name.lowercase()
     )
 
 }

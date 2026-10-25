@@ -27,31 +27,17 @@ class FactStoreProvider(
     val config: FactStoreConfig
 ) {
 
-    companion object {
-
-        const val STORAGE_TYPE_MEMORY = "memory"
-        const val STORAGE_TYPE_FOUNDATIONDB = "foundationdb"
-
-    }
-
     @Startup
     @Produces
     @ApplicationScoped
     fun factStore(): FactStore = runBlocking {
-        val storageType = config.storage().type().lowercase()
-        val store = when (storageType) {
-            STORAGE_TYPE_MEMORY -> MemoryFactStore()
-            STORAGE_TYPE_FOUNDATIONDB -> buildFdbFactStore()
-
-            else -> {
-                throw IllegalArgumentException(
-                    "Unsupported storage type: $storageType. " +
-                            "Supported types: memory, foundationdb"
-                )
-            }
+        val type = config.storage().type()
+        val store = when (type) {
+            StorageType.MEMORY -> MemoryFactStore()
+            StorageType.FOUNDATIONDB -> buildFdbFactStore()
         }
 
-        logger.info { "FactStore initialized successfully with type: $storageType" }
+        logger.info { "FactStore initialized successfully with type: $type" }
         store
     }
 
