@@ -36,6 +36,18 @@ internal class QuerySources(
         anyOf(items.map { it.toSource(storeId, head, direction) }, direction)
 
     /**
+     * How this query is read up to [head]: from one index range, or by combining several.
+     *
+     * A source without anything combined is a single cursor, and this is the one place that
+     * relies on it: the sources are built here, so here is where their shape is known.
+     */
+    fun FactQuery.toPlan(storeId: StoreId, head: FactPosition?, direction: ReadDirection): QueryPlan =
+        when (val source = toSource(storeId, head, direction)) {
+            is PositionCursor -> QueryPlan.SingleRange(source.index, source.keys)
+            else -> QueryPlan.Combined { toSource(storeId, head, direction) }
+        }
+
+    /**
      * The positions of the facts this item matches: every predicate it sets must hold, while a
      * predicate holding several values matches any of them.
      */
@@ -95,4 +107,25 @@ internal class QuerySources(
     /** A cursor over one index range, reading its keys up to [head] in [direction]. */
     private fun cursor(index: IndexRange, head: FactPosition?, direction: ReadDirection) =
         PositionCursor(reader, index, index.pinnedKeys(head, direction), batchSize)
+}
+
+/** How a query is read: one index range scanned as it is, or several combined by cursors. */
+internal sealed interface QueryPlan {
+
+    /**
+     * The query is one index range, whose keys are scanned directly, index entries and facts
+     * together. That is the case for one subject, one type, one tag, or one type and tag.
+     */
+    class SingleRange(val index: IndexRange, val keys: PinnedKeys) : QueryPlan
+
+    /**
+     * The query combines several index ranges through a tree of cursors.
+     *
+     * Cursors are consumed as they are read, so every read builds a tree of its own: that is what
+     * keeps a stream repeatable, rather than letting a second collection find the cursors of the
+     * first used up.
+     */
+    class Combined(private val build: () -> PositionSource) : QueryPlan {
+        fun newSource(): PositionSource = build()
+    }
 }

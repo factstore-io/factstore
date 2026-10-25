@@ -143,9 +143,9 @@ class FoundationDbFactStoreTest : AbstractFactStoreTest() {
         val streamer = FdbFactStreamer(FdbStorage(db, FdbKeyspace.under(Subspace(Tuple.from("test")))))
         val head = Versionstamp.complete(ByteArray(10))
 
-        val source = with(streamer.sources) { query.toSource(StoreId(UUID.randomUUID()), head, ReadDirection.Forward) }
+        val plan = with(streamer.sources) { query.toPlan(StoreId(UUID.randomUUID()), head, ReadDirection.Forward) }
 
-        assertThat(source is PositionCursor).isEqualTo(singleRange)
+        assertThat(plan is QueryPlan.SingleRange).isEqualTo(singleRange)
     }
 
     @Test

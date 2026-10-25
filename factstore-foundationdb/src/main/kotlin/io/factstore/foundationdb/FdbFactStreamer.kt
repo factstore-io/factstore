@@ -57,21 +57,17 @@ internal class FdbFactStreamer(
         val head = pinned.head ?: return StreamFactsResult.FactStream(emptyFlow())
         val query = request.query ?: return StreamFactsResult.FactStream(allFacts(pinned, head, request))
 
-        val source = { with(sources) { query.toSource(pinned.storeId, head, request.direction) } }
-
-        // A query that comes down to a single index range needs nothing combined: the range is
-        // scanned as it is, reading index entries and facts together. That is the case for one
-        // subject, one type, one tag, or one type and tag.
-        val range = source() as? PositionCursor
-        val facts = if (range != null) {
-            scanPinned(
-                keys = range.keys,
+        val facts = when (val plan = with(sources) { query.toPlan(pinned.storeId, head, request.direction) }) {
+            is QueryPlan.SingleRange -> scanPinned(
+                keys = plan.keys,
                 // The continuation marks a position, and needs no entry of its own in this index.
-                continueAfterKey = pinned.continueAfter?.let(range.index::keyOf),
+                continueAfterKey = pinned.continueAfter?.let(plan.index::keyOf),
                 limit = request.limit,
-            ) { entries -> loadFacts(pinned.storeId, entries.map { range.index.positionOf(it.key) }) }
-        } else {
-            positionsOf { source().continuingAfter(pinned.continueAfter) }.loadFacts(pinned.storeId, request.limit)
+            ) { entries -> loadFacts(pinned.storeId, entries.map { plan.index.positionOf(it.key) }) }
+
+            is QueryPlan.Combined ->
+                flow { emitAll(plan.newSource().continuingAfter(pinned.continueAfter).positions()) }
+                    .loadFacts(pinned.storeId, request.limit)
         }
 
         return StreamFactsResult.FactStream(facts)
@@ -90,16 +86,6 @@ internal class FdbFactStreamer(
             limit = request.limit,
         ) { entries -> entries.map { it.value } }
     }
-
-    /**
-     * The positions of a source that is built anew for every collection.
-     *
-     * Sources are cursors, and a cursor is consumed as it is read. Building the tree inside the
-     * flow is what keeps a stream repeatable: collecting it twice reads the same facts, rather than
-     * finding the cursors of the first collection used up.
-     */
-    private fun positionsOf(source: suspend () -> PositionSource): Flow<FactPosition> =
-        flow { emitAll(source().positions()) }
 
     /**
      * What a stream needs before it can read: the store, the head it stops at, and the position it
