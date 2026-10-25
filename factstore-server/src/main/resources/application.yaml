@@ -13,7 +13,7 @@ quarkus:
   # services are silently skipped and the gRPC server refuses to start.
   index-dependency:
     factstore-proto:
-      group-id: org.factstore
+      group-id: io.factstore
       artifact-id: factstore-proto
   #############################
   #   GRPC API CONFIGURATION  #
