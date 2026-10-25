@@ -117,10 +117,12 @@ internal class FdbStorage(private val db: Database, override val keyspace: FdbKe
                 factSubspace.saveFact(storeId, position, fact.toSerializableFdbFact().encodeToByteArray())
                 factPositionIndexSubspace.savePosition(storeId, fact.id, position)
                 headSubspace.save(storeId, position)
-                typeIndexSubspace.save(storeId, fact.id, fact.type, position)
-                subjectIndexSubspace.save(storeId, fact.id, fact.subject, position)
-                tagsIndexSubspace.save(storeId, fact.id, fact.tags, position)
-                tagsTypeIndexSubspace.save(storeId, fact.id, fact.type, fact.tags, position)
+                typeIndexSubspace.indexRange(storeId, fact.type).save(fact.id, position)
+                subjectIndexSubspace.indexRange(storeId, fact.subject).save(fact.id, position)
+                fact.tags.forEach { tag ->
+                    tagsIndexSubspace.indexRange(storeId, tag.toPair()).save(fact.id, position)
+                    tagsTypeIndexSubspace.indexRange(storeId, fact.type, tag.toPair()).save(fact.id, position)
+                }
             }
         }
     }

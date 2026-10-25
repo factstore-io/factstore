@@ -42,15 +42,15 @@ internal fun interface KeyReader {
  * The keys are read in batches through [reader]. Positions are visited in reading order:
  * ascending for [ReadDirection.Forward], descending for [ReadDirection.Backward].
  *
- * @param positionOf reads the position out of an index key
- * @param keyOf builds the index key a position would have, which lets the cursor skip ahead
+ * @param index the index range, which maps keys to positions and back; building the key a
+ *        position would have is what lets the cursor skip ahead
+ * @param keys the keys of [index] the cursor reads
  */
 internal class PositionCursor(
     private val reader: KeyReader,
+    val index: IndexRange,
     val keys: PinnedKeys,
     private val batchSize: Int,
-    val positionOf: (ByteArray) -> FactPosition,
-    val keyOf: (FactPosition) -> ByteArray,
 ) : PositionSource {
 
     /** The positions of the batch at hand, read out of its keys once. */
@@ -97,7 +97,7 @@ internal class PositionCursor(
         }
         // Nothing left on this page: continue from the wanted position, unless the range is
         // already exhausted, in which case there is nothing after it either.
-        from = keyOf(position)
+        from = index.keyOf(position)
         batch = emptyList()
         next = 0
     }
@@ -108,7 +108,7 @@ internal class PositionCursor(
 
         val read = reader.read(begin, end, batchSize, keys.reverse)
 
-        batch = read.map { positionOf(it.key) }
+        batch = read.map { index.positionOf(it.key) }
         next = 0
         after = read.lastOrNull()?.key ?: after
         // A batch smaller than requested means the range up to the pinned key is exhausted.

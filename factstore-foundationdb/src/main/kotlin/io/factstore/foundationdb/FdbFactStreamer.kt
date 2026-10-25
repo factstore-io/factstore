@@ -67,9 +67,9 @@ internal class FdbFactStreamer(
             scanPinned(
                 keys = range.keys,
                 // The continuation marks a position, and needs no entry of its own in this index.
-                continueAfterKey = pinned.continueAfter?.let(range.keyOf),
+                continueAfterKey = pinned.continueAfter?.let(range.index::keyOf),
                 limit = request.limit,
-            ) { entries -> loadFacts(pinned.storeId, entries.map { range.positionOf(it.key) }) }
+            ) { entries -> loadFacts(pinned.storeId, entries.map { range.index.positionOf(it.key) }) }
         } else {
             positionsOf { source().continuingAfter(pinned.continueAfter) }.loadFacts(pinned.storeId, request.limit)
         }

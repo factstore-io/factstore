@@ -13,6 +13,7 @@ import io.factstore.core.StoreId
 import io.factstore.core.StoreName
 import io.factstore.core.FactType
 import io.factstore.core.IdempotencyKey
+import io.factstore.core.ReadDirection
 import io.factstore.core.Subject
 import io.factstore.core.TagKey
 import io.factstore.core.TagValue
@@ -162,12 +163,11 @@ internal class FactSubspace(private val subspace: Subspace) {
     fun getFactKey(storeId: StoreId, factPosition: FactPosition): ByteArray =
         subspace.pack(Tuple.from(storeId.uuid, factPosition))
 
-    fun getRange(storeId: StoreId): Range =
-        subspace.range(Tuple.from(storeId.uuid))
+    fun getRange(storeId: StoreId): Range = subspace.rangeOf(storeId)
 
     context(tr: Transaction)
     fun clearRange(storeId: StoreId) {
-        tr.clear(subspace.range(Tuple.from(storeId.uuid)))
+        tr.clear(subspace.rangeOf(storeId))
     }
 
 }
@@ -187,124 +187,84 @@ internal class FactPositionIndexSubspace(private val subspace: Subspace) {
 
     context(tr: Transaction)
     fun clearRange(storeId: StoreId) {
-        tr.clear(subspace.range(Tuple.from(storeId.uuid)))
+        tr.clear(subspace.rangeOf(storeId))
     }
 
 }
 
+/**
+ * The entries of one index under one prefix, such as the facts of one subject in one store.
+ *
+ * Every entry is keyed by the prefix followed by the position of its fact, and holds the fact's id.
+ * The index subspaces only say what their prefixes are; how a position becomes a key and back is
+ * defined here, once for all of them.
+ */
+internal class IndexRange(private val subspace: Subspace, private val prefix: Tuple) {
+
+    val range: Range = subspace.range(prefix)
+
+    /** The key the fact at [position] has in this range. */
+    fun keyOf(position: FactPosition): ByteArray = subspace.pack(prefix.add(position))
+
+    /** The position of the fact behind [key], a key of this range. */
+    fun positionOf(key: ByteArray): FactPosition = subspace.unpack(key).getLastAsFactPosition()
+
+    /** The keys of this range up to the fact at [head], or all of them without one. */
+    fun pinnedKeys(head: FactPosition?, direction: ReadDirection): PinnedKeys =
+        PinnedKeys(range, head?.let(::keyOf), direction)
+
+    /** Adds the fact to this range, at the position its append's versionstamp will give it. */
+    context(tr: Transaction)
+    fun save(factId: FactId, incompleteVersionstamp: Versionstamp) {
+        val key = subspace.packWithVersionstamp(prefix.add(incompleteVersionstamp))
+        tr.mutate(SET_VERSIONSTAMPED_KEY, key, Tuple.from(factId.uuid).pack())
+    }
+}
+
 internal class TypeIndexSubspace(private val subspace: Subspace) {
 
-    fun range(storeId: StoreId, factType: FactType): Range =
-        subspace.range(Tuple.from(storeId.uuid, factType.value))
-
-    fun getKey(storeId: StoreId, factType: FactType, position: FactPosition): ByteArray =
-        subspace.pack(Tuple.from(storeId.uuid, factType.value, position))
-
-    fun unpackPosition(key: ByteArray): FactPosition =
-        subspace.unpack(key).getLastAsFactPosition()
-
-    context(tr: Transaction)
-    fun save(storeId: StoreId, factId: FactId, factType: FactType, incompleteVersionstamp: Versionstamp) {
-        val typeIndexKey = subspace.packWithVersionstamp(
-            Tuple.from(storeId.uuid, factType.value, incompleteVersionstamp)
-        )
-        val factIdTuple = Tuple.from(factId.uuid).pack()
-        tr.mutate(SET_VERSIONSTAMPED_KEY, typeIndexKey, factIdTuple)
-    }
+    fun indexRange(storeId: StoreId, type: FactType) =
+        IndexRange(subspace, Tuple.from(storeId.uuid, type.value))
 
     context(tr: Transaction)
     fun clearRange(storeId: StoreId) {
-        tr.clear(subspace.range(Tuple.from(storeId.uuid)))
+        tr.clear(subspace.rangeOf(storeId))
     }
 
 }
 
 internal class SubjectIndexSubspace(private val subspace: Subspace) {
 
-    fun range(storeId: StoreId, subject: Subject): Range =
-        subspace.range(Tuple.from(storeId.uuid, subject.value))
-
-    fun getKey(storeId: StoreId, subject: Subject, position: FactPosition): ByteArray =
-        subspace.pack(Tuple.from(storeId.uuid, subject.value, position))
-
-    context(tr: Transaction)
-    fun save(storeId: StoreId, factId: FactId, subject: Subject, incompleteVersionstamp: Versionstamp) {
-        val keyTuple = Tuple.from(storeId.uuid, subject.value, incompleteVersionstamp)
-        val keyBytes = subspace.packWithVersionstamp(keyTuple)
-        val factIdTuple = Tuple.from(factId.uuid).pack()
-        tr.mutate(SET_VERSIONSTAMPED_KEY, keyBytes, factIdTuple)
-    }
-
-    fun unpackPosition(key: ByteArray): FactPosition =
-        subspace.unpack(key).getLastAsFactPosition()
+    fun indexRange(storeId: StoreId, subject: Subject) =
+        IndexRange(subspace, Tuple.from(storeId.uuid, subject.value))
 
     context(tr: Transaction)
     fun clearRange(storeId: StoreId) {
-        tr.clear(subspace.range(Tuple.from(storeId.uuid)))
+        tr.clear(subspace.rangeOf(storeId))
     }
 
 }
 
 internal class TagsIndexSubspace(private val subspace: Subspace) {
 
-    fun getKey(storeId: StoreId, tag: Pair<TagKey, TagValue>, position: FactPosition): ByteArray =
-        subspace.pack(Tuple.from(storeId.uuid, tag.first.value, tag.second.value, position))
-
-    fun range(storeId: StoreId, tag: Pair<TagKey, TagValue>): Range =
-        subspace.range(Tuple.from(storeId.uuid, tag.first.value, tag.second.value))
-
-    fun unpackPosition(key: ByteArray): FactPosition =
-        subspace.unpack(key).getLastAsFactPosition()
-
-    context(tr: Transaction)
-    fun save(storeId: StoreId, factId: FactId, tags: Map<TagKey, TagValue>, incompleteVersionstamp: Versionstamp) {
-        val factIdTuple = Tuple.from(factId.uuid).pack()
-        tags.forEach { (key, value) ->
-            val tagsEntryIndex = subspace.packWithVersionstamp(
-                Tuple.from(storeId.uuid, key.value, value.value, incompleteVersionstamp)
-            )
-            tr.mutate(SET_VERSIONSTAMPED_KEY, tagsEntryIndex, factIdTuple)
-        }
-    }
+    fun indexRange(storeId: StoreId, tag: Pair<TagKey, TagValue>) =
+        IndexRange(subspace, Tuple.from(storeId.uuid, tag.first.value, tag.second.value))
 
     context(tr: Transaction)
     fun clearRange(storeId: StoreId) {
-        tr.clear(subspace.range(Tuple.from(storeId.uuid)))
+        tr.clear(subspace.rangeOf(storeId))
     }
 
 }
 
 internal class TagsTypeIndexSubspace(private val subspace: Subspace) {
 
-    fun getKey(storeId: StoreId, factType: FactType, tag: Pair<TagKey, TagValue>, position: FactPosition): ByteArray =
-        subspace.pack(Tuple.from(storeId.uuid, factType.value, tag.first.value, tag.second.value, position))
-
-    fun range(storeId: StoreId, factType: FactType, tag: Pair<TagKey, TagValue>): Range =
-        subspace.range(Tuple.from(storeId.uuid, factType.value, tag.first.value, tag.second.value))
-
-    fun unpackPosition(key: ByteArray): FactPosition =
-        subspace.unpack(key).getLastAsFactPosition()
-
-    context(tr: Transaction)
-    fun save(
-        storeId: StoreId,
-        factId: FactId,
-        type: FactType,
-        tags: Map<TagKey, TagValue>,
-        incompleteVersionstamp: Versionstamp
-    ) {
-        val factIdTuple = Tuple.from(factId.uuid).pack()
-        tags.forEach { (key, value) ->
-            val tagTypeIndex = subspace.packWithVersionstamp(
-                Tuple.from(storeId.uuid, type.value, key.value, value.value, incompleteVersionstamp)
-            )
-            tr.mutate(SET_VERSIONSTAMPED_KEY, tagTypeIndex, factIdTuple)
-        }
-    }
+    fun indexRange(storeId: StoreId, type: FactType, tag: Pair<TagKey, TagValue>) =
+        IndexRange(subspace, Tuple.from(storeId.uuid, type.value, tag.first.value, tag.second.value))
 
     context(tr: Transaction)
     fun clearRange(storeId: StoreId) {
-        tr.clear(subspace.range(Tuple.from(storeId.uuid)))
+        tr.clear(subspace.rangeOf(storeId))
     }
 
 }
@@ -322,10 +282,13 @@ internal class IdempotencySubspace(private val subspace: Subspace) {
 
     context(tr: Transaction)
     fun clearRange(storeId: StoreId) {
-        tr.clear(subspace.range(Tuple.from(storeId.uuid)))
+        tr.clear(subspace.rangeOf(storeId))
     }
 
 }
+
+/** The keys of this subspace that belong to one store: every key here starts with the store's id. */
+private fun Subspace.rangeOf(storeId: StoreId): Range = range(Tuple.from(storeId.uuid))
 
 /** Where a fact sits in its store: the versionstamp of the transaction that appended it. */
 internal typealias FactPosition = Versionstamp

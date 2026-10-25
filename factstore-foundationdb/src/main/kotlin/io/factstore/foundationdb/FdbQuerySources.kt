@@ -40,7 +40,7 @@ internal class QuerySources(
      * predicate holding several values matches any of them.
      */
     private fun FactQueryItem.toSource(storeId: StoreId, head: FactPosition?, direction: ReadDirection): PositionSource {
-        val tags = tags.map { (key, value) -> key to value }
+        val tags = tags.toList()
 
         val predicates = buildList {
             if (subjects.isNotEmpty()) {
@@ -76,22 +76,10 @@ internal class QuerySources(
         if (sources.size == 1) sources.single() else AnyOf(sources, direction)
 
     private fun subjectCursor(storeId: StoreId, subject: Subject, head: FactPosition?, direction: ReadDirection) =
-        keyspace.subjectIndexSubspace.let { index ->
-            cursor(
-                keys = index.pinnedKeys(storeId, subject, head, direction),
-                positionOf = { key -> index.unpackPosition(key) },
-                keyOf = { position -> index.getKey(storeId, subject, position) },
-            )
-        }
+        cursor(keyspace.subjectIndexSubspace.indexRange(storeId, subject), head, direction)
 
     private fun typeCursor(storeId: StoreId, type: FactType, head: FactPosition?, direction: ReadDirection) =
-        keyspace.typeIndexSubspace.let { index ->
-            cursor(
-                keys = index.pinnedKeys(storeId, type, head, direction),
-                positionOf = { key -> index.unpackPosition(key) },
-                keyOf = { position -> index.getKey(storeId, type, position) },
-            )
-        }
+        cursor(keyspace.typeIndexSubspace.indexRange(storeId, type), head, direction)
 
     private fun typeTagCursor(
         storeId: StoreId,
@@ -99,27 +87,12 @@ internal class QuerySources(
         tag: Pair<TagKey, TagValue>,
         head: FactPosition?,
         direction: ReadDirection,
-    ) = keyspace.tagsTypeIndexSubspace.let { index ->
-        cursor(
-            keys = index.pinnedKeys(storeId, type, tag, head, direction),
-            positionOf = { key -> index.unpackPosition(key) },
-            keyOf = { position -> index.getKey(storeId, type, tag, position) },
-        )
-    }
+    ) = cursor(keyspace.tagsTypeIndexSubspace.indexRange(storeId, type, tag), head, direction)
 
     private fun tagCursor(storeId: StoreId, tag: Pair<TagKey, TagValue>, head: FactPosition?, direction: ReadDirection) =
-        keyspace.tagsIndexSubspace.let { index ->
-            cursor(
-                keys = index.pinnedKeys(storeId, tag, head, direction),
-                positionOf = { key -> index.unpackPosition(key) },
-                keyOf = { position -> index.getKey(storeId, tag, position) },
-            )
-        }
+        cursor(keyspace.tagsIndexSubspace.indexRange(storeId, tag), head, direction)
 
-    /** A cursor over the [keys] of one index, which says how its keys and positions map to each other. */
-    private fun cursor(
-        keys: PinnedKeys,
-        positionOf: (ByteArray) -> FactPosition,
-        keyOf: (FactPosition) -> ByteArray,
-    ) = PositionCursor(reader, keys, batchSize, positionOf, keyOf)
+    /** A cursor over one index range, reading its keys up to [head] in [direction]. */
+    private fun cursor(index: IndexRange, head: FactPosition?, direction: ReadDirection) =
+        PositionCursor(reader, index, index.pinnedKeys(head, direction), batchSize)
 }
