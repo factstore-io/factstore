@@ -14,8 +14,8 @@ export interface Fact {
   subject: string
   appendedAt: string
   payload: { data: string }
-  metadata: Record<string, string> | null
-  tags: Record<string, string> | null
+  metadata: Record<string, string>
+  tags: Record<string, string>
 }
 
 export interface ApiError {
