@@ -21,29 +21,29 @@ import io.factstore.grpc.v1.factQueryItem
 import io.factstore.grpc.v1.noneMatch
 import java.time.Instant
 
-// ─── Proto → Domain ───────────────────────────────────────────────────────────
+// ─── Proto → Model ────────────────────────────────────────────────────────────
 
-internal fun FactStoreProto.Fact.toDomain(): Fact = Fact(
+internal fun FactStoreProto.Fact.toModel(): Fact = Fact(
     id = id,
     type = type,
     subject = subject,
     appendedAt = appendedAt.toInstant(),
-    payload = payload.toDomain(),
+    payload = payload.toModel(),
     metadata = metadataMap.toMap(),
     tags = tagsMap.toMap(),
 )
 
-internal fun FactStoreProto.FactPayload.toDomain(): FactPayload = FactPayload(
+internal fun FactStoreProto.FactPayload.toModel(): FactPayload = FactPayload(
     data = data.toByteArray(),
 )
 
-internal fun FactStoreProto.StoreInfo.toDomain(): StoreInfo = StoreInfo(
+internal fun FactStoreProto.StoreInfo.toModel(): StoreInfo = StoreInfo(
     id = id,
     name = name,
     createdAt = createdAt.toInstant(),
 )
 
-internal fun FactStoreProto.ServerInfo.toDomain(): ServerInfo = ServerInfo(
+internal fun FactStoreProto.ServerInfo.toModel(): ServerInfo = ServerInfo(
     app = app,
     version = version,
     storageBackend = storageBackend,
@@ -52,7 +52,7 @@ internal fun FactStoreProto.ServerInfo.toDomain(): ServerInfo = ServerInfo(
 internal fun com.google.protobuf.Timestamp.toInstant(): Instant =
     Instant.ofEpochSecond(seconds, nanos.toLong())
 
-// ─── Domain → Proto ───────────────────────────────────────────────────────────
+// ─── Model → Proto ────────────────────────────────────────────────────────────
 
 internal fun FactInput.toProto(): FactStoreProto.FactInput = factInput {
     type = this@toProto.type

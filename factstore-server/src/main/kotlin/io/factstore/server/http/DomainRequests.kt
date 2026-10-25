@@ -14,9 +14,9 @@ import io.factstore.server.input.*
 internal fun AppendHttpRequest.toDomainRequest(storeName: String): AppendRequest = parseInput {
     AppendRequest(
         storeName = storeName.asStoreName(),
-        facts = facts.toFactInputs(),
+        facts = facts.map { it.toDomain() },
         idempotencyKey = idempotencyKey?.let { IdempotencyKey(it) } ?: IdempotencyKey(),
-        condition = condition?.toAppendCondition() ?: AppendCondition.None,
+        condition = condition?.toDomain() ?: AppendCondition.None,
     )
 }
 
@@ -77,14 +77,14 @@ internal fun streamFactsRequest(
 internal fun QueryFactsHttpRequest.toDomainRequest(storeName: String): StreamFactsRequest = parseInput {
     StreamFactsRequest(
         storeName = storeName.asStoreName(),
-        query = FactQuery(items.map { it.toFactQueryItem() }),
+        query = FactQuery(items.map { it.toDomain() }),
         continueAfter = continueAfter?.let { FactId(it) },
         direction = direction.asReadDirection(),
         limit = limit.asLimit(),
     )
 }
 
-internal fun FactQueryItemHttp.toFactQueryItem(): FactQueryItem = FactQueryItem(
+internal fun FactQueryItemHttp.toDomain(): FactQueryItem = FactQueryItem(
     subjects = subjects?.map { it.asSubject() }?.toSet() ?: emptySet(),
     types = types?.map { it.asFactType() }?.toSet() ?: emptySet(),
     tags = tags?.asTags() ?: emptyMap(),
@@ -109,7 +109,7 @@ internal fun subscribeRequest(
 
 // ─── The HTTP shapes as the specification's values ───────────────────────────
 
-internal fun AppendConditionHttp.toAppendCondition(): AppendCondition =
+internal fun AppendConditionHttp.toDomain(): AppendCondition =
     when (this) {
         is AppendConditionHttp.None ->
             AppendCondition.None
@@ -122,19 +122,17 @@ internal fun AppendConditionHttp.toAppendCondition(): AppendCondition =
 
         is AppendConditionHttp.All ->
             AppendCondition.All(
-                conditions = conditions.map { it.toAppendCondition() }
+                conditions = conditions.map { it.toDomain() }
             )
 
         is AppendConditionHttp.NoneMatch ->
             AppendCondition.NoneMatch(
-                query = FactQuery(query.items.map { it.toFactQueryItem() }),
+                query = FactQuery(query.items.map { it.toDomain() }),
                 after = after?.toFactId(),
             )
     }
 
-internal fun List<FactInputHttp>.toFactInputs() = map { it.toFactInput() }
-
-internal fun FactInputHttp.toFactInput() = FactInput(
+internal fun FactInputHttp.toDomain() = FactInput(
     type = type.asFactType(),
     payload = FactPayload(data = payload.data),
     subject = subject.asSubject(),

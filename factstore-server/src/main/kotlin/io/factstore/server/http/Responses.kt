@@ -35,7 +35,7 @@ internal fun AppendResult.toResponse(): Response = when (this) {
 }
 
 internal fun FindByIdResult.toResponse(): Response = when (this) {
-    is FindByIdResult.Found -> Response.ok(fact.toFactHttp()).build()
+    is FindByIdResult.Found -> Response.ok(fact.toHttp()).build()
     is FindByIdResult.NotFound -> factNotFoundError(id)
     is FindByIdResult.StoreNotFound -> storeNotFoundError(storeName)
 }
@@ -96,7 +96,7 @@ internal fun streamOfLines(lines: suspend () -> Flow<FactStreamLineHttp>): Multi
     return flow { emitAll(lines()) }.toMulti(context.dispatcher())
 }
 
-internal fun StreamFactsResult.toResponse(): Flow<FactStreamLineHttp> = when (this) {
+internal fun StreamFactsResult.toFactStreamLines(): Flow<FactStreamLineHttp> = when (this) {
     is StreamFactsResult.StoreNotFound -> throw StreamApiException.StoreNotFoundException(storeName)
     is StreamFactsResult.ContinuationNotFound -> throw StreamApiException.ContinuationNotFoundException(factId)
     is StreamFactsResult.FactStream -> facts.toFactStreamLines()
@@ -115,7 +115,7 @@ internal fun Flow<Fact>.toFactStreamLines(): Flow<FactStreamLineHttp> = flow {
         this@toFactStreamLines
             .map<Fact, FactStreamLineHttp> { fact ->
                 count++
-                FactStreamLineHttp.FactLine(fact.toFactHttp())
+                FactStreamLineHttp.FactLine(fact.toHttp())
             }
             .onCompletion { cause ->
                 if (cause == null) emit(FactStreamLineHttp.EndLine(FactStreamEndHttp(count)))
@@ -126,7 +126,7 @@ internal fun Flow<Fact>.toFactStreamLines(): Flow<FactStreamLineHttp> = flow {
 
 // ─── Subscriptions ────────────────────────────────────────────────────────────
 
-internal fun SubscribeResult.toResponse(): Flow<FactStreamLineHttp> = when (this) {
+internal fun SubscribeResult.toSubscriptionLines(): Flow<FactStreamLineHttp> = when (this) {
     is SubscribeResult.StoreNotFound -> throw StreamApiException.StoreNotFoundException(storeName)
     is SubscribeResult.ContinuationNotFound -> throw StreamApiException.ContinuationNotFoundException(factId)
     is SubscribeResult.FactStream -> facts.toSubscriptionLines()
@@ -168,7 +168,7 @@ internal fun Flow<Fact>.toSubscriptionLines(
                         null -> subscribed = false
 
                         is SubscriptionSignal.Arrived ->
-                            emit(FactStreamLineHttp.FactLine(signal.fact.toFactHttp()))
+                            emit(FactStreamLineHttp.FactLine(signal.fact.toHttp()))
 
                         is SubscriptionSignal.Failed -> {
                             emit(FactStreamLineHttp.ErrorLine(unexpectedError(signal.cause)))
@@ -199,16 +199,16 @@ sealed class StreamApiException : RuntimeException() {
 
 // ─── Facts and stores in their HTTP shape ─────────────────────────────────────
 
-internal fun Fact.toFactHttp() = FactHttp(
+internal fun Fact.toHttp() = FactHttp(
     id = id.uuid,
     type = type.value,
     subject = subject.value,
     appendedAt = appendedAt,
-    payload = payload.toFactPayloadHttp(),
+    payload = payload.toHttp(),
     metadata = metadata.entries.associate { Pair(it.key.value, it.value.value) },
     tags = tags.entries.associate { Pair(it.key.value, it.value.value) },
 )
 
-internal fun FactPayload.toFactPayloadHttp() = FactPayloadHttp(data = data)
+internal fun FactPayload.toHttp() = FactPayloadHttp(data = data)
 
 internal fun StoreMetadata.toHttp() = StoreMetadataHttp(id = id.uuid, name = name.value, createdAt = createdAt)

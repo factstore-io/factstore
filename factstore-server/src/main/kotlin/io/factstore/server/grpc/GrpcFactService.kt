@@ -1,7 +1,6 @@
 package io.factstore.server.grpc
 
 import io.factstore.core.*
-import io.factstore.server.publishTo
 import io.factstore.grpc.v1.FactServiceGrpcKt
 import io.factstore.grpc.v1.FactStoreProto.*
 import io.factstore.grpc.v1.continuationNotFound
@@ -21,13 +20,13 @@ class GrpcFactService(
 ) : FactServiceGrpcKt.FactServiceCoroutineImplBase() {
 
     override suspend fun appendFacts(request: AppendFactsRequest): AppendFactsResponse =
-        request.toDomainRequest().publishTo(factStore).toGrpcResponse()
+        factStore.append(request.toDomainRequest()).toGrpcResponse()
 
     override suspend fun getFact(request: GetFactRequest): GetFactResponse =
-        request.toDomainRequest().publishTo(factStore).toGrpcResponse()
+        factStore.findById(request.toDomainRequest()).toGrpcResponse()
 
     override suspend fun factExists(request: FactExistsRequest): FactExistsResponse =
-        request.toDomainRequest().publishTo(factStore).toGrpcResponse()
+        factStore.existsById(request.toDomainRequest()).toGrpcResponse()
 
 
     // Parsing and the store lookup must happen per call rather than when the Flow is built,
@@ -35,7 +34,7 @@ class GrpcFactService(
 
     override fun streamFacts(request: GrpcStreamFactsRequest): Flow<StreamFactsResponse> = flow {
         emitAll(
-            when (val result = request.toDomainRequest().publishTo(factStore)) {
+            when (val result = factStore.streamFacts(request.toDomainRequest())) {
                 is StreamFactsResult.StoreNotFound -> flowOf(streamFactsResponse {
                     storeNotFound = storeNotFound { storeName = result.storeName.value }
                 })
@@ -53,7 +52,7 @@ class GrpcFactService(
 
     override fun subscribeFacts(request: SubscribeFactsRequest): Flow<SubscribeFactsResponse> = flow {
         emitAll(
-            when (val result = request.toDomainRequest().publishTo(factStore)) {
+            when (val result = factStore.subscribe(request.toDomainRequest())) {
                 is SubscribeResult.StoreNotFound -> flowOf(subscribeFactsResponse {
                     storeNotFound = storeNotFound { storeName = result.storeName.value }
                 })

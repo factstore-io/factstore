@@ -10,7 +10,7 @@ import io.factstore.core.ReadDirection as CoreReadDirection
  */
 
 /** Every read states its direction: an unset or unknown direction is invalid input. */
-internal fun FactStoreProto.ReadDirection.toCore(): CoreReadDirection = when (this) {
+internal fun FactStoreProto.ReadDirection.toDomain(): CoreReadDirection = when (this) {
     FactStoreProto.ReadDirection.READ_DIRECTION_FORWARD -> CoreReadDirection.Forward
     FactStoreProto.ReadDirection.READ_DIRECTION_BACKWARD -> CoreReadDirection.Backward
     else -> throw IllegalArgumentException(
@@ -114,7 +114,7 @@ internal fun GrpcStreamFactsRequest.toDomainRequest(): StreamFactsRequest = pars
         storeName = storeName.asStoreName(),
         query = if (hasQuery()) query.toDomain() else null,
         continueAfter = if (hasContinueAfterFactId()) continueAfterFactId.asFactId() else null,
-        direction = direction.toCore(),
+        direction = direction.toDomain(),
         limit = if (hasLimit()) Limit.of(limit) else Limit.None,
     )
 }

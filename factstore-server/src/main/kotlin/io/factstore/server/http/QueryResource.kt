@@ -1,7 +1,6 @@
 package io.factstore.server.http
 
 import io.factstore.core.*
-import io.factstore.server.publishTo
 import jakarta.ws.rs.*
 import jakarta.ws.rs.core.MediaType.APPLICATION_JSON
 import jakarta.ws.rs.core.Response
@@ -25,7 +24,7 @@ class QueryResource(
         @PathParam("storeName") storeName: String,
         @PathParam("factId") @Parameter(schema = Schema(type = SchemaType.STRING, format = "uuid")) factId: String,
     ): Response =
-        findByIdRequest(storeName, factId).publishTo(store).toResponse()
+        store.findById(findByIdRequest(storeName, factId)).toResponse()
 
     @POST
     @Consumes(APPLICATION_JSON)
@@ -41,7 +40,7 @@ class QueryResource(
         @PathParam("storeName") storeName: String,
         request: QueryFactsHttpRequest,
     ): Multi<FactStreamLineHttp> =
-        streamOfLines { request.toDomainRequest(storeName).publishTo(store).toResponse() }
+        streamOfLines { store.streamFacts(request.toDomainRequest(storeName)).toFactStreamLines() }
 
     @GET
     @Produces(APPLICATION_NDJSON)
@@ -62,7 +61,7 @@ class QueryResource(
     ): Multi<FactStreamLineHttp> = streamOfLines {
         // Without criteria the whole store is read. Any criteria form one query item, and the
         // store chooses the cheapest read for it.
-        streamFactsRequest(storeName, subjects, types, tags, continueAfter, direction, limit).publishTo(store).toResponse()
+        store.streamFacts(streamFactsRequest(storeName, subjects, types, tags, continueAfter, direction, limit)).toFactStreamLines()
     }
 
     private companion object {

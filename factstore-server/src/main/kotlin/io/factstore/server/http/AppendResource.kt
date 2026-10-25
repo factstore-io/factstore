@@ -1,7 +1,6 @@
 package io.factstore.server.http
 
 import io.factstore.core.FactStore
-import io.factstore.server.publishTo
 import jakarta.ws.rs.*
 import jakarta.ws.rs.core.MediaType.APPLICATION_JSON
 import jakarta.ws.rs.core.Response
@@ -18,6 +17,6 @@ class AppendResource(
         @PathParam("storeName") storeName: String,
         httpRequest: AppendHttpRequest,
     ): Response =
-        httpRequest.toDomainRequest(storeName).publishTo(factStore).toResponse()
+        factStore.append(httpRequest.toDomainRequest(storeName)).toResponse()
 
 }

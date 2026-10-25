@@ -3,7 +3,7 @@ package io.factstore.client.operations
 import io.factstore.client.exceptions.StoreNameAlreadyExistsException
 import io.factstore.client.exceptions.StoreNotFoundException
 import io.factstore.client.internal.grpcCall
-import io.factstore.client.internal.toDomain
+import io.factstore.client.internal.toModel
 import io.factstore.client.model.StoreInfo
 import io.factstore.grpc.v1.StoreServiceGrpcKt.StoreServiceCoroutineStub
 import io.factstore.grpc.v1.createStoreRequest
@@ -32,14 +32,14 @@ class StoreOperations internal constructor(
     suspend fun get(name: String): StoreInfo = grpcCall {
         val response = timedStub().getStore(getStoreRequest { this.name = name })
         when {
-            response.hasFound() -> response.found.store.toDomain()
+            response.hasFound() -> response.found.store.toModel()
             response.hasNotFound() -> throw StoreNotFoundException(name)
             else -> error("Unexpected response: $response")
         }
     }
 
     suspend fun list(): List<StoreInfo> = grpcCall {
-        timedStub().listStores(listStoresRequest {}).storesList.map { it.toDomain() }
+        timedStub().listStores(listStoresRequest {}).storesList.map { it.toModel() }
     }
 
     suspend fun delete(name: String): Unit = grpcCall {

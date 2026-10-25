@@ -1,7 +1,7 @@
 package io.factstore.client.operations
 
 import io.factstore.client.internal.grpcCall
-import io.factstore.client.internal.toDomain
+import io.factstore.client.internal.toModel
 import io.factstore.client.model.ServerInfo
 import io.factstore.grpc.v1.InfoServiceGrpcKt.InfoServiceCoroutineStub
 import io.factstore.grpc.v1.getServerInfoRequest
@@ -15,6 +15,6 @@ class InfoOperations internal constructor(
     suspend fun getServerInfo(): ServerInfo = grpcCall {
         stub.withDeadlineAfter(callTimeout.toMillis(), TimeUnit.MILLISECONDS)
             .getServerInfo(getServerInfoRequest {})
-            .toDomain()
+            .toModel()
     }
 }

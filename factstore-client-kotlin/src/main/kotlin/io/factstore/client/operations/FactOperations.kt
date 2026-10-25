@@ -6,7 +6,7 @@ import io.factstore.client.exceptions.ContinuationNotFoundException
 import io.factstore.client.exceptions.FactNotFoundException
 import io.factstore.client.exceptions.StoreNotFoundException
 import io.factstore.client.internal.grpcCall
-import io.factstore.client.internal.toDomain
+import io.factstore.client.internal.toModel
 import io.factstore.client.internal.toFactStoreException
 import io.factstore.client.internal.toInstant
 import io.factstore.client.internal.toProto
@@ -77,7 +77,7 @@ class FactOperations internal constructor(
             this.factId = factId
         })
         when {
-            response.hasFound() -> response.found.fact.toDomain()
+            response.hasFound() -> response.found.fact.toModel()
             response.hasNotFound() -> throw FactNotFoundException(factId)
             response.hasStoreNotFound() -> throw StoreNotFoundException(storeName)
             else -> error("Unexpected response: $response")
@@ -122,7 +122,7 @@ class FactOperations internal constructor(
         continueAfter?.let { this.continueAfterFactId = it }
     }).toFactFlow { response ->
         when {
-            response.hasBatch() -> response.batch.factsList.forEach { emit(it.toDomain()) }
+            response.hasBatch() -> response.batch.factsList.forEach { emit(it.toModel()) }
             response.hasStoreNotFound() -> throw StoreNotFoundException(storeName)
             response.hasContinuationNotFound() -> throw ContinuationNotFoundException(response.continuationNotFound.factId)
             else -> error("Unexpected stream message: $response")
@@ -142,7 +142,7 @@ class FactOperations internal constructor(
         }
     }).toFactFlow { response ->
         when {
-            response.hasBatch() -> response.batch.factsList.forEach { emit(it.toDomain()) }
+            response.hasBatch() -> response.batch.factsList.forEach { emit(it.toModel()) }
             response.hasStoreNotFound() -> throw StoreNotFoundException(storeName)
             response.hasContinuationNotFound() -> throw ContinuationNotFoundException(response.continuationNotFound.factId)
             else -> error("Unexpected stream message: $response")
