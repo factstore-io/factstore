@@ -13,6 +13,6 @@ subprojects {
         mavenCentral()
     }
 
-    group = "org.factstore"
+    group = "io.factstore"
     version = factstoreVersion
 }

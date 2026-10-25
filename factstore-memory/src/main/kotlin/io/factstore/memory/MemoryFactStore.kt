@@ -38,7 +38,7 @@ class MemoryFactStore : FactStore {
 
     private fun resolveId(name: StoreName): UUID? = nameToId[name.value]
 
-    // ===== FactStoreFactory Implementation =====
+    // ===== StoreFactory Implementation =====
 
     override suspend fun create(request: CreateStoreRequest): CreateStoreResult = lock.withLock {
         if (nameToId.containsKey(request.storeName.value)) {
@@ -60,7 +60,7 @@ class MemoryFactStore : FactStore {
         CreateStoreResult.Created(id)
     }
 
-    // ===== FactStoreFinder Implementation =====
+    // ===== StoreFinder Implementation =====
 
     override suspend fun listAll(): List<StoreMetadata> = lock.withLock {
         stores.values.toList()

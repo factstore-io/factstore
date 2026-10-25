@@ -16,7 +16,7 @@ internal class FdbStoreRemover(storage: FdbStorage) : StoreRemover, FdbAccess by
             headSubspace.clear(storeId)
             factSubspace.clearRange(storeId)
             factPositionIndexSubspace.clearRange(storeId)
-            eventTypeIndexSubspace.clearRange(storeId)
+            typeIndexSubspace.clearRange(storeId)
             subjectIndexSubspace.clearRange(storeId)
             tagsIndexSubspace.clearRange(storeId)
             tagsTypeIndexSubspace.clearRange(storeId)

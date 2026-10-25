@@ -85,7 +85,7 @@ internal class QuerySources(
         }
 
     private fun typeCursor(storeId: StoreId, type: FactType, head: FactPosition?, direction: ReadDirection) =
-        keyspace.eventTypeIndexSubspace.let { index ->
+        keyspace.typeIndexSubspace.let { index ->
             cursor(
                 keys = index.pinnedKeys(storeId, type, head, direction),
                 positionOf = { key -> index.unpackPosition(key) },

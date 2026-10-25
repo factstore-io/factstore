@@ -58,7 +58,7 @@ internal fun SubjectIndexSubspace.pinnedKeys(
 )
 
 /** The keys of one type's index in this store, up to the fact at [head], or all of them without one. */
-internal fun EventTypeIndexSubspace.pinnedKeys(
+internal fun TypeIndexSubspace.pinnedKeys(
     storeId: StoreId,
     type: FactType,
     head: FactPosition?,
@@ -100,8 +100,9 @@ internal fun TagsIndexSubspace.pinnedKeys(
 internal fun ReadDirection.isReverse(): Boolean = this == ReadDirection.Backward
 
 /**
- * Comparator for [FactPosition] respecting [ReadDirection].
- * Used when direction must be applied in application code (e.g. after intersection).
+ * Orders positions the way a read in this direction visits them: ascending forward, descending
+ * backward. Used wherever positions are compared in application code, such as when cursors are
+ * merged into a union or an intersection.
  */
 internal fun ReadDirection.toComparator(): Comparator<FactPosition> = when (this) {
     ReadDirection.Forward -> compareBy { it }

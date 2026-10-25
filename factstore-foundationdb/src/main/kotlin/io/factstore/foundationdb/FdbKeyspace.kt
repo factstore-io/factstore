@@ -42,7 +42,7 @@ private const val STORE_INDEX = "store-index"
 private const val FACTS = 1
 private const val FACT_POSITIONS = 2
 private const val HEAD_INDEX = 100
-private const val EVENT_TYPE_INDEX = 102
+private const val TYPE_INDEX = 102
 private const val SUBJECT_INDEX = 103
 private const val TAGS_INDEX = 105
 private const val TAGS_TYPE_INDEX = 106
@@ -57,7 +57,7 @@ internal class FdbKeyspace(
     val factSubspace: FactSubspace,
     val headSubspace: HeadSubspace,
     val factPositionIndexSubspace: FactPositionIndexSubspace,
-    val eventTypeIndexSubspace: EventTypeIndexSubspace,
+    val typeIndexSubspace: TypeIndexSubspace,
     val subjectIndexSubspace: SubjectIndexSubspace,
     val tagsIndexSubspace: TagsIndexSubspace,
     val tagsTypeIndexSubspace: TagsTypeIndexSubspace,
@@ -73,7 +73,7 @@ internal class FdbKeyspace(
             factSubspace = FactSubspace(root.subspace(Tuple.from(FACTS))),
             headSubspace = HeadSubspace(root.subspace(Tuple.from(HEAD_INDEX))),
             factPositionIndexSubspace = FactPositionIndexSubspace(root.subspace(Tuple.from(FACT_POSITIONS))),
-            eventTypeIndexSubspace = EventTypeIndexSubspace(root.subspace(Tuple.from(EVENT_TYPE_INDEX))),
+            typeIndexSubspace = TypeIndexSubspace(root.subspace(Tuple.from(TYPE_INDEX))),
             subjectIndexSubspace = SubjectIndexSubspace(root.subspace(Tuple.from(SUBJECT_INDEX))),
             tagsIndexSubspace = TagsIndexSubspace(root.subspace(Tuple.from(TAGS_INDEX))),
             tagsTypeIndexSubspace = TagsTypeIndexSubspace(root.subspace(Tuple.from(TAGS_TYPE_INDEX))),
@@ -192,7 +192,7 @@ internal class FactPositionIndexSubspace(private val subspace: Subspace) {
 
 }
 
-internal class EventTypeIndexSubspace(private val subspace: Subspace) {
+internal class TypeIndexSubspace(private val subspace: Subspace) {
 
     fun range(storeId: StoreId, factType: FactType): Range =
         subspace.range(Tuple.from(storeId.uuid, factType.value))
@@ -205,11 +205,11 @@ internal class EventTypeIndexSubspace(private val subspace: Subspace) {
 
     context(tr: Transaction)
     fun save(storeId: StoreId, factId: FactId, factType: FactType, incompleteVersionstamp: Versionstamp) {
-        val eventTypeIndexKey = subspace.packWithVersionstamp(
+        val typeIndexKey = subspace.packWithVersionstamp(
             Tuple.from(storeId.uuid, factType.value, incompleteVersionstamp)
         )
         val factIdTuple = Tuple.from(factId.uuid).pack()
-        tr.mutate(SET_VERSIONSTAMPED_KEY, eventTypeIndexKey, factIdTuple)
+        tr.mutate(SET_VERSIONSTAMPED_KEY, typeIndexKey, factIdTuple)
     }
 
     context(tr: Transaction)
