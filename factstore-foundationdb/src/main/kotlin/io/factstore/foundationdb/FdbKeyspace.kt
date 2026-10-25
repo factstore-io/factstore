@@ -262,7 +262,7 @@ internal class TagsTypeIndexSubspace(private val subspace: Subspace) {
 internal class IdempotencySubspace(private val subspace: Subspace) {
 
     fun keyOf(storeId: StoreId, idempotencyKey: IdempotencyKey): ByteArray =
-        subspace.pack(Tuple.from(storeId.uuid, idempotencyKey.value))
+        subspace.pack(Tuple.from(storeId.uuid, idempotencyKey.uuid))
 
     context(tr: Transaction)
     fun save(storeId: StoreId, idempotencyKey: IdempotencyKey) {

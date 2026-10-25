@@ -31,11 +31,11 @@ class FactResource(
     @GET
     @Produces(APPLICATION_JSON)
     @Path("/facts/{factId}")
-    suspend fun findById(
+    suspend fun findFactById(
         @PathParam("storeName") storeName: String,
         @PathParam("factId") @Parameter(schema = Schema(type = SchemaType.STRING, format = "uuid")) factId: String,
     ): Response =
-        factStore.findById(findByIdRequest(storeName, factId)).toResponse()
+        factStore.findFactById(findFactByIdRequest(storeName, factId)).toResponse()
 
     @GET
     @Produces(APPLICATION_NDJSON)

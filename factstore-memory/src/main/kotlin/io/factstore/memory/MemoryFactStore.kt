@@ -35,7 +35,7 @@ class MemoryFactStore : FactStore {
 
     // ===== StoreFactory Implementation =====
 
-    override suspend fun create(request: CreateStoreRequest): CreateStoreResult = lock.withLock {
+    override suspend fun createStore(request: CreateStoreRequest): CreateStoreResult = lock.withLock {
         if (request.storeName in stores) {
             return CreateStoreResult.NameAlreadyExists(request.storeName)
         }
@@ -47,24 +47,24 @@ class MemoryFactStore : FactStore {
 
     // ===== StoreFinder Implementation =====
 
-    override suspend fun listAll(): List<StoreMetadata> = lock.withLock {
+    override suspend fun listStores(): List<StoreMetadata> = lock.withLock {
         stores.values.map { it.metadata }
     }
 
-    override suspend fun existsByName(request: ExistsStoreByNameRequest): ExistsStoreByNameResult = lock.withLock {
-        if (request.storeName in stores) ExistsStoreByNameResult.StoreExists else ExistsStoreByNameResult.StoreAbsent
+    override suspend fun existsStoreByName(request: ExistsStoreByNameRequest): ExistsStoreByNameResult = lock.withLock {
+        if (request.storeName in stores) ExistsStoreByNameResult.Exists else ExistsStoreByNameResult.DoesNotExist
     }
 
-    override suspend fun findByName(request: FindStoreByNameRequest): FindStoreByNameResult = lock.withLock {
+    override suspend fun findStoreByName(request: FindStoreByNameRequest): FindStoreByNameResult = lock.withLock {
         stores[request.storeName]?.let { FindStoreByNameResult.Found(it.metadata) }
             ?: FindStoreByNameResult.NotFound(request.storeName)
     }
 
     // ===== StoreRemover Implementation =====
 
-    override suspend fun remove(request: RemoveStoreRequest): RemoveStoreResult = lock.withLock {
-        if (stores.remove(request.storeName) != null) RemoveStoreResult.StoreRemoved(request.storeName)
-        else RemoveStoreResult.StoreNotFound(request.storeName)
+    override suspend fun removeStore(request: RemoveStoreRequest): RemoveStoreResult = lock.withLock {
+        if (stores.remove(request.storeName) != null) RemoveStoreResult.Removed(request.storeName)
+        else RemoveStoreResult.NotFound(request.storeName)
     }
 
     // ===== FactAppender Implementation =====
@@ -112,15 +112,15 @@ class MemoryFactStore : FactStore {
 
     // ===== FactFinder Implementation =====
 
-    override suspend fun findById(request: FindByIdRequest): FindByIdResult = lock.withLock {
-        val store = stores[request.storeName] ?: return FindByIdResult.StoreNotFound(request.storeName)
-        store.facts.find { it.id == request.factId }?.let { FindByIdResult.Found(it) }
-            ?: FindByIdResult.NotFound(request.factId)
+    override suspend fun findFactById(request: FindFactByIdRequest): FindFactByIdResult = lock.withLock {
+        val store = stores[request.storeName] ?: return FindFactByIdResult.StoreNotFound(request.storeName)
+        store.facts.find { it.id == request.factId }?.let { FindFactByIdResult.Found(it) }
+            ?: FindFactByIdResult.NotFound(request.factId)
     }
 
-    override suspend fun existsById(request: ExistsByIdRequest): ExistsByIdResult = lock.withLock {
-        val store = stores[request.storeName] ?: return ExistsByIdResult.StoreNotFound(request.storeName)
-        if (store.indexOf(request.factId) != null) ExistsByIdResult.Exists else ExistsByIdResult.DoesNotExist
+    override suspend fun existsFactById(request: ExistsFactByIdRequest): ExistsFactByIdResult = lock.withLock {
+        val store = stores[request.storeName] ?: return ExistsFactByIdResult.StoreNotFound(request.storeName)
+        if (store.indexOf(request.factId) != null) ExistsFactByIdResult.Exists else ExistsFactByIdResult.DoesNotExist
     }
 
     // ===== FactStreamer Implementation =====

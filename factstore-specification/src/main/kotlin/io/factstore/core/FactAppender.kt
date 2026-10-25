@@ -53,7 +53,7 @@ suspend fun FactAppender.append(storeName: StoreName, fact: FactInput): AppendRe
  * @throws IllegalArgumentException if the facts do not form a valid [AppendRequest]
  */
 suspend fun FactAppender.append(storeName: StoreName, facts: List<FactInput>): AppendResult =
-    append(AppendRequest(storeName = storeName, facts = facts, idempotencyKey = IdempotencyKey()))
+    append(AppendRequest(storeName = storeName, facts = facts, idempotencyKey = IdempotencyKey.generate()))
 
 /**
  * Identifies an append request for idempotent processing.
@@ -62,12 +62,24 @@ suspend fun FactAppender.append(storeName: StoreName, facts: List<FactInput>): A
  * request with the same idempotency key is processed more than once, the
  * FactStore guarantees that the facts are appended at most once.
  *
- * @property value the underlying UUID value
+ * @property uuid the underlying UUID value
  *
  * @author Domenic Cassisi
  */
 @JvmInline
-value class IdempotencyKey(val value: UUID = UUID.randomUUID())
+value class IdempotencyKey(val uuid: UUID) {
+
+    companion object {
+
+        /**
+         * Generates a new random [IdempotencyKey].
+         *
+         * A fresh key makes an append that is not idempotent across retries: a retry needs the
+         * key of the first attempt.
+         */
+        fun generate() = IdempotencyKey(UUID.randomUUID())
+    }
+}
 
 /**
  * Represents an append operation to the FactStore.

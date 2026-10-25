@@ -11,17 +11,17 @@ class GrpcStoreService(
 ) : StoreServiceGrpcKt.StoreServiceCoroutineImplBase() {
 
     override suspend fun createStore(request: FactStoreProto.CreateStoreRequest): FactStoreProto.CreateStoreResponse =
-        factStore.create(request.toDomainRequest()).toGrpcResponse()
+        factStore.createStore(request.toDomainRequest()).toGrpcResponse()
 
     override suspend fun getStore(request: FactStoreProto.GetStoreRequest): FactStoreProto.GetStoreResponse =
-        factStore.findByName(request.toDomainRequest()).toGrpcResponse()
+        factStore.findStoreByName(request.toDomainRequest()).toGrpcResponse()
 
     override suspend fun listStores(request: FactStoreProto.ListStoresRequest): FactStoreProto.ListStoresResponse =
-        factStore.listAll().toGrpcResponse()
+        factStore.listStores().toGrpcResponse()
 
     override suspend fun deleteStore(request: FactStoreProto.DeleteStoreRequest): FactStoreProto.DeleteStoreResponse =
-        factStore.remove(request.toDomainRequest()).toGrpcResponse()
+        factStore.removeStore(request.toDomainRequest()).toGrpcResponse()
 
     override suspend fun storeExists(request: FactStoreProto.StoreExistsRequest): FactStoreProto.StoreExistsResponse =
-        factStore.existsByName(request.toDomainRequest()).toGrpcResponse()
+        factStore.existsStoreByName(request.toDomainRequest()).toGrpcResponse()
 }

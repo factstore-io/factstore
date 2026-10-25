@@ -15,36 +15,36 @@ interface FactFinder {
     /**
      * Retrieves a specific fact by its unique identifier within a named store.
      *
-     * @return [FindByIdResult.Found], [FindByIdResult.NotFound], or [FindByIdResult.StoreNotFound]
+     * @return [FindFactByIdResult.Found], [FindFactByIdResult.NotFound], or [FindFactByIdResult.StoreNotFound]
      */
-    suspend fun findById(request: FindByIdRequest): FindByIdResult
+    suspend fun findFactById(request: FindFactByIdRequest): FindFactByIdResult
 
     /**
      * Checks for the existence of a specific fact within a named store.
      *
-     * @return [ExistsByIdResult.Exists], [ExistsByIdResult.DoesNotExist], or [ExistsByIdResult.StoreNotFound]
+     * @return [ExistsFactByIdResult.Exists], [ExistsFactByIdResult.DoesNotExist], or [ExistsFactByIdResult.StoreNotFound]
      */
-    suspend fun existsById(request: ExistsByIdRequest): ExistsByIdResult
+    suspend fun existsFactById(request: ExistsFactByIdRequest): ExistsFactByIdResult
 }
 
-data class FindByIdRequest(
+data class FindFactByIdRequest(
     val storeName: StoreName,
     val factId: FactId,
 )
 
-sealed interface FindByIdResult {
-    data class Found(val fact: Fact): FindByIdResult
-    data class NotFound(val id: FactId): FindByIdResult
-    data class StoreNotFound(val storeName: StoreName): FindByIdResult
+sealed interface FindFactByIdResult {
+    data class Found(val fact: Fact): FindFactByIdResult
+    data class NotFound(val factId: FactId): FindFactByIdResult
+    data class StoreNotFound(val storeName: StoreName): FindFactByIdResult
 }
 
-data class ExistsByIdRequest(
+data class ExistsFactByIdRequest(
     val storeName: StoreName,
     val factId: FactId,
 )
 
-sealed interface ExistsByIdResult {
-    data object Exists: ExistsByIdResult
-    data object DoesNotExist: ExistsByIdResult
-    data class StoreNotFound(val storeName: StoreName): ExistsByIdResult
+sealed interface ExistsFactByIdResult {
+    data object Exists: ExistsFactByIdResult
+    data object DoesNotExist: ExistsFactByIdResult
+    data class StoreNotFound(val storeName: StoreName): ExistsFactByIdResult
 }

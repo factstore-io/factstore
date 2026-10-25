@@ -64,7 +64,7 @@ internal fun FactStoreProto.AppendFactsRequest.toDomainRequest(): AppendRequest 
     AppendRequest(
         storeName = storeName.asStoreName(),
         facts = factsList.map { it.toDomain() },
-        idempotencyKey = if (hasIdempotencyKey()) IdempotencyKey(idempotencyKey.asUuid()) else IdempotencyKey(),
+        idempotencyKey = if (hasIdempotencyKey()) IdempotencyKey(idempotencyKey.asUuid()) else IdempotencyKey.generate(),
         condition = if (hasCondition()) condition.toDomain() else AppendCondition.None,
     )
 }
@@ -81,15 +81,15 @@ internal fun FactStoreProto.GetStoreRequest.toDomainRequest(): FindStoreByNameRe
     FindStoreByNameRequest(name.asStoreName())
 }
 
-internal fun FactStoreProto.GetFactRequest.toDomainRequest(): FindByIdRequest = parseRequest {
-    FindByIdRequest(
+internal fun FactStoreProto.GetFactRequest.toDomainRequest(): FindFactByIdRequest = parseRequest {
+    FindFactByIdRequest(
         storeName = storeName.asStoreName(),
         factId = factId.asFactId(),
     )
 }
 
-internal fun FactStoreProto.FactExistsRequest.toDomainRequest(): ExistsByIdRequest = parseRequest {
-    ExistsByIdRequest(
+internal fun FactStoreProto.FactExistsRequest.toDomainRequest(): ExistsFactByIdRequest = parseRequest {
+    ExistsFactByIdRequest(
         storeName = storeName.asStoreName(),
         factId = factId.asFactId(),
     )

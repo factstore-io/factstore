@@ -18,10 +18,10 @@ class GrpcFactService(
         factStore.append(request.toDomainRequest()).toGrpcResponse()
 
     override suspend fun getFact(request: GetFactRequest): GetFactResponse =
-        factStore.findById(request.toDomainRequest()).toGrpcResponse()
+        factStore.findFactById(request.toDomainRequest()).toGrpcResponse()
 
     override suspend fun factExists(request: FactExistsRequest): FactExistsResponse =
-        factStore.existsById(request.toDomainRequest()).toGrpcResponse()
+        factStore.existsFactById(request.toDomainRequest()).toGrpcResponse()
 
 
     // Parsing and the store lookup must happen per call rather than when the Flow is built,

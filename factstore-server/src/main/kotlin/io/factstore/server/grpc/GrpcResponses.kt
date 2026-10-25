@@ -126,21 +126,21 @@ internal fun AppendResult.toGrpcResponse(): FactStoreProto.AppendFactsResponse =
         }
     }
 
-internal fun FindByIdResult.toGrpcResponse(): FactStoreProto.GetFactResponse =
+internal fun FindFactByIdResult.toGrpcResponse(): FactStoreProto.GetFactResponse =
     getFactResponse {
         when (this@toGrpcResponse) {
-            is FindByIdResult.Found -> found = factFound { fact = this@toGrpcResponse.fact.toProto() }
-            is FindByIdResult.NotFound -> notFound = factNotFound { }
-            is FindByIdResult.StoreNotFound -> storeNotFound = storeName.toStoreNotFound()
+            is FindFactByIdResult.Found -> found = factFound { fact = this@toGrpcResponse.fact.toProto() }
+            is FindFactByIdResult.NotFound -> notFound = factNotFound { }
+            is FindFactByIdResult.StoreNotFound -> storeNotFound = storeName.toStoreNotFound()
         }
     }
 
-internal fun ExistsByIdResult.toGrpcResponse(): FactStoreProto.FactExistsResponse =
+internal fun ExistsFactByIdResult.toGrpcResponse(): FactStoreProto.FactExistsResponse =
     factExistsResponse {
         when (this@toGrpcResponse) {
-            ExistsByIdResult.Exists -> present = factPresent { }
-            ExistsByIdResult.DoesNotExist -> absent = factAbsent { }
-            is ExistsByIdResult.StoreNotFound -> storeNotFound = storeName.toStoreNotFound()
+            ExistsFactByIdResult.Exists -> present = factPresent { }
+            ExistsFactByIdResult.DoesNotExist -> absent = factAbsent { }
+            is ExistsFactByIdResult.StoreNotFound -> storeNotFound = storeName.toStoreNotFound()
         }
     }
 
@@ -162,8 +162,8 @@ internal fun List<StoreMetadata>.toGrpcResponse(): FactStoreProto.ListStoresResp
 internal fun RemoveStoreResult.toGrpcResponse(): FactStoreProto.DeleteStoreResponse =
     deleteStoreResponse {
         when (this@toGrpcResponse) {
-            is RemoveStoreResult.StoreRemoved -> deleted = storeDeleted { }
-            is RemoveStoreResult.StoreNotFound -> notFound = storeName.toStoreNotFound()
+            is RemoveStoreResult.Removed -> deleted = storeDeleted { }
+            is RemoveStoreResult.NotFound -> notFound = storeName.toStoreNotFound()
         }
     }
 
@@ -175,8 +175,8 @@ internal fun FindStoreByNameResult.toGrpcResponse(): FactStoreProto.GetStoreResp
 
 internal fun ExistsStoreByNameResult.toGrpcResponse(): FactStoreProto.StoreExistsResponse =
     when (this) {
-        ExistsStoreByNameResult.StoreExists -> storeExistsResponse { present = storePresent { } }
-        ExistsStoreByNameResult.StoreAbsent -> storeExistsResponse { absent = storeAbsent { } }
+        ExistsStoreByNameResult.Exists -> storeExistsResponse { present = storePresent { } }
+        ExistsStoreByNameResult.DoesNotExist -> storeExistsResponse { absent = storeAbsent { } }
     }
 
 internal fun StreamFactsResult.toGrpcResponses(): Flow<FactStoreProto.StreamFactsResponse> = when (this) {

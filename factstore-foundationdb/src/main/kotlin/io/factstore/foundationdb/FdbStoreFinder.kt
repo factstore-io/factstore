@@ -9,14 +9,14 @@ import io.factstore.core.StoreMetadata
 
 internal class FdbStoreFinder(storage: FdbStorage) : StoreFinder, FdbAccess by storage {
 
-    override suspend fun listAll(): List<StoreMetadata> = inReadTransaction { keyspace.storeSubspace.all() }
+    override suspend fun listStores(): List<StoreMetadata> = inReadTransaction { keyspace.storeSubspace.all() }
 
-    override suspend fun existsByName(request: ExistsStoreByNameRequest): ExistsStoreByNameResult = inReadTransaction {
-        if (storeIdOf(request.storeName) != null) ExistsStoreByNameResult.StoreExists
-        else ExistsStoreByNameResult.StoreAbsent
+    override suspend fun existsStoreByName(request: ExistsStoreByNameRequest): ExistsStoreByNameResult = inReadTransaction {
+        if (storeIdOf(request.storeName) != null) ExistsStoreByNameResult.Exists
+        else ExistsStoreByNameResult.DoesNotExist
     }
 
-    override suspend fun findByName(request: FindStoreByNameRequest): FindStoreByNameResult = inReadTransaction {
+    override suspend fun findStoreByName(request: FindStoreByNameRequest): FindStoreByNameResult = inReadTransaction {
         val id = storeIdOf(request.storeName)
             ?: return@inReadTransaction FindStoreByNameResult.NotFound(request.storeName)
 

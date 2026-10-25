@@ -15,7 +15,7 @@ internal fun AppendHttpRequest.toDomainRequest(storeName: String): AppendRequest
     AppendRequest(
         storeName = storeName.asStoreName(),
         facts = facts.map { it.toDomain() },
-        idempotencyKey = idempotencyKey?.let { IdempotencyKey(it) } ?: IdempotencyKey(),
+        idempotencyKey = idempotencyKey?.let { IdempotencyKey(it) } ?: IdempotencyKey.generate(),
         condition = condition?.toDomain() ?: AppendCondition.None,
     )
 }
@@ -36,8 +36,8 @@ internal fun removeStoreRequest(storeName: String): RemoveStoreRequest = parseIn
     RemoveStoreRequest(storeName.asStoreName())
 }
 
-internal fun findByIdRequest(storeName: String, factId: String): FindByIdRequest = parseInput {
-    FindByIdRequest(storeName.asStoreName(), factId.asFactId())
+internal fun findFactByIdRequest(storeName: String, factId: String): FindFactByIdRequest = parseInput {
+    FindFactByIdRequest(storeName.asStoreName(), factId.asFactId())
 }
 
 /**

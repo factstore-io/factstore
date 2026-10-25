@@ -16,7 +16,7 @@ class StoreResource(
     suspend fun createStore(
         request: CreateStoreHttpRequest,
     ): Response =
-        store.create(request.toDomainRequest()).toResponse()
+        store.createStore(request.toDomainRequest()).toResponse()
 
     @GET
     @Path("/{name}")
@@ -24,19 +24,19 @@ class StoreResource(
     suspend fun findStore(
         @PathParam("name") name: String,
     ): Response =
-        store.findByName(findStoreByNameRequest(name)).toResponse()
+        store.findStoreByName(findStoreByNameRequest(name)).toResponse()
 
     @HEAD
     @Path("/{name}")
-    suspend fun existsByName(
+    suspend fun existsStoreByName(
         @PathParam("name") name: String,
     ): Response =
-        store.existsByName(existsStoreByNameRequest(name)).toResponse()
+        store.existsStoreByName(existsStoreByNameRequest(name)).toResponse()
 
     @GET
     @Produces(APPLICATION_JSON)
     suspend fun listFactStores(): Response =
-        store.listAll().toResponse()
+        store.listStores().toResponse()
 
     @DELETE
     @Consumes(APPLICATION_JSON)
@@ -45,6 +45,6 @@ class StoreResource(
     suspend fun removeStore(
         @PathParam("name") name: String,
     ): Response =
-        store.remove(removeStoreRequest(name)).toResponse()
+        store.removeStore(removeStoreRequest(name)).toResponse()
 
 }

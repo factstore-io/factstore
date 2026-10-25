@@ -2,11 +2,11 @@ package io.factstore.core
 
 interface StoreFinder {
 
-    suspend fun listAll(): List<StoreMetadata>
+    suspend fun listStores(): List<StoreMetadata>
 
-    suspend fun existsByName(request: ExistsStoreByNameRequest): ExistsStoreByNameResult
+    suspend fun existsStoreByName(request: ExistsStoreByNameRequest): ExistsStoreByNameResult
 
-    suspend fun findByName(request: FindStoreByNameRequest): FindStoreByNameResult
+    suspend fun findStoreByName(request: FindStoreByNameRequest): FindStoreByNameResult
 
 }
 
@@ -16,8 +16,8 @@ data class ExistsStoreByNameRequest(
 
 sealed interface ExistsStoreByNameResult {
 
-    data object StoreExists : ExistsStoreByNameResult
-    data object StoreAbsent : ExistsStoreByNameResult
+    data object Exists : ExistsStoreByNameResult
+    data object DoesNotExist : ExistsStoreByNameResult
 
 }
 

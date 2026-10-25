@@ -2,7 +2,7 @@ package io.factstore.core
 
 fun interface StoreFactory {
 
-    suspend fun create(request: CreateStoreRequest): CreateStoreResult
+    suspend fun createStore(request: CreateStoreRequest): CreateStoreResult
 
 }
 

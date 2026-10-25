@@ -70,9 +70,9 @@ abstract class AbstractFactStoreTest {
     )
 
     private suspend fun appendStored(inputs: List<FactInput>, storeName: StoreName = testStore): List<Fact> {
-        val result = store.append(AppendRequest(storeName, inputs, IdempotencyKey()))
+        val result = store.append(AppendRequest(storeName, inputs, IdempotencyKey.generate()))
         val ids = (result as AppendResult.Appended).factIds
-        return ids.map { (store.findById(FindByIdRequest(storeName, it)) as FindByIdResult.Found).fact }
+        return ids.map { (store.findFactById(FindFactByIdRequest(storeName, it)) as FindFactByIdResult.Found).fact }
     }
 
     private suspend fun appendStored(input: FactInput, storeName: StoreName = testStore): Fact =
@@ -83,24 +83,24 @@ abstract class AbstractFactStoreTest {
         store = initializeFactStore()
         reset()
         val createStoreRequest = CreateStoreRequest(storeName = testStore)
-        val result = store.create(createStoreRequest)
+        val result = store.createStore(createStoreRequest)
 
         assertThat(result).isInstanceOf(CreateStoreResult.Created::class.java)
     }
 
     @Test
-    fun testCreateFactStore(): Unit = runBlocking {
+    fun testCreateStore(): Unit = runBlocking {
         val name = StoreName("test")
         val request = CreateStoreRequest(name)
 
-        val result = store.create(request)
+        val result = store.createStore(request)
 
         assertThat(result)
             .isNotNull()
             .isInstanceOf(CreateStoreResult.Created::class.java)
 
         // creating another fact store with the same name should be rejected
-        val secondResult = store.create(request)
+        val secondResult = store.createStore(request)
 
         assertThat(secondResult)
             .isNotNull()
@@ -111,17 +111,17 @@ abstract class AbstractFactStoreTest {
         val anotherName = StoreName("another-store")
         val anotherRequest = CreateStoreRequest(anotherName)
 
-        val thirdResult = store.create(anotherRequest)
+        val thirdResult = store.createStore(anotherRequest)
 
         assertThat(thirdResult)
             .isNotNull()
             .isInstanceOf(CreateStoreResult.Created::class.java)
 
-        assertThat(store.existsByName(ExistsStoreByNameRequest(name))).isInstanceOf(ExistsStoreByNameResult.StoreExists::class.java)
-        assertThat(store.existsByName(ExistsStoreByNameRequest(anotherName))).isInstanceOf(ExistsStoreByNameResult.StoreExists::class.java)
-        assertThat(store.existsByName(ExistsStoreByNameRequest(StoreName("non-existing")))).isInstanceOf(ExistsStoreByNameResult.StoreAbsent::class.java)
+        assertThat(store.existsStoreByName(ExistsStoreByNameRequest(name))).isInstanceOf(ExistsStoreByNameResult.Exists::class.java)
+        assertThat(store.existsStoreByName(ExistsStoreByNameRequest(anotherName))).isInstanceOf(ExistsStoreByNameResult.Exists::class.java)
+        assertThat(store.existsStoreByName(ExistsStoreByNameRequest(StoreName("non-existing")))).isInstanceOf(ExistsStoreByNameResult.DoesNotExist::class.java)
 
-        assertThat(store.listAll()).size().isEqualTo(3)
+        assertThat(store.listStores()).size().isEqualTo(3)
     }
 
     @Test
@@ -134,32 +134,32 @@ abstract class AbstractFactStoreTest {
         assertThat(subscribeToList(count = 1)).containsExactly(fact)
 
         // validate existence of fact
-        assertThat(store.existsById(ExistsByIdRequest(testStore, id))).isEqualTo(ExistsByIdResult.Exists)
+        assertThat(store.existsFactById(ExistsFactByIdRequest(testStore, id))).isEqualTo(ExistsFactByIdResult.Exists)
 
         // find fact by ID
-        val findResult = store.findById(FindByIdRequest(testStore, id))
-        assertThat(findResult).isInstanceOf(FindByIdResult.Found::class.java)
-        val foundFact = (findResult as FindByIdResult.Found).fact
+        val findResult = store.findFactById(FindFactByIdRequest(testStore, id))
+        assertThat(findResult).isInstanceOf(FindFactByIdResult.Found::class.java)
+        val foundFact = (findResult as FindFactByIdResult.Found).fact
         assertThat(foundFact).isEqualTo(fact)
     }
 
     @Test
-    fun testExists(): Unit = runBlocking {
+    fun testExistsFactById(): Unit = runBlocking {
         val nonExistingFactId = FactId.generate()
-        assertThat(store.existsById(ExistsByIdRequest(testStore, nonExistingFactId))).isEqualTo(ExistsByIdResult.DoesNotExist)
+        assertThat(store.existsFactById(ExistsFactByIdRequest(testStore, nonExistingFactId))).isEqualTo(ExistsFactByIdResult.DoesNotExist)
     }
 
     @Test
-    fun testExistsForNonExistingFactstore(): Unit = runBlocking {
+    fun testExistsFactByIdOfNonExistingStore(): Unit = runBlocking {
         assertThat(
-            store.existsById(ExistsByIdRequest(nonExistingStore, FactId.generate()))
-        ).isEqualTo(ExistsByIdResult.StoreNotFound(nonExistingStore))
+            store.existsFactById(ExistsFactByIdRequest(nonExistingStore, FactId.generate()))
+        ).isEqualTo(ExistsFactByIdResult.StoreNotFound(nonExistingStore))
     }
 
     @Test
-    fun testFindByIdWithNonExistingFactStore(): Unit = runBlocking {
-        val result = store.findById(FindByIdRequest(nonExistingStore, FactId.generate()))
-        assertThat(result).isInstanceOf(FindByIdResult.StoreNotFound::class.java)
+    fun testFindFactByIdOfNonExistingStore(): Unit = runBlocking {
+        val result = store.findFactById(FindFactByIdRequest(nonExistingStore, FactId.generate()))
+        assertThat(result).isInstanceOf(FindFactByIdResult.StoreNotFound::class.java)
     }
 
     @Test
@@ -169,7 +169,7 @@ abstract class AbstractFactStoreTest {
             AppendRequest(
                 storeName = testStore,
                 facts = listOf(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload)),
-                idempotencyKey = IdempotencyKey(),
+                idempotencyKey = IdempotencyKey.generate(),
                 condition = AppendCondition.ExpectedLastFact(
                     subject = Subject(ALICE_SUBJECT_VALUE),
                     expectedLastFactId = null
@@ -184,7 +184,7 @@ abstract class AbstractFactStoreTest {
             AppendRequest(
                 storeName = testStore,
                 facts = listOf(input(ALICE_SUBJECT_VALUE, "USER_LOCKED", alicePayload)),
-                idempotencyKey = IdempotencyKey(),
+                idempotencyKey = IdempotencyKey.generate(),
                 condition = AppendCondition.ExpectedLastFact(
                     subject = Subject(ALICE_SUBJECT_VALUE),
                     expectedLastFactId = fact1Id
@@ -199,7 +199,7 @@ abstract class AbstractFactStoreTest {
             AppendRequest(
                 storeName = testStore,
                 facts = listOf(input(ALICE_SUBJECT_VALUE, "USER_LOCKED", alicePayload)),
-                idempotencyKey = IdempotencyKey(),
+                idempotencyKey = IdempotencyKey.generate(),
                 condition = AppendCondition.ExpectedLastFact(
                     subject = Subject(ALICE_SUBJECT_VALUE),
                     expectedLastFactId = fact1Id // <-- this will cause the violation
@@ -226,7 +226,7 @@ abstract class AbstractFactStoreTest {
                         AppendRequest(
                             storeName = testStore,
                             facts = listOf(input(ALICE_SUBJECT_VALUE, "USER_LOCKED", alicePayload)),
-                            idempotencyKey = IdempotencyKey(),
+                            idempotencyKey = IdempotencyKey.generate(),
                             condition = AppendCondition.ExpectedLastFact(
                                 subject = Subject(ALICE_SUBJECT_VALUE),
                                 expectedLastFactId = seed.id,
@@ -255,7 +255,7 @@ abstract class AbstractFactStoreTest {
                 input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload),
                 input(ALICE_SUBJECT_VALUE, "USER_LOCKED", alicePayload),
             ),
-            idempotencyKey = IdempotencyKey(),
+            idempotencyKey = IdempotencyKey.generate(),
             condition = AppendCondition.All(
                 conditions = listOf(
                     AppendCondition.ExpectedLastFact(Subject(ALICE_SUBJECT_VALUE), null),
@@ -279,7 +279,7 @@ abstract class AbstractFactStoreTest {
         val appendRequest = AppendRequest(
             storeName = testStore,
             facts = listOf(input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload)),
-            idempotencyKey = IdempotencyKey(),
+            idempotencyKey = IdempotencyKey.generate(),
             condition = AppendCondition.All(
                 conditions = listOf(
                     // Bob has no facts yet -> satisfied
@@ -311,10 +311,10 @@ abstract class AbstractFactStoreTest {
             )
         )
 
-        assertThat(store.findById(FindByIdRequest(testStore, fact1.id))).isInstanceOf(FindByIdResult.Found::class.java)
-        assertThat((store.findById(FindByIdRequest(testStore, fact1.id)) as FindByIdResult.Found).fact).isEqualTo(fact1)
-        assertThat(store.findById(FindByIdRequest(testStore, fact2.id))).isInstanceOf(FindByIdResult.Found::class.java)
-        assertThat((store.findById(FindByIdRequest(testStore, fact2.id)) as FindByIdResult.Found).fact).isEqualTo(fact2)
+        assertThat(store.findFactById(FindFactByIdRequest(testStore, fact1.id))).isInstanceOf(FindFactByIdResult.Found::class.java)
+        assertThat((store.findFactById(FindFactByIdRequest(testStore, fact1.id)) as FindFactByIdResult.Found).fact).isEqualTo(fact1)
+        assertThat(store.findFactById(FindFactByIdRequest(testStore, fact2.id))).isInstanceOf(FindFactByIdResult.Found::class.java)
+        assertThat((store.findFactById(FindFactByIdRequest(testStore, fact2.id)) as FindFactByIdResult.Found).fact).isEqualTo(fact2)
     }
 
     @Test
@@ -384,12 +384,12 @@ abstract class AbstractFactStoreTest {
         }
         assertThat(inputs.sumOf { it.byteSize }).isEqualTo(AppendRequest.MAX_SIZE)
 
-        val result = store.append(AppendRequest(testStore, inputs, IdempotencyKey()))
+        val result = store.append(AppendRequest(testStore, inputs, IdempotencyKey.generate()))
 
         assertThat(result).isInstanceOf(AppendResult.Appended::class.java)
         val ids = (result as AppendResult.Appended).factIds
         assertThat(ids).hasSize(factCount)
-        val last = (store.findById(FindByIdRequest(testStore, ids.last())) as FindByIdResult.Found).fact
+        val last = (store.findFactById(FindFactByIdRequest(testStore, ids.last())) as FindFactByIdResult.Found).fact
         assertThat(last).isEqualTo(inputs.last().toFact(last.id, last.appendedAt))
     }
 
@@ -589,7 +589,7 @@ abstract class AbstractFactStoreTest {
     @Test
     fun testStreamFactsOnlyContainsFactsOfTheRequestedStore(): Unit = runBlocking {
         val otherStore = StoreName("other-store")
-        store.create(CreateStoreRequest(otherStore))
+        store.createStore(CreateStoreRequest(otherStore))
 
         val fact = appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload))
         appendStored(input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload), otherStore)
@@ -895,7 +895,7 @@ abstract class AbstractFactStoreTest {
     @Test
     fun testStreamFactsOfASubjectOnlyContainsFactsOfTheRequestedStore(): Unit = runBlocking {
         val otherStore = StoreName("other-store")
-        store.create(CreateStoreRequest(otherStore))
+        store.createStore(CreateStoreRequest(otherStore))
 
         val fact = appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload))
         appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload), otherStore)
@@ -1035,7 +1035,7 @@ abstract class AbstractFactStoreTest {
     @Test
     fun testStreamFactsOfATypeOnlyContainsFactsOfTheRequestedStore(): Unit = runBlocking {
         val otherStore = StoreName("other-store")
-        store.create(CreateStoreRequest(otherStore))
+        store.createStore(CreateStoreRequest(otherStore))
 
         val fact = appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload))
         appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload), otherStore)
@@ -1630,7 +1630,7 @@ abstract class AbstractFactStoreTest {
     private suspend fun appendWithCondition(
         condition: AppendCondition,
         storeName: StoreName = testStore,
-        idempotencyKey: IdempotencyKey = IdempotencyKey(),
+        idempotencyKey: IdempotencyKey = IdempotencyKey.generate(),
     ): AppendResult =
         store.append(
             AppendRequest(
@@ -1652,7 +1652,7 @@ abstract class AbstractFactStoreTest {
             AppendRequest(
                 storeName = testStore,
                 facts = listOf(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload, tags = aliceTags)),
-                idempotencyKey = IdempotencyKey(),
+                idempotencyKey = IdempotencyKey.generate(),
                 condition = noneMatch(aliceCreated)
             )
         )
@@ -1664,7 +1664,7 @@ abstract class AbstractFactStoreTest {
             AppendRequest(
                 storeName = testStore,
                 facts = listOf(input(ALICE_SUBJECT_VALUE, "USER_LOCKED", alicePayload, tags = aliceTags)),
-                idempotencyKey = IdempotencyKey(),
+                idempotencyKey = IdempotencyKey.generate(),
                 condition = noneMatch(aliceCreated, after = fact1Id)
             )
         )
@@ -1675,7 +1675,7 @@ abstract class AbstractFactStoreTest {
             AppendRequest(
                 storeName = testStore,
                 facts = listOf(input(ALICE_SUBJECT_VALUE, "USER_LOCKED", alicePayload, tags = aliceTags)),
-                idempotencyKey = IdempotencyKey(),
+                idempotencyKey = IdempotencyKey.generate(),
                 condition = noneMatch(aliceCreated)
             )
         ).also {
@@ -1690,7 +1690,7 @@ abstract class AbstractFactStoreTest {
             AppendRequest(
                 storeName = testStore,
                 facts = listOf(input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload, tags = bobTags)),
-                idempotencyKey = IdempotencyKey(),
+                idempotencyKey = IdempotencyKey.generate(),
                 condition = noneMatch(bobCreated)
             )
         )
@@ -1701,7 +1701,7 @@ abstract class AbstractFactStoreTest {
             AppendRequest(
                 storeName = testStore,
                 facts = listOf(input(BOB_SUBJECT_VALUE, "USER_LOCKED", bobPayload, tags = bobTags)),
-                idempotencyKey = IdempotencyKey(),
+                idempotencyKey = IdempotencyKey.generate(),
                 condition = noneMatch(bobCreated, after = fact3Id)
             )
         ).also {
@@ -1900,7 +1900,7 @@ abstract class AbstractFactStoreTest {
                         AppendRequest(
                             storeName = testStore,
                             facts = listOf(input(ALICE_SUBJECT_VALUE, "STUDENT_SUBSCRIBED", alicePayload, tags = tags)),
-                            idempotencyKey = IdempotencyKey(),
+                            idempotencyKey = IdempotencyKey.generate(),
                             condition = noneMatch(query, after = seed.id),
                         )
                     )
@@ -1927,7 +1927,7 @@ abstract class AbstractFactStoreTest {
     @Test
     fun testNoneMatchAfterAFactOfAnotherStore(): Unit = runBlocking {
         val otherStore = StoreName("other-store")
-        store.create(CreateStoreRequest(otherStore))
+        store.createStore(CreateStoreRequest(otherStore))
         val foreign = appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload), otherStore)
 
         assertThat(appendWithCondition(noneMatch(query(FactQueryItem(types = setOf(FactType("USER_LOCKED")))), after = foreign.id)))
@@ -1953,7 +1953,7 @@ abstract class AbstractFactStoreTest {
 
     @Test
     fun testAlreadyAppliedTakesPrecedenceOverAnUnknownAfterFact(): Unit = runBlocking {
-        val key = IdempotencyKey()
+        val key = IdempotencyKey.generate()
         assertThat(appendWithCondition(AppendCondition.None, idempotencyKey = key))
             .isInstanceOf(AppendResult.Appended::class.java)
 
@@ -1975,17 +1975,17 @@ abstract class AbstractFactStoreTest {
         val storeName1 = StoreName("store-1")
         val storeName2 = StoreName("store-2")
 
-        store.create(CreateStoreRequest(storeName1))
-        store.create(CreateStoreRequest(storeName2))
+        store.createStore(CreateStoreRequest(storeName1))
+        store.createStore(CreateStoreRequest(storeName2))
 
         val fact1 = appendStored(input(BOB_SUBJECT_VALUE, "USER_LOCKED", bobPayload), storeName1)
         val fact2 = appendStored(input(ALICE_SUBJECT_VALUE, "USER_LOCKED", alicePayload), storeName2)
 
-        assertThat(store.existsById(ExistsByIdRequest(storeName1, fact1.id))).isEqualTo(ExistsByIdResult.Exists)
-        assertThat(store.existsById(ExistsByIdRequest(storeName1, fact2.id))).isEqualTo(ExistsByIdResult.DoesNotExist)
+        assertThat(store.existsFactById(ExistsFactByIdRequest(storeName1, fact1.id))).isEqualTo(ExistsFactByIdResult.Exists)
+        assertThat(store.existsFactById(ExistsFactByIdRequest(storeName1, fact2.id))).isEqualTo(ExistsFactByIdResult.DoesNotExist)
 
-        assertThat(store.existsById(ExistsByIdRequest(storeName2, fact1.id))).isEqualTo(ExistsByIdResult.DoesNotExist)
-        assertThat(store.existsById(ExistsByIdRequest(storeName2, fact2.id))).isEqualTo(ExistsByIdResult.Exists)
+        assertThat(store.existsFactById(ExistsFactByIdRequest(storeName2, fact1.id))).isEqualTo(ExistsFactByIdResult.DoesNotExist)
+        assertThat(store.existsFactById(ExistsFactByIdRequest(storeName2, fact2.id))).isEqualTo(ExistsFactByIdResult.Exists)
     }
 
     @Test
@@ -2023,19 +2023,19 @@ abstract class AbstractFactStoreTest {
     @Test
     fun testRemoveStore(): Unit = runBlocking {
         val storeName = StoreName("store-to-delete")
-        store.create(CreateStoreRequest(storeName))
+        store.createStore(CreateStoreRequest(storeName))
 
         val factInput = input("TEST_SUBJECT", "TEST_FACT_TYPE", """DATA""".toFactPayload())
 
         assertThat(store.append(storeName, factInput))
             .isInstanceOf(AppendResult.Appended::class.java)
 
-        assertThat(store.remove(RemoveStoreRequest(storeName)))
-            .isInstanceOf(RemoveStoreResult.StoreRemoved::class.java)
+        assertThat(store.removeStore(RemoveStoreRequest(storeName)))
+            .isInstanceOf(RemoveStoreResult.Removed::class.java)
 
-        // a second time should result in StoreNotFound
-        assertThat(store.remove(RemoveStoreRequest(storeName)))
-            .isInstanceOf(RemoveStoreResult.StoreNotFound::class.java)
+        // a second time should result in NotFound
+        assertThat(store.removeStore(RemoveStoreRequest(storeName)))
+            .isInstanceOf(RemoveStoreResult.NotFound::class.java)
 
         assertThat(store.append(storeName, factInput))
             .isInstanceOf(AppendResult.StoreNotFound::class.java)

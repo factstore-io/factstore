@@ -15,10 +15,10 @@ internal fun AppendResult.toResponse(): Response = when (this) {
     is AppendResult.AfterFactNotFound -> afterFactNotFoundError(factId)
 }
 
-internal fun FindByIdResult.toResponse(): Response = when (this) {
-    is FindByIdResult.Found -> Response.ok(fact.toHttp()).build()
-    is FindByIdResult.NotFound -> factNotFoundError(id)
-    is FindByIdResult.StoreNotFound -> storeNotFoundError(storeName)
+internal fun FindFactByIdResult.toResponse(): Response = when (this) {
+    is FindFactByIdResult.Found -> Response.ok(fact.toHttp()).build()
+    is FindFactByIdResult.NotFound -> factNotFoundError(factId)
+    is FindFactByIdResult.StoreNotFound -> storeNotFoundError(storeName)
 }
 
 internal fun CreateStoreResult.toResponse(): Response = when (this) {
@@ -36,13 +36,13 @@ internal fun FindStoreByNameResult.toResponse(): Response = when (this) {
 }
 
 internal fun ExistsStoreByNameResult.toResponse(): Response = when (this) {
-    ExistsStoreByNameResult.StoreExists -> Response.ok().build()
-    ExistsStoreByNameResult.StoreAbsent -> Response.status(Response.Status.NOT_FOUND).build()
+    ExistsStoreByNameResult.Exists -> Response.ok().build()
+    ExistsStoreByNameResult.DoesNotExist -> Response.status(Response.Status.NOT_FOUND).build()
 }
 
 internal fun RemoveStoreResult.toResponse(): Response = when (this) {
-    is RemoveStoreResult.StoreRemoved -> Response.ok().build()
-    is RemoveStoreResult.StoreNotFound -> storeNotFoundError(storeName)
+    is RemoveStoreResult.Removed -> Response.ok().build()
+    is RemoveStoreResult.NotFound -> storeNotFoundError(storeName)
 }
 
 internal fun List<StoreMetadata>.toResponse(): Response = Response.ok(map { it.toHttp() }).build()
