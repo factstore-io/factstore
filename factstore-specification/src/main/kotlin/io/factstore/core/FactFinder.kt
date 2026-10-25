@@ -26,3 +26,25 @@ interface FactFinder {
      */
     suspend fun existsById(request: ExistsByIdRequest): ExistsByIdResult
 }
+
+data class FindByIdRequest(
+    val storeName: StoreName,
+    val factId: FactId,
+)
+
+sealed interface FindByIdResult {
+    data class Found(val fact: Fact): FindByIdResult
+    data class NotFound(val id: FactId): FindByIdResult
+    data class StoreNotFound(val storeName: StoreName): FindByIdResult
+}
+
+data class ExistsByIdRequest(
+    val storeName: StoreName,
+    val factId: FactId,
+)
+
+sealed interface ExistsByIdResult {
+    data object Exists: ExistsByIdResult
+    data object DoesNotExist: ExistsByIdResult
+    data class StoreNotFound(val storeName: StoreName): ExistsByIdResult
+}
