@@ -17,26 +17,26 @@
     "@radix-ui/react-separator": "^1.2.0",
     "@radix-ui/react-slot": "^1.5.0",
     "@radix-ui/react-tooltip": "^1.4.1",
-    "@react-router/node": "^8.4.0",
-    "@react-router/serve": "^8.4.0",
+    "@react-router/node": "^8.5.0",
+    "@react-router/serve": "^8.5.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "isbot": "^5.2.2",
-    "lucide-react": "^1.57.0",
+    "lucide-react": "^1.61.0",
     "radix-ui": "^1.8.1",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
-    "react-router": "^8.4.0",
+    "react-router": "^8.5.0",
     "tailwind-merge": "^3.7.0"
   },
   "devDependencies": {
-    "@react-router/dev": "^8.4.0",
+    "@react-router/dev": "^8.5.0",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^26",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "tailwindcss": "^4.3.1",
     "typescript": "^7.0.2",
-    "vite": "^8.3.4"
+    "vite": "^8.3.5"
   }
 }
