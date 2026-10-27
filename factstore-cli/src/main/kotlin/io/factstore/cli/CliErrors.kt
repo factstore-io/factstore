@@ -9,6 +9,7 @@ import io.factstore.client.exceptions.FactStoreInvalidRequestException
 import io.factstore.client.exceptions.FactStoreRpcException
 import io.factstore.client.exceptions.FactStoreTimeoutException
 import io.factstore.client.exceptions.FactStoreUnavailableException
+import io.factstore.client.exceptions.IdempotencyKeyReusedException
 import io.factstore.client.exceptions.StoreNameAlreadyExistsException
 import io.factstore.client.exceptions.StoreNotFoundException
 
@@ -26,6 +27,8 @@ internal fun FactStoreException.toCliMessage(): String = when (this) {
     is AppendConditionViolatedException ->
         "Append condition violated: a concurrent write changed the store. Retry with an updated condition."
     is AfterFactNotFoundException -> "Cannot check the append condition after fact '$factId': the store holds no such fact"
+    is IdempotencyKeyReusedException ->
+        "Idempotency key '$idempotencyKey' was already used by a different append. Use a new key for this one."
     is FactStoreInvalidRequestException -> "Invalid request: $reason"
     is FactStoreUnavailableException -> "Cannot reach the FactStore server. Is it running?"
     is FactStoreTimeoutException -> "The request timed out. The server may be overloaded or unreachable."

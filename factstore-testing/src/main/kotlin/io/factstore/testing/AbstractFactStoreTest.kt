@@ -14,7 +14,6 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.assertj.core.api.Assertions.*
 import org.junit.jupiter.api.*
-import java.util.UUID
 import kotlin.time.Duration.Companion.seconds
 
 private const val ALICE_SUBJECT_VALUE = "USER:ALICE"
@@ -39,9 +38,8 @@ abstract class AbstractFactStoreTest {
 
     // ===== Test helpers =====
     //
-    // Facts are appended as FactInputs; the store assigns their id and appendedAt.
-    // These helpers append inputs and read back the stored facts (by their
-    // server-assigned ids) so tests can assert on the canonical stored shape.
+    // Facts are appended as FactInputs; the store assigns their id and appendedAt
+    // and returns the stored facts, so tests can assert on the canonical stored shape.
 
     private fun input(
         subject: String,
@@ -71,8 +69,7 @@ abstract class AbstractFactStoreTest {
 
     private suspend fun appendStored(inputs: List<FactInput>, storeName: StoreName = testStore): List<Fact> {
         val result = store.append(AppendRequest(storeName, inputs, IdempotencyKey.generate()))
-        val ids = (result as AppendResult.Appended).factIds
-        return ids.map { (store.findFactById(FindFactByIdRequest(storeName, it)) as FindFactByIdResult.Found).fact }
+        return (result as AppendResult.Appended).facts
     }
 
     private suspend fun appendStored(input: FactInput, storeName: StoreName = testStore): Fact =
@@ -391,9 +388,9 @@ abstract class AbstractFactStoreTest {
             val result = store.append(AppendRequest(testStore, inputs, IdempotencyKey.generate()))
 
             assertThat(result).isInstanceOf(AppendResult.Appended::class.java)
-            val ids = (result as AppendResult.Appended).factIds
-            assertThat(ids).hasSize(factCount)
-            val last = (store.findFactById(FindFactByIdRequest(testStore, ids.last())) as FindFactByIdResult.Found).fact
+            val facts = (result as AppendResult.Appended).facts
+            assertThat(facts).hasSize(factCount)
+            val last = (store.findFactById(FindFactByIdRequest(testStore, facts.last().id)) as FindFactByIdResult.Found).fact
             assertThat(last).isEqualTo(inputs.last().toFact(last.id, last.appendedAt))
         }
 
@@ -404,29 +401,173 @@ abstract class AbstractFactStoreTest {
         }
 
         @Test
-        fun testNewAppend(): Unit = runBlocking {
-
-            val idempotencyKey = IdempotencyKey(UUID.randomUUID())
-            val appendRequest = AppendRequest(
-                storeName = testStore,
-                facts = listOf(input("USER:DOMI", "USER_LOCKED", """{ "username": "DOMI" }""".toFactPayload())),
-                idempotencyKey = idempotencyKey,
-                condition = AppendCondition.ExpectedLastFact(
-                    subject = Subject("USER:DOMI"),
-                    expectedLastFactId = null
-                )
+        fun testAppendedReturnsTheStoredFacts(): Unit = runBlocking {
+            val inputs = listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload, tags = mapOf(TagKey("region") to TagValue("eu"))),
+                input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload, metadata = mapOf(MetadataKey("source") to MetadataValue("test"))),
             )
 
-            val appendResult = store.append(appendRequest)
+            val result = store.append(AppendRequest(testStore, inputs, IdempotencyKey.generate()))
 
-            assertThat(appendResult).isInstanceOf(AppendResult.Appended::class.java)
+            val facts = (result as AppendResult.Appended).facts
+            assertThat(facts.map { it.appendedAt }.distinct()).hasSize(1)
+            assertThat(facts).isEqualTo(inputs.zip(facts) { input, fact -> input.toFact(fact.id, fact.appendedAt) })
+            assertThat(facts).isEqualTo(streamToList(StreamFactsRequest(testStore, direction = ReadDirection.Forward)))
+        }
+    }
 
-            // trying to append again should return early
+    /**
+     * Retrying appends under an idempotency key, and reusing a key for another append.
+     */
+    @Nested
+    inner class Idempotency {
 
-            val appendResult2 = store.append(appendRequest)
+        private fun request(
+            key: IdempotencyKey,
+            facts: List<FactInput> = listOf(
+                input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload),
+                input(BOB_SUBJECT_VALUE, "USER_CREATED", bobPayload),
+            ),
+            condition: AppendCondition = AppendCondition.None,
+            storeName: StoreName = testStore,
+        ) = AppendRequest(storeName, facts, key, condition)
 
-            assertThat(appendResult2).isInstanceOf(AppendResult.AlreadyApplied::class.java)
+        private suspend fun allFacts(storeName: StoreName = testStore): List<Fact> =
+            streamToList(StreamFactsRequest(storeName, direction = ReadDirection.Forward))
 
+        @Test
+        fun testRetryReturnsTheFactsOfTheFirstAttempt(): Unit = runBlocking {
+            val key = IdempotencyKey.generate()
+            val appended = store.append(request(key)) as AppendResult.Appended
+
+            // other appends in between do not change what the retry returns
+            appendStored(input(CHARLIE_SUBJECT_VALUE, "USER_CREATED", charliePayload))
+
+            assertThat(store.append(request(key))).isEqualTo(AppendResult.AlreadyApplied(appended.facts))
+            assertThat(allFacts()).hasSize(3)
+        }
+
+        @Test
+        fun testRetryIsAppliedAlthoughItsConditionNoLongerHolds(): Unit = runBlocking {
+            // The facts of the first attempt are exactly what fails its condition on a retry.
+            val key = IdempotencyKey.generate()
+            val condition = AppendCondition.ExpectedLastFact(Subject(ALICE_SUBJECT_VALUE), null)
+            val appended = store.append(request(key, condition = condition)) as AppendResult.Appended
+
+            assertThat(store.append(request(key, condition = condition)))
+                .isEqualTo(AppendResult.AlreadyApplied(appended.facts))
+        }
+
+        @Test
+        fun testRetryWithConditionAndQueryItemsInAnotherOrderIsTheSameRequest(): Unit = runBlocking {
+            val key = IdempotencyKey.generate()
+            val alice = AppendCondition.ExpectedLastFact(Subject(ALICE_SUBJECT_VALUE), null)
+            val noneMatch = noneMatch(
+                query(
+                    FactQueryItem(types = setOf(FactType(EVEN_FACT_TYPE), FactType(ODD_FACT_TYPE))),
+                    FactQueryItem(subjects = setOf(Subject(CHARLIE_SUBJECT_VALUE))),
+                )
+            )
+            val reorderedNoneMatch = noneMatch(
+                query(
+                    FactQueryItem(subjects = setOf(Subject(CHARLIE_SUBJECT_VALUE))),
+                    FactQueryItem(types = setOf(FactType(ODD_FACT_TYPE), FactType(EVEN_FACT_TYPE))),
+                )
+            )
+            val appended = store.append(request(key, condition = AppendCondition.All(listOf(alice, noneMatch))))
+                as AppendResult.Appended
+
+            assertThat(store.append(request(key, condition = AppendCondition.All(listOf(reorderedNoneMatch, alice)))))
+                .isEqualTo(AppendResult.AlreadyApplied(appended.facts))
+        }
+
+        @Test
+        fun testKeyReusedWithOtherFactsAppendsNothing(): Unit = runBlocking {
+            val key = IdempotencyKey.generate()
+            val appended = store.append(request(key)) as AppendResult.Appended
+
+            val otherFacts = listOf(input(CHARLIE_SUBJECT_VALUE, "USER_CREATED", charliePayload))
+            assertThat(store.append(request(key, facts = otherFacts)))
+                .isEqualTo(AppendResult.IdempotencyKeyReused(key))
+
+            val reordered = appended.facts.reversed().map { FactInput(it.type, it.subject, it.payload, it.metadata, it.tags) }
+            assertThat(store.append(request(key, facts = reordered)))
+                .describedAs("the order of the facts is part of the request")
+                .isEqualTo(AppendResult.IdempotencyKeyReused(key))
+
+            assertThat(allFacts()).isEqualTo(appended.facts)
+        }
+
+        @Test
+        fun testKeyReusedWithAnotherConditionAppendsNothing(): Unit = runBlocking {
+            val key = IdempotencyKey.generate()
+            val appended = store.append(request(key)) as AppendResult.Appended
+
+            val condition = AppendCondition.ExpectedLastFact(Subject(CHARLIE_SUBJECT_VALUE), null)
+            assertThat(store.append(request(key, condition = condition)))
+                .isEqualTo(AppendResult.IdempotencyKeyReused(key))
+
+            assertThat(allFacts()).isEqualTo(appended.facts)
+        }
+
+        @Test
+        fun testRejectedAppendDoesNotUseUpItsKey(): Unit = runBlocking {
+            appendStored(input(ALICE_SUBJECT_VALUE, "USER_CREATED", alicePayload))
+            val key = IdempotencyKey.generate()
+
+            val violated = AppendCondition.ExpectedLastFact(Subject(ALICE_SUBJECT_VALUE), null)
+            assertThat(store.append(request(key, condition = violated)))
+                .isEqualTo(AppendResult.AppendConditionViolated)
+
+            assertThat(store.append(request(key))).isInstanceOf(AppendResult.Appended::class.java)
+        }
+
+        @Test
+        fun testConcurrentRetriesAppendOnce(): Unit = runBlocking {
+            val key = IdempotencyKey.generate()
+            val attempts = 8
+
+            val results = coroutineScope {
+                (1..attempts).map { async(Dispatchers.Default) { store.append(request(key)) } }.awaitAll()
+            }
+
+            val appended = results.filterIsInstance<AppendResult.Appended>().single()
+            assertThat(results.filterIsInstance<AppendResult.AlreadyApplied>())
+                .hasSize(attempts - 1)
+                .allSatisfy { assertThat(it.facts).isEqualTo(appended.facts) }
+            assertThat(allFacts()).isEqualTo(appended.facts)
+        }
+
+        @Test
+        fun testKeysBelongToTheirStore(): Unit = runBlocking {
+            val otherStore = StoreName("other-store")
+            store.createStore(CreateStoreRequest(otherStore))
+            val key = IdempotencyKey.generate()
+
+            assertThat(store.append(request(key))).isInstanceOf(AppendResult.Appended::class.java)
+            assertThat(store.append(request(key, storeName = otherStore))).isInstanceOf(AppendResult.Appended::class.java)
+        }
+
+        @Test
+        fun testRemovingAStoreFreesItsKeys(): Unit = runBlocking {
+            val storeName = StoreName("store-to-recreate")
+            store.createStore(CreateStoreRequest(storeName))
+            val key = IdempotencyKey.generate()
+            assertThat(store.append(request(key, storeName = storeName))).isInstanceOf(AppendResult.Appended::class.java)
+
+            store.removeStore(RemoveStoreRequest(storeName))
+            store.createStore(CreateStoreRequest(storeName))
+
+            assertThat(store.append(request(key, storeName = storeName))).isInstanceOf(AppendResult.Appended::class.java)
+        }
+
+        @Test
+        fun testRetryOfTheLargestAppendReturnsAllItsFacts(): Unit = runBlocking {
+            val key = IdempotencyKey.generate()
+            val inputs = (0 until AppendRequest.MAX_FACTS).map { input("SUBJECT:$it", EVEN_FACT_TYPE, alicePayload) }
+            val appended = store.append(request(key, facts = inputs)) as AppendResult.Appended
+
+            assertThat(store.append(request(key, facts = inputs))).isEqualTo(AppendResult.AlreadyApplied(appended.facts))
         }
     }
 
@@ -477,7 +618,7 @@ abstract class AbstractFactStoreTest {
                 )
             )
             assertThat(appended1).isInstanceOf(AppendResult.Appended::class.java)
-            val fact1Id = (appended1 as AppendResult.Appended).factIds.single()
+            val fact1Id = (appended1 as AppendResult.Appended).facts.single().id
 
             // append fact2 expecting fact1 to be the last fact
             val appended2 = store.append(
@@ -1808,7 +1949,7 @@ abstract class AbstractFactStoreTest {
                 )
             )
             assertThat(appended1).isInstanceOf(AppendResult.Appended::class.java)
-            val fact1Id = (appended1 as AppendResult.Appended).factIds.single()
+            val fact1Id = (appended1 as AppendResult.Appended).facts.single().id
 
             // append fact2: only fact1 matches and we exclude everything up to it → appended
             val appended2 = store.append(
@@ -1846,7 +1987,7 @@ abstract class AbstractFactStoreTest {
                 )
             )
             assertThat(appended3).isInstanceOf(AppendResult.Appended::class.java)
-            val fact3Id = (appended3 as AppendResult.Appended).factIds.single()
+            val fact3Id = (appended3 as AppendResult.Appended).facts.single().id
 
             store.append(
                 AppendRequest(
@@ -2113,7 +2254,7 @@ abstract class AbstractFactStoreTest {
         }
 
         @Test
-        fun testAlreadyAppliedTakesPrecedenceOverAnUnknownAfterFact(): Unit = runBlocking {
+        fun testReusedKeyTakesPrecedenceOverAnUnknownAfterFact(): Unit = runBlocking {
             val key = IdempotencyKey.generate()
             assertThat(appendWithCondition(AppendCondition.None, idempotencyKey = key))
                 .isInstanceOf(AppendResult.Appended::class.java)
@@ -2121,8 +2262,8 @@ abstract class AbstractFactStoreTest {
             val condition = noneMatch(query(FactQueryItem(types = setOf(FactType("USER_LOCKED")))), after = FactId.generate())
 
             assertThat(appendWithCondition(condition, idempotencyKey = key))
-                .describedAs("a replayed key was applied already, whatever its condition says now")
-                .isEqualTo(AppendResult.AlreadyApplied)
+                .describedAs("a used key is judged before the condition of the request")
+                .isEqualTo(AppendResult.IdempotencyKeyReused(key))
         }
     }
 }

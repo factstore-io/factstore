@@ -22,7 +22,7 @@ Overview of the key structure:
     /store-subject-index/<store_id>/{subject_id}/{versionstamp} = (fact_id)
     /store-tags-index/<store_id>/{tag_key}/{tag_value}/{versionstamp} = (fact_id)
     /store-fact-type-tag-index/<store_id>/{fact_type}/{tag_key}/{tag_value}/{versionstamp} = (fact_id)    
-    /idempotency-keys/<store_id>/{idempotency_key} = (versionstamp)    
+    /idempotency-keys/<store_id>/{idempotency_key} = (versionstamp of the first fact, fact count, request fingerprint)
 ```
 
 Alternative design:

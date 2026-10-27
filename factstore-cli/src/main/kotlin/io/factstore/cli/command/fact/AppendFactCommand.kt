@@ -76,7 +76,7 @@ class AppendFactCommand(clients: FactStoreClients) : StoreScopedCommand(name = "
     }
 
     private fun AppendOutcome.describe(): String = when (this) {
-        is AppendOutcome.Appended -> "✅ Fact appended. Id: ${factIds.single()}"
-        AppendOutcome.AlreadyApplied -> "ℹ️ Append already applied; nothing was added."
+        is AppendOutcome.Appended -> "✅ Fact appended. Id: ${facts.single().id}"
+        is AppendOutcome.AlreadyApplied -> "ℹ️ Append already applied; nothing was added. Id: ${facts.single().id}"
     }
 }

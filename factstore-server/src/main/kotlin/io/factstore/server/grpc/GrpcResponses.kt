@@ -115,11 +115,10 @@ internal fun StoreMetadata.toProto(): FactStoreProto.StoreInfo = storeInfo {
 internal fun AppendResult.toGrpcResponse(): FactStoreProto.AppendFactsResponse =
     appendFactsResponse {
         when (this@toGrpcResponse) {
-            is AppendResult.Appended -> appended = factsAppended {
-                factIds += this@toGrpcResponse.factIds.map { it.uuid.toString() }
-                appendedAt = this@toGrpcResponse.appendedAt.toTimestamp()
-            }
-            is AppendResult.AlreadyApplied -> alreadyApplied = alreadyApplied { }
+            is AppendResult.Appended -> appended = factsAppended { facts += this@toGrpcResponse.facts.map { it.toProto() } }
+            is AppendResult.AlreadyApplied -> alreadyApplied = alreadyApplied { facts += this@toGrpcResponse.facts.map { it.toProto() } }
+            is AppendResult.IdempotencyKeyReused ->
+                idempotencyKeyReused = idempotencyKeyReused { idempotencyKey = this@toGrpcResponse.idempotencyKey.uuid.toString() }
             is AppendResult.AppendConditionViolated -> conditionViolated = conditionViolated { }
             is AppendResult.StoreNotFound -> storeNotFound = storeName.toStoreNotFound()
             is AppendResult.AfterFactNotFound -> afterFactNotFound = afterFactNotFound { factId = this@toGrpcResponse.factId.uuid.toString() }

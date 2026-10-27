@@ -7,9 +7,17 @@ import jakarta.ws.rs.core.Response
  * Renders the specification's results as HTTP responses.
  */
 
+/**
+ * The header that marks the response of a replayed append.
+ */
+internal const val IDEMPOTENT_REPLAYED_HEADER = "Idempotent-Replayed"
+
 internal fun AppendResult.toResponse(): Response = when (this) {
-    is AppendResult.Appended -> Response.ok(AppendedHttp(factIds.map { it.uuid }, appendedAt)).build()
-    is AppendResult.AlreadyApplied -> Response.ok().build()
+    is AppendResult.Appended -> Response.ok(AppendedHttp(facts.map { it.toHttp() })).build()
+    is AppendResult.AlreadyApplied -> Response.ok(AppendedHttp(facts.map { it.toHttp() }))
+        .header(IDEMPOTENT_REPLAYED_HEADER, true)
+        .build()
+    is AppendResult.IdempotencyKeyReused -> idempotencyKeyReusedError(idempotencyKey)
     is AppendResult.AppendConditionViolated -> appendConditionViolatedError()
     is AppendResult.StoreNotFound -> storeNotFoundError(storeName)
     is AppendResult.AfterFactNotFound -> afterFactNotFoundError(factId)

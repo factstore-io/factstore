@@ -73,7 +73,7 @@ val result = store.append(
         payload = """{"username": "Alice"}""".toFactPayload(),
     ),
 )
-val factId = (result as AppendResult.Appended).factIds.single()
+val factId = (result as AppendResult.Appended).facts.single().id
 
 // Find a fact by its id
 val found = store.findFactById(FindFactByIdRequest(storeName, factId))
@@ -94,7 +94,8 @@ val stream = store.streamFacts(
 ### Internal Data Structures
 
 - **stores**: Map of StoreName → MemoryStore, one entry per store
-- **MemoryStore**: a store's metadata, its facts in append order, the idempotency keys it has seen,
+- **MemoryStore**: a store's metadata, its facts in append order, what each idempotency key applied
+  (the request's fingerprint and the facts it stored),
   and its head (the number of facts) as a `MutableStateFlow` that subscriptions watch
 
 ### Lock Strategy

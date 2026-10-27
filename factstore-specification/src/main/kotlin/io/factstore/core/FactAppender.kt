@@ -1,6 +1,5 @@
 package io.factstore.core
 
-import java.time.Instant
 import java.util.UUID
 
 /**
@@ -61,6 +60,17 @@ suspend fun FactAppender.append(storeName: StoreName, facts: List<FactInput>): A
  * Idempotency keys allow append operations to be safely retried. If an append
  * request with the same idempotency key is processed more than once, the
  * FactStore guarantees that the facts are appended at most once.
+ *
+ * A key belongs to the store it was used with, and is kept for as long as that store exists. It
+ * records the facts its append stored and the [AppendFingerprint] of the request, so that:
+ *
+ * - a retry of the same request returns [AppendResult.AlreadyApplied] with the facts the first
+ *   attempt stored, whatever the store holds by now;
+ * - a different request under a used key returns [AppendResult.IdempotencyKeyReused] and appends
+ *   nothing.
+ *
+ * Only an applied append uses up its key. An append that is rejected, or whose condition is not
+ * satisfied, stores nothing, so its key stays free.
  *
  * @property uuid the underlying UUID value
  *
@@ -213,6 +223,11 @@ sealed interface AppendCondition {
  * They do not represent invalid requests or invariant violations, which are
  * reported via exceptions.
  *
+ * The outcomes take precedence in this order: [StoreNotFound], then the outcomes of a used
+ * idempotency key ([AlreadyApplied], [IdempotencyKeyReused]), then [AfterFactNotFound], then
+ * [AppendConditionViolated]. A used key is judged before the condition because the facts of the
+ * first attempt are usually what makes its condition fail on a retry.
+ *
  * @author Domenic Cassisi
  */
 sealed interface AppendResult {
@@ -221,22 +236,32 @@ sealed interface AppendResult {
      * Indicates that the append operation was successfully applied and the
      * provided facts were persisted.
      *
-     * @property factIds the identifiers assigned by the store to the appended
-     *         facts, in the same order as the [AppendRequest.facts] they were
-     *         materialized from (`factIds[i]` corresponds to the i-th input fact)
-     * @property appendedAt the ingestion timestamp assigned to the appended
-     *         facts; all facts in a single append share this instant
+     * @property facts the stored facts, as a stream or a lookup would return them, in the same
+     *         order as the [AppendRequest.facts] they were materialized from; they share one
+     *         [Fact.appendedAt]
      */
-    data class Appended(
-        val factIds: List<FactId>,
-        val appendedAt: Instant,
-    ) : AppendResult
+    data class Appended(val facts: List<Fact>) : AppendResult
 
     /**
-     * Indicates that an append request with the same idempotency key was already
-     * processed and the facts were not appended again.
+     * Indicates that the same request was already applied under its idempotency key, and nothing
+     * was appended again.
+     *
+     * This is how a retry learns the outcome of an attempt whose response it lost.
+     *
+     * @property facts the facts the first attempt stored, exactly as [Appended] returned them
      */
-    data object AlreadyApplied : AppendResult
+    data class AlreadyApplied(val facts: List<Fact>) : AppendResult
+
+    /**
+     * Indicates that the append operation was not applied because its idempotency key was used
+     * by a different request: one whose [AppendFingerprint] differs.
+     *
+     * A key identifies one request, so this is a mistake of the caller, such as a key reused
+     * across appends; the request needs a key of its own.
+     *
+     * @property idempotencyKey the key that was reused
+     */
+    data class IdempotencyKeyReused(val idempotencyKey: IdempotencyKey) : AppendResult
 
     /**
      * Indicates that the append operation was not applied because the specified

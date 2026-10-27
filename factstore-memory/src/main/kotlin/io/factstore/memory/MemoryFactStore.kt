@@ -18,16 +18,19 @@ import java.time.Instant
  */
 class MemoryFactStore : FactStore {
 
-    /** One store: its metadata, its facts in append order, and the idempotency keys it has seen. */
+    /** One store: its metadata, its facts in append order, and the appends its idempotency keys applied. */
     private class MemoryStore(val metadata: StoreMetadata) {
 
         val facts = mutableListOf<Fact>()
 
-        val idempotencyKeys = mutableSetOf<IdempotencyKey>()
+        val appliedAppends = mutableMapOf<IdempotencyKey, AppliedAppend>()
 
         /** The number of facts, which subscriptions watch to learn that facts were appended. */
         val head = MutableStateFlow(0)
     }
+
+    /** What an idempotency key applied: the fingerprint of its request and the facts it stored. */
+    private class AppliedAppend(val fingerprint: AppendFingerprint, val facts: List<Fact>)
 
     private val stores = mutableMapOf<StoreName, MemoryStore>()
 
@@ -72,7 +75,11 @@ class MemoryFactStore : FactStore {
     override suspend fun append(request: AppendRequest): AppendResult = lock.withLock {
         val store = stores[request.storeName] ?: return AppendResult.StoreNotFound(request.storeName)
 
-        if (request.idempotencyKey in store.idempotencyKeys) return AppendResult.AlreadyApplied
+        val fingerprint = request.fingerprint()
+        store.appliedAppends[request.idempotencyKey]?.let { applied ->
+            return if (applied.fingerprint == fingerprint) AppendResult.AlreadyApplied(applied.facts)
+            else AppendResult.IdempotencyKeyReused(request.idempotencyKey)
+        }
 
         // A condition naming a fact the store does not have cannot be judged at all
         request.condition.afterFactIds()
@@ -84,10 +91,10 @@ class MemoryFactStore : FactStore {
         val appendedAt = Instant.now()
         val facts = request.facts.map { it.toFact(FactId.generate(), appendedAt) }
         store.facts += facts
-        store.idempotencyKeys += request.idempotencyKey
+        store.appliedAppends[request.idempotencyKey] = AppliedAppend(fingerprint, facts)
         store.head.value = store.facts.size
 
-        AppendResult.Appended(facts.map { it.id }, appendedAt)
+        AppendResult.Appended(facts)
     }
 
     /** Whether the condition holds for this store's facts as they are now. Must be called while holding [lock]. */

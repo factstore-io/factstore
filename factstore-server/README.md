@@ -94,6 +94,17 @@ curl -X POST http://localhost:8080/api/v1/stores/default/facts \
   }'
 ```
 
+The response holds the stored facts, as a read returns them, in the order they were sent.
+
+An optional `idempotencyKey` (a UUID) makes the append safe to retry. Keys belong to their store
+and are kept for as long as it exists:
+
+- **The same request again** responds with the facts the first attempt stored, and the header
+  `Idempotent-Replayed: true`. Nothing is appended again.
+- **A different request under a used key** responds with `422` and reason `IdempotencyKeyReused`,
+  and appends nothing. Requests are compared by their facts, in order, and their condition.
+- **A rejected append**, such as one whose condition fails, does not use up its key.
+
 ### 2. Retrieve Fact by ID
 
 Retrieve a single fact by its ID.
@@ -388,9 +399,9 @@ grpcurl -plaintext \
   localhost:8080 io.factstore.server.grpc.FactService/AppendFacts
 ```
 
-Outcomes: `appended` · `already_applied` · `condition_violated` · `duplicate_fact_ids` (with IDs) · `store_not_found`
+Outcomes: `appended` (with the stored facts) · `already_applied` (with the facts the first attempt stored) · `idempotency_key_reused` · `condition_violated` · `after_fact_not_found` · `store_not_found`
 
-An optional `idempotency_key` (UUID string) makes the operation safe to retry. An optional `condition` enables conditional appends — see the proto file for the available condition types.
+An optional `idempotency_key` (UUID string) makes the operation safe to retry: the same request under a used key returns `already_applied`, a different one `idempotency_key_reused`. An optional `condition` enables conditional appends — see the proto file for the available condition types.
 
 #### GetFact
 
@@ -507,11 +518,12 @@ Every operation returns a response message with a `oneof outcome` field. Each ca
 For example, `AppendFactsResponse` looks like this conceptually:
 
 ```
-outcome = appended            {}
-        | already_applied     {}
-        | condition_violated  {}
-        | duplicate_fact_ids  { fact_ids: [string] }
-        | store_not_found     { store_name: string }
+outcome = appended                { facts: [Fact] }
+        | already_applied         { facts: [Fact] }
+        | idempotency_key_reused  { idempotency_key: string }
+        | condition_violated      {}
+        | after_fact_not_found    { fact_id: string }
+        | store_not_found         { store_name: string }
 ```
 
 Inspect the full definitions in the proto file to see all outcome types and their fields.
