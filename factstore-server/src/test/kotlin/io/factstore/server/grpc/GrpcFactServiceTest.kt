@@ -59,14 +59,37 @@ class GrpcFactServiceTest {
         })
 
         assertThat(response.hasAppended()).isTrue()
+        val fact = response.appended.factsList.single()
+        assertThat(fact.subject).isEqualTo(SUBJECT)
+        assertThat(fact.tagsMap).containsEntry("region", "eu")
 
-        seedFactId = response.appended.factIdsList.single()
+        seedFactId = fact.id
     }
 
     @Test
     @Order(2)
-    @DisplayName("AppendFacts - should return AlreadyApplied when idempotency key was already used")
+    @DisplayName("AppendFacts - should return AlreadyApplied with the stored facts when the same request is retried")
     fun appendFactsAlreadyApplied(): Unit = runBlocking {
+        val ikey = seedIdempotencyKey
+        val response = factService.appendFacts(appendFactsRequest {
+            storeName = STORE
+            idempotencyKey = ikey
+            facts += factInput {
+                type = "order.created"
+                subject = SUBJECT
+                payload = factPayload { data = ByteString.copyFromUtf8("{}") }
+                tags["region"] = "eu"
+            }
+        })
+
+        assertThat(response.hasAlreadyApplied()).isTrue()
+        assertThat(response.alreadyApplied.factsList.single().id).isEqualTo(seedFactId)
+    }
+
+    @Test
+    @Order(2)
+    @DisplayName("AppendFacts - should return IdempotencyKeyReused when a different request uses the key")
+    fun appendFactsIdempotencyKeyReused(): Unit = runBlocking {
         val ikey = seedIdempotencyKey
         val response = factService.appendFacts(appendFactsRequest {
             storeName = STORE
@@ -78,7 +101,8 @@ class GrpcFactServiceTest {
             }
         })
 
-        assertThat(response.hasAlreadyApplied()).isTrue()
+        assertThat(response.hasIdempotencyKeyReused()).isTrue()
+        assertThat(response.idempotencyKeyReused.idempotencyKey).isEqualTo(ikey)
     }
 
     @Test

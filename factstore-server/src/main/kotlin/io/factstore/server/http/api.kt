@@ -35,8 +35,7 @@ data class FactInputHttp(
 )
 
 data class AppendedHttp(
-    val factIds: List<UUID>,
-    val appendedAt: Instant,
+    val facts: List<FactHttp>,
 )
 
 @JsonTypeInfo(

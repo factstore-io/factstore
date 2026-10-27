@@ -4,11 +4,11 @@ import io.factstore.client.exceptions.AfterFactNotFoundException
 import io.factstore.client.exceptions.AppendConditionViolatedException
 import io.factstore.client.exceptions.ContinuationNotFoundException
 import io.factstore.client.exceptions.FactNotFoundException
+import io.factstore.client.exceptions.IdempotencyKeyReusedException
 import io.factstore.client.exceptions.StoreNotFoundException
 import io.factstore.client.internal.grpcCall
 import io.factstore.client.internal.toModel
 import io.factstore.client.internal.toFactStoreException
-import io.factstore.client.internal.toInstant
 import io.factstore.client.internal.toProto
 import io.factstore.client.internal.withCallTimeout
 import io.factstore.client.model.AppendCondition
@@ -55,11 +55,12 @@ class FactOperations internal constructor(
             condition?.let { this.condition = it.toProto() }
         })
         when (response.outcomeCase) {
-            AppendFactsResponse.OutcomeCase.APPENDED -> AppendOutcome.Appended(
-                factIds = response.appended.factIdsList.toList(),
-                appendedAt = response.appended.appendedAt.toInstant(),
-            )
-            AppendFactsResponse.OutcomeCase.ALREADY_APPLIED -> AppendOutcome.AlreadyApplied
+            AppendFactsResponse.OutcomeCase.APPENDED ->
+                AppendOutcome.Appended(response.appended.factsList.map { it.toModel() })
+            AppendFactsResponse.OutcomeCase.ALREADY_APPLIED ->
+                AppendOutcome.AlreadyApplied(response.alreadyApplied.factsList.map { it.toModel() })
+            AppendFactsResponse.OutcomeCase.IDEMPOTENCY_KEY_REUSED ->
+                throw IdempotencyKeyReusedException(response.idempotencyKeyReused.idempotencyKey)
             AppendFactsResponse.OutcomeCase.CONDITION_VIOLATED -> throw AppendConditionViolatedException()
             AppendFactsResponse.OutcomeCase.STORE_NOT_FOUND -> throw StoreNotFoundException(storeName)
             AppendFactsResponse.OutcomeCase.AFTER_FACT_NOT_FOUND ->

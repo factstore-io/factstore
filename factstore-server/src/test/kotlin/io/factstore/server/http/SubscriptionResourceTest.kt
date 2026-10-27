@@ -177,6 +177,6 @@ class SubscriptionResourceTest {
             .post("/api/v1/stores/$store/facts")
             .then().statusCode(200)
             .extract().`as`(AppendedHttp::class.java)
-        return appended.factIds.single()
+        return appended.facts.single().id
     }
 }

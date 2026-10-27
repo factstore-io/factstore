@@ -8,6 +8,7 @@ import com.apple.foundationdb.Transaction
 import com.apple.foundationdb.subspace.Subspace
 import com.apple.foundationdb.tuple.Tuple
 import com.apple.foundationdb.tuple.Versionstamp
+import io.factstore.core.AppendFingerprint
 import io.factstore.core.FactId
 import io.factstore.core.StoreId
 import io.factstore.core.StoreMetadata
@@ -35,7 +36,7 @@ import java.util.concurrent.CompletableFuture
  *  (103, storeId, subject, versionstamp)                  = (factId)
  *  (105, storeId, tagKey, tagValue, versionstamp)         = (factId)
  *  (106, storeId, type, tagKey, tagValue, versionstamp)   = (factId)
- *  (200, storeId, idempotencyKey)                         = empty
+ *  (200, storeId, idempotencyKey)                         = (versionstamp, fact count, fingerprint)
  * ```
  */
 
@@ -49,8 +50,6 @@ private const val SUBJECT_INDEX = 103
 private const val TAGS_INDEX = 105
 private const val TAGS_TYPE_INDEX = 106
 private const val IDEMPOTENCY_KEYS = 200
-
-private val EMPTY_BYTE_ARRAY = ByteArray(0)
 
 /** Where FactStore keeps its keys: one subspace per kind of record, all under [root]. */
 internal class FdbKeyspace(root: Subspace) {
@@ -146,6 +145,13 @@ internal class FactSubspace(private val subspace: Subspace) {
             Tuple.from(storeId.uuid, incompleteVersionstamp)
         )
         tr.mutate(SET_VERSIONSTAMPED_KEY, globalPositionKey, serializedFact)
+    }
+
+    /** The serialized facts of one append: the [count] positions starting at [first], in order. */
+    context(tr: ReadTransaction)
+    suspend fun factsAppendedTogether(storeId: StoreId, first: FactPosition, count: Int): List<ByteArray> {
+        val end = Versionstamp.complete(first.transactionVersion, first.userVersion + count)
+        return tr.getRange(keyOf(storeId, first), keyOf(storeId, end)).asList().await().map { it.value }
     }
 
     fun keyOf(storeId: StoreId, position: FactPosition): ByteArray =
@@ -259,20 +265,46 @@ internal class TagsTypeIndexSubspace(private val subspace: Subspace) {
 
 }
 
+/**
+ * What an idempotency key applied: the facts its append stored, and the fingerprint of its request.
+ *
+ * The facts of one append share the transaction's versionstamp and are told apart by their index
+ * as user version, so they are the [factCount] positions starting at [firstPosition].
+ */
+internal class AppliedAppend(
+    val firstPosition: FactPosition,
+    val factCount: Int,
+    val fingerprint: AppendFingerprint,
+)
+
 internal class IdempotencySubspace(private val subspace: Subspace) {
 
-    fun keyOf(storeId: StoreId, idempotencyKey: IdempotencyKey): ByteArray =
-        subspace.pack(Tuple.from(storeId.uuid, idempotencyKey.uuid))
+    /** What the key applied in the store, or `null` if the key was not used there. */
+    context(tr: ReadTransaction)
+    suspend fun appliedAppendOf(storeId: StoreId, idempotencyKey: IdempotencyKey): AppliedAppend? =
+        tr[keyOf(storeId, idempotencyKey)].await()?.let { value ->
+            val tuple = Tuple.fromBytes(value)
+            AppliedAppend(
+                firstPosition = tuple.getVersionstamp(0),
+                factCount = tuple.getLong(1).toInt(),
+                fingerprint = AppendFingerprint(tuple.getBytes(2)),
+            )
+        }
 
+    /** Records that the key applied the [factCount] facts this transaction appends. */
     context(tr: Transaction)
-    fun save(storeId: StoreId, idempotencyKey: IdempotencyKey) {
-        tr[keyOf(storeId, idempotencyKey)] = EMPTY_BYTE_ARRAY
+    fun save(storeId: StoreId, idempotencyKey: IdempotencyKey, factCount: Int, fingerprint: AppendFingerprint) {
+        val value = Tuple.from(Versionstamp.incomplete(0), factCount, fingerprint.toByteArray()).packWithVersionstamp()
+        tr.mutate(SET_VERSIONSTAMPED_VALUE, keyOf(storeId, idempotencyKey), value)
     }
 
     context(tr: Transaction)
     fun clear(storeId: StoreId) {
         tr.clear(subspace.rangeOf(storeId))
     }
+
+    private fun keyOf(storeId: StoreId, idempotencyKey: IdempotencyKey): ByteArray =
+        subspace.pack(Tuple.from(storeId.uuid, idempotencyKey.uuid))
 
 }
 

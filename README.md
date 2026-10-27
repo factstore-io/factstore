@@ -40,10 +40,12 @@ curl -X POST http://localhost:8080/api/v1/stores/orders/facts \
       }]}"
 ```
 
-That returns the id of the fact you just appended:
+That returns the fact you just appended, with the id and time the store gave it:
 
 ```json
-{"factIds":["5dd94f99-e094-449b-b957-69a8354ee9a1"],"appendedAt":"2026-08-02T12:38:14Z"}
+{"facts":[{"id":"5dd94f99-e094-449b-b957-69a8354ee9a1","type":"ORDER_PLACED","subject":"order/12345",
+  "appendedAt":"2026-08-02T12:38:14Z","payload":{"data":"eyJvcmRlcklkIjoiMTIzNDUiLCJ0b3RhbCI6NDIuNTB9"},
+  "metadata":{},"tags":{"region":"eu"}}]}
 ```
 
 Now read it back — either by its subject, or by any tag it carries:

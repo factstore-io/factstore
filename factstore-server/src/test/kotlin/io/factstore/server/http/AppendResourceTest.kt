@@ -3,6 +3,7 @@ package io.factstore.server.http
 import io.quarkus.test.junit.QuarkusTest
 import io.restassured.RestAssured.given
 import io.restassured.http.ContentType
+import org.hamcrest.Matchers.nullValue
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
@@ -207,6 +208,69 @@ class AppendResourceTest {
             .statusCode(200)
             .extract().`as`(AppendedHttp::class.java)
 
-        assertThat(appended.factIds).hasSize(1)
+        assertThat(appended.facts).hasSize(1)
+    }
+
+    @Test
+    @Order(6)
+    @DisplayName("POST /v1/stores/{name}/facts - A retry returns the stored facts again, marked as replayed")
+    fun retryReturnsTheStoredFacts() {
+        val request = mapOf(
+            "idempotencyKey" to UUID.randomUUID(),
+            "facts" to listOf(mapOf("type" to "order.created", "subject" to "order-8", "payload" to mapOf("data" to "e30="), "tags" to mapOf("region" to "eu"))),
+        )
+
+        val first = given()
+            .pathParam("storeName", storeName)
+            .contentType(ContentType.JSON)
+            .body(request)
+            .post("/api/v1/stores/{storeName}/facts")
+            .then()
+            .statusCode(200)
+            .header(IDEMPOTENT_REPLAYED_HEADER, nullValue())
+            .extract().`as`(AppendedHttp::class.java)
+
+        assertThat(first.facts.single().subject).isEqualTo("order-8")
+        assertThat(first.facts.single().tags).containsEntry("region", "eu")
+
+        val retry = given()
+            .pathParam("storeName", storeName)
+            .contentType(ContentType.JSON)
+            .body(request)
+            .post("/api/v1/stores/{storeName}/facts")
+            .then()
+            .statusCode(200)
+            .header(IDEMPOTENT_REPLAYED_HEADER, "true")
+            .extract().`as`(AppendedHttp::class.java)
+
+        assertThat(retry).isEqualTo(first)
+    }
+
+    @Test
+    @Order(7)
+    @DisplayName("POST /v1/stores/{name}/facts - A key reused by a different request is answered with 422")
+    fun reusedKeyIsRejected() {
+        val idempotencyKey = UUID.randomUUID()
+        val fact = mapOf("type" to "order.created", "subject" to "order-9", "payload" to mapOf("data" to "e30="))
+
+        given()
+            .pathParam("storeName", storeName)
+            .contentType(ContentType.JSON)
+            .body(mapOf("idempotencyKey" to idempotencyKey, "facts" to listOf(fact)))
+            .post("/api/v1/stores/{storeName}/facts")
+            .then()
+            .statusCode(200)
+
+        val error = given()
+            .pathParam("storeName", storeName)
+            .contentType(ContentType.JSON)
+            .body(mapOf("idempotencyKey" to idempotencyKey, "facts" to listOf(fact + ("subject" to "order-10"))))
+            .post("/api/v1/stores/{storeName}/facts")
+            .then()
+            .statusCode(422)
+            .extract().`as`(ApiError::class.java)
+
+        assertThat(error.reason).isEqualTo(Reason.IdempotencyKeyReused)
+        assertThat(error.details).containsEntry("idempotencyKey", idempotencyKey.toString())
     }
 }

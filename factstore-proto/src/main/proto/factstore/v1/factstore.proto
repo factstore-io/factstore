@@ -216,7 +216,11 @@ message FactInput {
 message AppendFactsRequest {
   string store_name = 1;
   repeated FactInput facts = 2;
-  optional string idempotency_key = 3; // UUID; auto-generated if absent
+  // UUID; auto-generated if absent. A retry of the same request under the same key returns
+  // `already_applied` with the facts the first attempt stored; a different request under a used
+  // key returns `idempotency_key_reused` and appends nothing. Keys are kept for as long as their
+  // store exists.
+  optional string idempotency_key = 3;
   optional AppendCondition condition = 4;
 }
 
@@ -227,6 +231,7 @@ message AppendFactsResponse {
     ConditionViolated condition_violated = 3;
     StoreNotFound store_not_found = 4;
     AfterFactNotFound after_fact_not_found = 5;
+    IdempotencyKeyReused idempotency_key_reused = 6;
   }
 }
 
@@ -236,13 +241,23 @@ message AfterFactNotFound {
 }
 
 message FactsAppended {
-  // Ids assigned by the server to the appended facts, in the same order as the
-  // request's facts (fact_ids[i] corresponds to the i-th input fact).
-  repeated string fact_ids = 1;
-  // Shared ingestion timestamp assigned to all facts in this append.
-  google.protobuf.Timestamp appended_at = 2;
+  // The stored facts, as GetFact or a stream returns them, in the same order as the request's
+  // facts (facts[i] was made from the i-th input fact). They share one appended_at.
+  repeated Fact facts = 1;
 }
-message AlreadyApplied {}
+
+// The same request was applied under this idempotency key before; nothing was appended again.
+message AlreadyApplied {
+  // The facts the first attempt stored, exactly as FactsAppended returned them.
+  repeated Fact facts = 1;
+}
+
+// The idempotency key was used by a different request; nothing was appended. The request needs
+// a key of its own.
+message IdempotencyKeyReused {
+  string idempotency_key = 1;
+}
+
 message ConditionViolated {}
 
 // -- GetFact --

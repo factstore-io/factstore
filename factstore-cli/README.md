@@ -108,8 +108,10 @@ an append after an ambiguous failure — a timeout, say — may append the fact 
 key=$(uuidgen)
 factstore fact append --store orders --type ORDER_PLACED --subject order/1 --idempotency-key "$key" '{}'
 factstore fact append --store orders --type ORDER_PLACED --subject order/1 --idempotency-key "$key" '{}'
-# ℹ️ Append already applied; nothing was added.
+# ℹ️ Append already applied; nothing was added. Id: <the id of the first attempt>
 ```
+
+A key names one append: reusing it for a different fact is rejected, and nothing is appended.
 
 ### Reading facts
 

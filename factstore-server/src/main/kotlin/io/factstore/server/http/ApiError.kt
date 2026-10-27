@@ -1,6 +1,7 @@
 package io.factstore.server.http
 
 import io.factstore.core.FactId
+import io.factstore.core.IdempotencyKey
 import io.factstore.core.StoreName
 import jakarta.ws.rs.core.MediaType.APPLICATION_JSON
 import jakarta.ws.rs.core.Response
@@ -20,6 +21,7 @@ enum class Reason {
     NotFound,
     AlreadyExists,
     ConditionViolated,
+    IdempotencyKeyReused,
     InternalError,
 }
 
@@ -84,3 +86,16 @@ internal fun appendConditionViolatedError(): Response = apiErrorResponse(
     message = "The append condition was not satisfied.",
 )
 
+
+internal fun idempotencyKeyReusedError(idempotencyKey: IdempotencyKey): Response = apiErrorResponse(
+    status = UnprocessableContent,
+    reason = Reason.IdempotencyKeyReused,
+    message = "The idempotency key '${idempotencyKey.uuid}' was used by a different request.",
+    details = mapOf("idempotencyKey" to idempotencyKey.uuid.toString()),
+)
+
+private object UnprocessableContent : Response.StatusType {
+    override fun getStatusCode(): Int = 422
+    override fun getFamily(): Response.Status.Family = Response.Status.Family.CLIENT_ERROR
+    override fun getReasonPhrase(): String = "Unprocessable Content"
+}

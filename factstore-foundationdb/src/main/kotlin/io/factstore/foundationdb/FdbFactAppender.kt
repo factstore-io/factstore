@@ -24,25 +24,43 @@ private const val CONDITION_BATCH_SIZE = 256
 internal class FdbFactAppender(storage: FdbStorage) : FactAppender, FdbAccess by storage {
 
     /** Appends within one transaction, which FoundationDB retries as a whole on a conflict. */
-    override suspend fun append(request: AppendRequest): AppendResult = inTransaction {
-        val storeId = storeIdOf(request.storeName)
-            ?: return@inTransaction AppendResult.StoreNotFound(request.storeName)
+    override suspend fun append(request: AppendRequest): AppendResult {
+        val fingerprint = request.fingerprint()
+        return inTransaction {
+            val storeId = storeIdOf(request.storeName)
+                ?: return@inTransaction AppendResult.StoreNotFound(request.storeName)
 
-        val idempotencyKey = keyspace.idempotencySubspace.keyOf(storeId, request.idempotencyKey)
-        if (get(idempotencyKey).await() != null) return@inTransaction AppendResult.AlreadyApplied
+            keyspace.idempotencySubspace.appliedAppendOf(storeId, request.idempotencyKey)
+                ?.let { return@inTransaction it.replay(storeId, request.idempotencyKey, fingerprint) }
 
-        // A condition naming a fact the store does not have cannot be judged at all
-        val positions = request.condition.afterPositions(storeId)
-        positions.entries.firstOrNull { it.value == null }
-            ?.let { return@inTransaction AppendResult.AfterFactNotFound(it.key) }
+            // A condition naming a fact the store does not have cannot be judged at all
+            val positions = request.condition.afterPositions(storeId)
+            positions.entries.firstOrNull { it.value == null }
+                ?.let { return@inTransaction AppendResult.AfterFactNotFound(it.key) }
 
-        if (!request.condition.isSatisfied(storeId, positions)) return@inTransaction AppendResult.AppendConditionViolated
+            if (!request.condition.isSatisfied(storeId, positions)) return@inTransaction AppendResult.AppendConditionViolated
 
-        val appendedAt = Instant.now()
-        val facts = request.facts.map { it.toFact(FactId.generate(), appendedAt) }
-        storeFacts(storeId, facts)
-        keyspace.idempotencySubspace.save(storeId, request.idempotencyKey)
-        AppendResult.Appended(facts.map { it.id }, appendedAt)
+            val appendedAt = Instant.now()
+            val facts = request.facts.map { it.toFact(FactId.generate(), appendedAt) }
+            storeFacts(storeId, facts)
+            keyspace.idempotencySubspace.save(storeId, request.idempotencyKey, facts.size, fingerprint)
+            AppendResult.Appended(facts)
+        }
+    }
+
+    /**
+     * The outcome of a request under a key that was used already: the facts the key appended if
+     * the request is the same, or a reused key if it is not.
+     */
+    context(tr: Transaction)
+    private suspend fun AppliedAppend.replay(
+        storeId: StoreId,
+        idempotencyKey: IdempotencyKey,
+        fingerprint: AppendFingerprint,
+    ): AppendResult {
+        if (this.fingerprint != fingerprint) return AppendResult.IdempotencyKeyReused(idempotencyKey)
+        val facts = keyspace.factSubspace.factsAppendedTogether(storeId, firstPosition, factCount)
+        return AppendResult.AlreadyApplied(facts.map { it.toSerializableFdbFact().toFact() })
     }
 
     /**

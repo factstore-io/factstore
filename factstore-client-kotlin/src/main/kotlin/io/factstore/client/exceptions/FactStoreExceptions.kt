@@ -24,6 +24,10 @@ class AppendConditionViolatedException :
 class AfterFactNotFoundException(val factId: String) :
     FactStoreException("The fact '$factId' the append condition checks after does not exist")
 
+/** The idempotency key was used by a different append; nothing was appended. */
+class IdempotencyKeyReusedException(val idempotencyKey: String) :
+    FactStoreException("The idempotency key '$idempotencyKey' was used by a different append")
+
 // ─── Request errors ──────────────────────────────────────────────────────────
 
 /** The server rejected the request as invalid (gRPC INVALID_ARGUMENT); retrying it unchanged fails again. */
