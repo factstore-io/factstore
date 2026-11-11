@@ -51,7 +51,7 @@ class CreateStoreTest {
 
     private suspend fun DecisionResult<SystemFact, FactId>.recordedFacts(): List<SystemFact> {
         assertThat(this).isInstanceOf(DecisionResult.Recorded::class.java)
-        return (this as DecisionResult.Recorded).facts.map { (fact, _) -> fact }.toList()
+        return (this as DecisionResult.Recorded).facts.map { it.fact }.toList()
     }
 
     private suspend fun FactLog.storeFactsIn(storeId: StoreId): List<SystemFact> {

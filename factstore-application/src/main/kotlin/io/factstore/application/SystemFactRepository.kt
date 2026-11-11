@@ -19,7 +19,7 @@ class SystemFactRepository(
     private val factIdGenerator: FactIdGenerator = FactIdGenerator(FactId::generate),
 ) : FactRepository<SystemFact, LogQuery, LogCondition, FactId> {
 
-    override fun fetch(query: LogQuery): Flow<Pair<SystemFact, FactId>> = log.read(query).map { it.fact.decoded() }
+    override fun fetch(query: LogQuery): Flow<VersionedFact<SystemFact, FactId>> = log.read(query).map { it.fact.decoded() }
 
     override suspend fun save(facts: Flow<SystemFact>, condition: LogCondition): SaveResult<SystemFact, FactId> {
         val appendedAt = clock.instant()
@@ -31,5 +31,5 @@ class SystemFactRepository(
         }
     }
 
-    private fun Fact.decoded(): Pair<SystemFact, FactId> = SystemFactCodec.decode(this) to id
+    private fun Fact.decoded(): VersionedFact<SystemFact, FactId> = VersionedFact(SystemFactCodec.decode(this), id)
 }

@@ -6,7 +6,7 @@ import kotlinx.coroutines.flow.fold
 
 sealed interface DecisionResult<out F, out V> {
 
-    class Recorded<F, V>(val facts: Flow<Pair<F, V>>) : DecisionResult<F, V>
+    class Recorded<F, V>(val facts: Flow<VersionedFact<F, V>>) : DecisionResult<F, V>
 
     data object ConditionViolated : DecisionResult<Nothing, Nothing>
 }
@@ -27,7 +27,7 @@ private fun <F, V> SaveResult<F, V>.toDecisionResult(): DecisionResult<F, V> = w
 private data class FoldedRead<S, V>(val state: S, val version: V?)
 
 // The state and the version come from one collection: a second one could read newer facts.
-private suspend fun <S, F, V> Flow<Pair<F, V>>.foldInto(decider: IDecider<*, S, F>): FoldedRead<S, V> =
+private suspend fun <S, F, V> Flow<VersionedFact<F, V>>.foldInto(decider: IDecider<*, S, F>): FoldedRead<S, V> =
     fold(
         initial = FoldedRead(state = decider.initialState, version = null),
     ) { read, (fact, version) ->
