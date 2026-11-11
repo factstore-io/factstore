@@ -12,6 +12,6 @@ class FactStoreApplication(
     private val storeIdGenerator: StoreIdGenerator = StoreIdGenerator(StoreId::generate),
 ) {
 
-    suspend fun createStore(storeName: StoreName): DecisionResult<SystemFact, FactId> =
-        createStoreSlice.handle(CreateStore(storeIdGenerator.generate(), storeName))
+    suspend fun createStore(storeName: StoreName, idempotency: Idempotency): DecisionResult<SystemFact, FactId> =
+        createStoreSlice.handle(CreateStore(storeIdGenerator.generate(), storeName), idempotency)
 }

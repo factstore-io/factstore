@@ -5,6 +5,8 @@ import io.factstore.core.FactInput
 import io.factstore.core.FactPayload
 import io.factstore.core.FactQueryItem
 import io.factstore.core.FactType
+import io.factstore.core.Fingerprint
+import io.factstore.core.IdempotencyKey
 import io.factstore.core.StoreId
 import io.factstore.core.Subject
 import io.factstore.core.toFact
@@ -37,16 +39,25 @@ abstract class FactLogContractTest {
     private fun ofType(type: FactType, storeIds: List<StoreId>) =
         LogQuery(storeIds.map { LogQueryItem(it, FactQueryItem(types = setOf(type))) })
 
+    private val requestA = Fingerprint("request-a")
+    private val requestB = Fingerprint("request-b")
+
+    private fun freshKey(scope: StoreId = s1) = LogIdempotency(scope, IdempotencyKey.generate(), requestA)
+
     private suspend fun LogAppendResult.appended(): List<LogFact> = (this as LogAppendResult.Appended).facts.toList()
 
+    private suspend fun LogAppendResult.alreadyAppended(): List<LogFact> = (this as LogAppendResult.AlreadyAppended).facts.toList()
+
+    private suspend fun allOrdersPlaced(): List<LogFact> = log.read(ofType(orderPlaced, listOf(s1, s2))).toList()
+
     private suspend fun appendUnconditionally(storeId: StoreId, type: FactType): LogFact =
-        (log.append(flowOf(fact(storeId, type)), LogCondition.None) as LogAppendResult.Appended).facts.single()
+        (log.append(flowOf(fact(storeId, type)), LogCondition.None, freshKey()) as LogAppendResult.Appended).facts.single()
 
     @Test
     fun `stores facts exactly as given and reads them back in order`(): Unit = runBlocking {
         val given = listOf(fact(s1, orderPlaced), fact(s1, orderPlaced))
 
-        val appended = log.append(given.asFlow(), LogCondition.None).appended()
+        val appended = log.append(given.asFlow(), LogCondition.None, freshKey()).appended()
 
         assertThat(appended).isEqualTo(given)
         assertThat(log.read(ofType(orderPlaced, listOf(s1))).toList()).isEqualTo(given)
@@ -54,7 +65,7 @@ abstract class FactLogContractTest {
 
     @Test
     fun `appends nothing for no facts`(): Unit = runBlocking {
-        val appended = log.append(emptyFlow(), LogCondition.None).appended()
+        val appended = log.append(emptyFlow(), LogCondition.None, freshKey()).appended()
 
         assertThat(appended).isEmpty()
         assertThat(log.read(ofType(orderPlaced, listOf(s1))).toList()).isEmpty()
@@ -67,7 +78,7 @@ abstract class FactLogContractTest {
             error("The facts could not be produced.")
         }
 
-        assertThatThrownBy { runBlocking { log.append(failing, LogCondition.None) } }
+        assertThatThrownBy { runBlocking { log.append(failing, LogCondition.None, freshKey()) } }
             .isInstanceOf(IllegalStateException::class.java)
         assertThat(log.read(ofType(orderPlaced, listOf(s1))).toList()).isEmpty()
     }
@@ -110,7 +121,7 @@ abstract class FactLogContractTest {
 
     @Test
     fun `appends to several stores together`(): Unit = runBlocking {
-        val appended = log.append(flowOf(fact(s1, orderPlaced), fact(s2, orderShipped)), LogCondition.None).appended()
+        val appended = log.append(flowOf(fact(s1, orderPlaced), fact(s2, orderShipped)), LogCondition.None, freshKey()).appended()
 
         assertThat(log.read(ofType(orderPlaced, listOf(s1))).toList()).containsExactly(appended[0])
         assertThat(log.read(ofType(orderShipped, listOf(s2))).toList()).containsExactly(appended[1])
@@ -121,7 +132,7 @@ abstract class FactLogContractTest {
         val last = appendUnconditionally(s1, orderPlaced)
         appendUnconditionally(s1, orderPlaced)
 
-        val result = log.append(flowOf(fact(s1, orderPlaced)), LogCondition.NoneMatch(ofType(orderPlaced, listOf(s1)), last.fact.id))
+        val result = log.append(flowOf(fact(s1, orderPlaced)), LogCondition.NoneMatch(ofType(orderPlaced, listOf(s1)), last.fact.id), freshKey())
 
         assertThat(result).isEqualTo(LogAppendResult.ConditionViolated)
     }
@@ -130,7 +141,7 @@ abstract class FactLogContractTest {
     fun `rejects an append that expects no matching fact when there is one`(): Unit = runBlocking {
         appendUnconditionally(s1, orderPlaced)
 
-        val result = log.append(flowOf(fact(s1, orderPlaced)), LogCondition.NoneMatch(ofType(orderPlaced, listOf(s1)), after = null))
+        val result = log.append(flowOf(fact(s1, orderPlaced)), LogCondition.NoneMatch(ofType(orderPlaced, listOf(s1)), after = null), freshKey())
 
         assertThat(result).isEqualTo(LogAppendResult.ConditionViolated)
     }
@@ -141,7 +152,7 @@ abstract class FactLogContractTest {
         appendUnconditionally(s1, orderShipped)
         appendUnconditionally(s2, orderPlaced)
 
-        val result = log.append(flowOf(fact(s1, orderPlaced)), LogCondition.NoneMatch(ofType(orderPlaced, listOf(s1)), first.fact.id))
+        val result = log.append(flowOf(fact(s1, orderPlaced)), LogCondition.NoneMatch(ofType(orderPlaced, listOf(s1)), first.fact.id), freshKey())
 
         assertThat(result).isInstanceOf(LogAppendResult.Appended::class.java)
     }
@@ -150,8 +161,107 @@ abstract class FactLogContractTest {
     fun `reports a fact to read after that the log does not hold`(): Unit = runBlocking {
         val unknown = FactId.generate()
 
-        val result = log.append(flowOf(fact(s1, orderPlaced)), LogCondition.NoneMatch(ofType(orderPlaced, listOf(s1)), unknown))
+        val result = log.append(flowOf(fact(s1, orderPlaced)), LogCondition.NoneMatch(ofType(orderPlaced, listOf(s1)), unknown), freshKey())
 
         assertThat(result).isEqualTo(LogAppendResult.AfterFactNotFound(unknown))
+    }
+
+    @Test
+    fun `replays the facts first appended under a key, and appends nothing again`(): Unit = runBlocking {
+        val key = freshKey()
+        val first = log.append(flowOf(fact(s1, orderPlaced)), LogCondition.None, key).appended()
+
+        val retry = log.append(flowOf(fact(s1, orderPlaced)), LogCondition.None, key)
+
+        assertThat(retry.alreadyAppended()).isEqualTo(first)
+        assertThat(allOrdersPlaced()).isEqualTo(first)
+    }
+
+    @Test
+    fun `replays a used key before it checks the condition`(): Unit = runBlocking {
+        val key = freshKey()
+        val first = log.append(flowOf(fact(s1, orderPlaced)), LogCondition.None, key).appended()
+
+        val noOrderPlaced = LogCondition.NoneMatch(ofType(orderPlaced, listOf(s1)), after = null)
+        val retry = log.append(flowOf(fact(s1, orderPlaced)), noOrderPlaced, key)
+
+        assertThat(retry.alreadyAppended()).isEqualTo(first)
+    }
+
+    @Test
+    fun `replays a used key before it looks for the fact to read after`(): Unit = runBlocking {
+        val key = freshKey()
+        val first = log.append(flowOf(fact(s1, orderPlaced)), LogCondition.None, key).appended()
+
+        val afterUnknown = LogCondition.NoneMatch(ofType(orderPlaced, listOf(s1)), FactId.generate())
+        val retry = log.append(flowOf(fact(s1, orderPlaced)), afterUnknown, key)
+
+        assertThat(retry.alreadyAppended()).isEqualTo(first)
+    }
+
+    @Test
+    fun `rejects a used key with another fingerprint, and appends nothing`(): Unit = runBlocking {
+        val key = freshKey()
+        val first = log.append(flowOf(fact(s1, orderPlaced)), LogCondition.None, key).appended()
+
+        val result = log.append(flowOf(fact(s1, orderPlaced)), LogCondition.None, key.copy(fingerprint = requestB))
+
+        assertThat(result).isEqualTo(LogAppendResult.IdempotencyKeyReused(key.key))
+        assertThat(allOrdersPlaced()).isEqualTo(first)
+    }
+
+    @Test
+    fun `rejects a used key with another fingerprint before it checks the condition`(): Unit = runBlocking {
+        val key = freshKey()
+        log.append(flowOf(fact(s1, orderPlaced)), LogCondition.None, key)
+
+        val noOrderPlaced = LogCondition.NoneMatch(ofType(orderPlaced, listOf(s1)), after = null)
+        val result = log.append(flowOf(fact(s1, orderPlaced)), noOrderPlaced, key.copy(fingerprint = requestB))
+
+        assertThat(result).isEqualTo(LogAppendResult.IdempotencyKeyReused(key.key))
+    }
+
+    @Test
+    fun `leaves a key free when the condition is violated`(): Unit = runBlocking {
+        appendUnconditionally(s1, orderPlaced)
+        val key = freshKey()
+        val noOrderPlaced = LogCondition.NoneMatch(ofType(orderPlaced, listOf(s1)), after = null)
+        log.append(flowOf(fact(s1, orderPlaced)), noOrderPlaced, key)
+
+        val result = log.append(flowOf(fact(s1, orderPlaced)), LogCondition.None, key.copy(fingerprint = requestB))
+
+        assertThat(result).isInstanceOf(LogAppendResult.Appended::class.java)
+    }
+
+    @Test
+    fun `leaves a key free when it appends no facts`(): Unit = runBlocking {
+        val key = freshKey()
+        log.append(emptyFlow(), LogCondition.None, key)
+
+        val result = log.append(flowOf(fact(s1, orderPlaced)), LogCondition.None, key.copy(fingerprint = requestB))
+
+        assertThat(result).isInstanceOf(LogAppendResult.Appended::class.java)
+    }
+
+    @Test
+    fun `leaves a key free when the facts fail while they are collected`(): Unit = runBlocking {
+        val key = freshKey()
+        val failing = flow<LogFact> { error("The facts could not be produced.") }
+        assertThatThrownBy { runBlocking { log.append(failing, LogCondition.None, key) } }
+            .isInstanceOf(IllegalStateException::class.java)
+
+        val result = log.append(flowOf(fact(s1, orderPlaced)), LogCondition.None, key.copy(fingerprint = requestB))
+
+        assertThat(result).isInstanceOf(LogAppendResult.Appended::class.java)
+    }
+
+    @Test
+    fun `keeps keys apart by scope`(): Unit = runBlocking {
+        val key = freshKey(scope = s1)
+        log.append(flowOf(fact(s1, orderPlaced)), LogCondition.None, key)
+
+        val result = log.append(flowOf(fact(s2, orderPlaced)), LogCondition.None, key.copy(scope = s2, fingerprint = requestB))
+
+        assertThat(result).isInstanceOf(LogAppendResult.Appended::class.java)
     }
 }

@@ -8,6 +8,7 @@ import io.factstore.storage.FactLog
 import io.factstore.storage.LogAppendResult
 import io.factstore.storage.LogCondition
 import io.factstore.storage.LogFact
+import io.factstore.storage.LogIdempotency
 import io.factstore.storage.LogQuery
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -21,15 +22,20 @@ class SystemFactRepository(
 
     override fun fetch(query: LogQuery): Flow<VersionedFact<SystemFact, FactId>> = log.read(query).map { it.fact.decoded() }
 
-    override suspend fun save(facts: Flow<SystemFact>, condition: LogCondition): SaveResult<SystemFact, FactId> {
+    override suspend fun save(facts: Flow<SystemFact>, condition: LogCondition, idempotency: Idempotency): SaveResult<SystemFact, FactId> {
         val appendedAt = clock.instant()
         val stored = facts.map { LogFact(SystemStore.ID, SystemFactCodec.encode(it).toFact(factIdGenerator.generate(), appendedAt)) }
-        return when (val result = log.append(stored, condition)) {
+        return when (val result = log.append(stored, condition, idempotency.inSystemStore())) {
             is LogAppendResult.Appended -> SaveResult.Saved(result.facts.map { it.fact.decoded() })
+            is LogAppendResult.AlreadyAppended -> SaveResult.AlreadySaved(result.facts.map { it.fact.decoded() })
+            is LogAppendResult.IdempotencyKeyReused -> SaveResult.IdempotencyKeyReused(result.key)
             LogAppendResult.ConditionViolated -> SaveResult.ConditionViolated
             is LogAppendResult.AfterFactNotFound -> error("The fact ${result.factId} named by $condition is gone from the log.")
         }
     }
+
+    // System facts are appended to the system store, so their keys are scoped to it
+    private fun Idempotency.inSystemStore() = LogIdempotency(SystemStore.ID, key, fingerprint)
 
     private fun Fact.decoded(): VersionedFact<SystemFact, FactId> = VersionedFact(SystemFactCodec.decode(this), id)
 }

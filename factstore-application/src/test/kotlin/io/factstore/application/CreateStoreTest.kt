@@ -4,6 +4,8 @@ import io.factstore.application.slices.CreateStoreSlice
 import io.factstore.core.Fact
 import io.factstore.core.FactId
 import io.factstore.core.FactQueryItem
+import io.factstore.core.Fingerprint
+import io.factstore.core.IdempotencyKey
 import io.factstore.core.StoreId
 import io.factstore.core.StoreName
 import io.factstore.domain.StoreCreated
@@ -14,17 +16,14 @@ import io.factstore.storage.FactLog
 import io.factstore.storage.LogAppendResult
 import io.factstore.storage.LogCondition
 import io.factstore.storage.LogFact
+import io.factstore.storage.LogIdempotency
 import io.factstore.storage.LogQuery
 import io.factstore.storage.LogQueryItem
 import io.factstore.storage.memory.InMemoryFactLog
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.asFlow
-import kotlinx.coroutines.flow.emitAll
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
@@ -35,7 +34,6 @@ import org.junit.jupiter.api.Test
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
-import java.util.concurrent.atomic.AtomicInteger
 
 class CreateStoreTest {
 
@@ -46,6 +44,8 @@ class CreateStoreTest {
         val next = ids.iterator()
         return FactStoreApplication(CreateStoreSlice(createStoreDecider, SystemFactRepository(log))) { next.next() }
     }
+
+    private fun freshKey() = Idempotency(IdempotencyKey.generate(), Fingerprint("request"))
 
     private fun List<Fact>.decoded(): List<SystemFact> = map(SystemFactCodec::decode)
 
@@ -63,7 +63,7 @@ class CreateStoreTest {
     fun `records the new store in the system store and returns the stored fact`(): Unit = runBlocking {
         val s1 = StoreId.generate()
 
-        val outcome = application(log, listOf(s1)).createStore(orders)
+        val outcome = application(log, listOf(s1)).createStore(orders, freshKey())
 
         assertThat(outcome.recordedFacts()).containsExactly(StoreCreated(s1, orders))
         assertThat(log.storeFactsIn(SystemStore.ID)).containsExactly(StoreCreated(s1, orders))
@@ -75,9 +75,9 @@ class CreateStoreTest {
         val s1 = StoreId.generate()
         val s2 = StoreId.generate()
         val application = application(log, listOf(s1, s2))
-        application.createStore(orders)
+        application.createStore(orders, freshKey())
 
-        val outcome = application.createStore(orders)
+        val outcome = application.createStore(orders, freshKey())
 
         val rejection = StoreCreationRejected(s2, orders, StoreCreationRejected.Reason.NameTaken(holder = s1))
         assertThat(outcome.recordedFacts()).containsExactly(rejection)
@@ -91,7 +91,7 @@ class CreateStoreTest {
         val racingLog = BothReadFirst(log)
 
         val outcomes = withTimeout(5_000) {
-            listOf(s1, s2).map { id -> async(Dispatchers.Default) { application(racingLog, listOf(id)).createStore(orders) } }.awaitAll()
+            listOf(s1, s2).map { id -> async(Dispatchers.Default) { application(racingLog, listOf(id)).createStore(orders, freshKey()) } }.awaitAll()
         }
 
         val (recorded, violated) = outcomes.partition { it is DecisionResult.Recorded }
@@ -106,7 +106,7 @@ class CreateStoreTest {
         val repository = SystemFactRepository(log, Clock.fixed(now, ZoneOffset.UTC))
         val application = FactStoreApplication(CreateStoreSlice(createStoreDecider, repository))
 
-        application.createStore(orders)
+        application.createStore(orders, freshKey())
 
         val query = LogQuery(LogQueryItem(SystemStore.ID, FactQueryItem(types = setOf(SystemFactTypes.STORE_CREATED))))
         assertThat(log.read(query).toList().single().fact.appendedAt).isEqualTo(now)
@@ -116,28 +116,14 @@ class CreateStoreTest {
     fun `fails when a fact it read is gone from the log`() {
         val vanishingLog = FactsVanishOnAppend(log)
 
-        assertThatThrownBy { runBlocking { application(vanishingLog, listOf(StoreId.generate())).createStore(orders) } }
+        assertThatThrownBy { runBlocking { application(vanishingLog, listOf(StoreId.generate())).createStore(orders, freshKey()) } }
             .isInstanceOf(IllegalStateException::class.java)
-    }
-
-    /** Holds the first two reads back until both have happened, so both decisions see the name as free. */
-    private class BothReadFirst(private val log: FactLog) : FactLog by log {
-        private val reads = AtomicInteger()
-        private val bothRead = CompletableDeferred<Unit>()
-
-        override fun read(query: LogQuery): Flow<LogFact> = flow {
-            val facts = log.read(query).toList()
-            val count = reads.incrementAndGet()
-            if (count == 2) bothRead.complete(Unit)
-            if (count <= 2) bothRead.await()
-            emitAll(facts.asFlow())
-        }
     }
 
     /** Answers every append as if a fact the decision read had been erased in the meantime. */
     private class FactsVanishOnAppend(private val log: FactLog) : FactLog by log {
 
-        override suspend fun append(facts: Flow<LogFact>, condition: LogCondition): LogAppendResult =
+        override suspend fun append(facts: Flow<LogFact>, condition: LogCondition, idempotency: LogIdempotency): LogAppendResult =
             LogAppendResult.AfterFactNotFound(FactId.generate())
     }
 }

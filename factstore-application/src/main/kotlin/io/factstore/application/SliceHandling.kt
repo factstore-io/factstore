@@ -1,6 +1,7 @@
 package io.factstore.application
 
 import com.fraktalio.fmodel.domain.IDecider
+import io.factstore.core.IdempotencyKey
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.fold
 
@@ -8,19 +9,25 @@ sealed interface DecisionResult<out F, out V> {
 
     class Recorded<F, V>(val facts: Flow<VersionedFact<F, V>>) : DecisionResult<F, V>
 
+    class AlreadyRecorded<F, V>(val facts: Flow<VersionedFact<F, V>>) : DecisionResult<F, V>
+
+    data class IdempotencyKeyReused(val key: IdempotencyKey) : DecisionResult<Nothing, Nothing>
+
     data object ConditionViolated : DecisionResult<Nothing, Nothing>
 }
 
-suspend fun <C, S, F, Q, A, V> Slice<C, S, F, Q, A, V>.handle(command: C): DecisionResult<F, V> {
+suspend fun <C, S, F, Q, A, V> Slice<C, S, F, Q, A, V>.handle(command: C, idempotency: Idempotency): DecisionResult<F, V> {
     val query = query(command)
     val read = fetch(query).foldInto(this)
     val newFactsToSave = decide(command, read.state)
     val appendCondition = condition(command, query, read.version)
-    return save(newFactsToSave, appendCondition).toDecisionResult()
+    return save(newFactsToSave, appendCondition, idempotency).toDecisionResult()
 }
 
 private fun <F, V> SaveResult<F, V>.toDecisionResult(): DecisionResult<F, V> = when (this) {
     is SaveResult.Saved -> DecisionResult.Recorded(facts)
+    is SaveResult.AlreadySaved -> DecisionResult.AlreadyRecorded(facts)
+    is SaveResult.IdempotencyKeyReused -> DecisionResult.IdempotencyKeyReused(key)
     SaveResult.ConditionViolated -> DecisionResult.ConditionViolated
 }
 
