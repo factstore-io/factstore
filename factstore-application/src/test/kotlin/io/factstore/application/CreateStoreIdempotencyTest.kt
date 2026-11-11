@@ -1,6 +1,9 @@
 package io.factstore.application
 
+import io.factstore.application.slices.CreateStoreRequest
+import io.factstore.application.slices.CreateStoreRequestEncoding
 import io.factstore.application.slices.CreateStoreSlice
+import io.factstore.application.slices.toCommand
 import io.factstore.core.FactId
 import io.factstore.core.FactQueryItem
 import io.factstore.core.Fingerprint
@@ -105,5 +108,32 @@ class CreateStoreIdempotencyTest {
 
         assertThat(nextAttempt.recorded())
             .containsExactly(StoreCreationRejected(loser, orders, StoreCreationRejected.Reason.NameTaken(holder = winner)))
+    }
+
+    @Test
+    fun `replays a retried request, although its command is for another store`(): Unit = runBlocking {
+        val request = CreateStoreRequest(orders)
+        val key = Idempotency(IdempotencyKey.generate(), CreateStoreRequestEncoding.fingerprint(request))
+        val first = slice.handle(request.toCommand(StoreIdGenerator(StoreId::generate)), key).recorded()
+
+        val retry = slice.handle(request.toCommand(StoreIdGenerator(StoreId::generate)), key)
+
+        assertThat(retry.alreadyRecorded()).isEqualTo(first)
+        assertThat(log.systemFacts()).isEqualTo(first)
+    }
+
+    @Test
+    fun `rejects a key used for a request for another name`(): Unit = runBlocking {
+        val first = CreateStoreRequest(orders)
+        val key = Idempotency(IdempotencyKey.generate(), CreateStoreRequestEncoding.fingerprint(first))
+        slice.handle(first.toCommand(StoreIdGenerator(StoreId::generate)), key)
+
+        val other = CreateStoreRequest(StoreName("invoices"))
+        val result = slice.handle(
+            other.toCommand(StoreIdGenerator(StoreId::generate)),
+            key.copy(fingerprint = CreateStoreRequestEncoding.fingerprint(other)),
+        )
+
+        assertThat(result).isEqualTo(DecisionResult.IdempotencyKeyReused(key.key))
     }
 }
