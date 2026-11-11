@@ -4,6 +4,8 @@ import com.fraktalio.fmodel.domain.IDecider
 import io.factstore.application.FactRepository
 import io.factstore.application.RequestEncoder
 import io.factstore.application.RequestEncoding
+import io.factstore.application.RequestHandler
+import io.factstore.application.RetryPolicy
 import io.factstore.application.Slice
 import io.factstore.application.StoreIdGenerator
 import io.factstore.application.SystemConsistencyBoundary
@@ -39,6 +41,14 @@ fun CreateStoreSlice(
     decider: IDecider<CreateStore, CreateStoreDecisionModel, SystemFact>,
     repository: FactRepository<SystemFact, LogQuery, LogCondition, FactId>,
 ): CreateStoreSlice = Slice(decider, CreateStoreConsistencyBoundary, repository)
+
+typealias CreateStoreRequestHandler = RequestHandler<CreateStoreRequest, SystemFact, FactId>
+
+fun CreateStoreRequestHandler(
+    slice: CreateStoreSlice,
+    storeIds: StoreIdGenerator,
+    retryPolicy: RetryPolicy,
+): CreateStoreRequestHandler = RequestHandler(slice, CreateStoreRequestEncoding, { it.toCommand(storeIds) }, retryPolicy)
 
 private object CreateStoreConsistencyBoundary : SystemConsistencyBoundary<CreateStore> {
 

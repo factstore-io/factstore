@@ -11,6 +11,7 @@ dependencies {
 
     testImplementation(project(":factstore-storage-memory"))
     testImplementation(libs.bundles.testing)
+    testImplementation(libs.kotlinx.coroutines.test)
     testRuntimeOnly(libs.junit.jupiter.engine)
     testRuntimeOnly(libs.junit.platform.launcher)
 }
