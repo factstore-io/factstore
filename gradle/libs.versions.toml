@@ -15,6 +15,7 @@ kotlin-logging = "8.0.4"
 clikt = "5.1.0"
 grpc-kotlin = "1.5.0"
 protobuf-gradle-plugin = "0.10.0"
+fmodel = "3.7.0"
 
 [plugins]
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
@@ -31,6 +32,9 @@ kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-c
 kotlinx-coroutines-jdk9 = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-jdk9", version.ref = "kotlinx-coroutines" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
 kotlin-logging = { module = "io.github.oshai:kotlin-logging-jvm", version.ref = "kotlin-logging" }
+
+# Domain
+fmodel-domain = { module = "com.fraktalio.fmodel:domain", version.ref = "fmodel" }
 
 # Storage
 fdb-java = { module = "org.foundationdb:fdb-java", version.ref = "fdb-java" }
