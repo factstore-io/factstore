@@ -12,7 +12,7 @@ testcontainers-foundationdb = "1.1.0"
 quarkus = "3.40.1.2"
 quarkus-quinoa = "2.9.3"
 kotlin-logging = "8.0.7"
-clikt = "5.1.0"
+clikt = "5.2.1"
 grpc-kotlin = "1.5.0"
 protobuf-gradle-plugin = "0.10.1"
 
